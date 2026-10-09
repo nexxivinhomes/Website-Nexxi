@@ -1,0 +1,18 @@
+{
+  "name": "nexxi-theme-assets",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "npm run build:css && npm run build:js",
+    "build:css": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --minify",
+    "build:js": "esbuild ./src/js/app.js --bundle --minify --format=iife --target=es2018 --outfile=./assets/js/app.js",
+    "dev:css": "tailwindcss -i ./src/css/app.css -o ./assets/css/app.css --watch",
+    "dev:js": "esbuild ./src/js/app.js --bundle --format=iife --target=es2018 --outfile=./assets/js/app.js --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "alpinejs": "3.17.4",
+    "esbuild": "0.28.2",
+    "tailwindcss": "4.3.3"
+  }
+}
