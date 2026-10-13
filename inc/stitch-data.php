@@ -142,7 +142,7 @@ function nexxi_kids_card_data( WC_Product $product ) {
 		'soldPercent'=> null !== $left && ( $sold + $left ) > 0 ? (int) round( $sold / ( $sold + $left ) * 100 ) : 0,
 		'inStock'    => $product->is_in_stock(),
 		'sizes'      => $sizes,
-		'variations' => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'] ); }, $variations ),
+		'variations' => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'], 'any' => ! empty( $row['any'] ) ); }, $variations ),
 		'isNew'      => $product->get_date_created() ? ( time() - (int) $product->get_date_created()->getTimestamp() ) < 30 * DAY_IN_SECONDS : false,
 	);
 }

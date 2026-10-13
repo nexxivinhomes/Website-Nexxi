@@ -32,11 +32,12 @@ function nexxi_kids_stitch_cart_content() {
 					$permalink = $product->is_visible() ? $product->get_permalink( $cart_item ) : '';
 					$image = $product->get_image( 'woocommerce_thumbnail', array( 'class' => 'w-full h-full object-cover', 'loading' => 'lazy' ) );
 					$quantity = $cart_item['quantity'];
-					$terms = get_the_terms( $product->get_id(), 'product_cat' );
+					$terms = get_the_terms( $cart_item['product_id'], 'product_cat' );
 					$category = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
+					$title = nexxi_kids_cart_item_title( $cart_item );
 					?>
 					<div class="bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
-						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $product->get_name() ); ?></a><div class="font-body-sm text-body-sm text-on-surface-variant"><?php echo wp_kses_post( wc_get_formatted_cart_item_data( $cart_item ) ); ?></div></div></div>
+						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface"><span class="md:hidden text-outline">Đơn giá:</span><?php echo wp_kses_post( $cart->get_product_price( $product ) ); ?></div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center"><span class="md:hidden text-outline">Số lượng:</span><input class="qty nexxi-cart-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary" aria-label="Số lượng <?php echo esc_attr( $product->get_name() ); ?>" type="number" min="0" max="<?php echo esc_attr( $product->get_max_purchase_quantity() ); ?>" name="cart[<?php echo esc_attr( $cart_item_key ); ?>][qty]" value="<?php echo esc_attr( $quantity ); ?>"></div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo wp_kses_post( $cart->get_product_subtotal( $product, $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
@@ -53,3 +54,76 @@ function nexxi_kids_stitch_cart_content() {
 	<?php
 	return ob_get_clean();
 }
+
+/* ---------- Variation ("Phân loại") display in cart, checkout and orders ---------- */
+
+/** Product title without the "– TRANG, 1" suffix WooCommerce bakes into variation names. */
+function nexxi_kids_cart_item_title( $cart_item ) {
+	$product = $cart_item['data'];
+	if ( ! empty( $cart_item['variation_id'] ) ) {
+		$parent = wc_get_product( $cart_item['product_id'] );
+		if ( $parent ) { return $parent->get_name(); }
+	}
+	return $product ? $product->get_name() : '';
+}
+
+/** [ [label, value], ... ] for the chosen variation attributes of a cart item. */
+function nexxi_kids_cart_item_variation( $cart_item ) {
+	$rows = array();
+	if ( empty( $cart_item['variation'] ) || ! is_array( $cart_item['variation'] ) ) { return $rows; }
+	$product = $cart_item['data'];
+	foreach ( $cart_item['variation'] as $key => $value ) {
+		if ( '' === (string) $value ) { continue; }
+		$name = 0 === strpos( $key, 'attribute_' ) ? substr( $key, 10 ) : $key;
+		if ( taxonomy_exists( $name ) ) {
+			$term = get_term_by( 'slug', $value, $name );
+			$value = $term && ! is_wp_error( $term ) ? $term->name : $value;
+		}
+		$label = wc_attribute_label( $name, $product );
+		$rows[] = array( nexxi_kids_attr_label( $label ), $value );
+	}
+	return $rows;
+}
+
+/** "Phân loại" chips for the Stitch cart row (variation + extra item data from plugins). */
+function nexxi_kids_cart_item_chips( $cart_item ) {
+	$rows = nexxi_kids_cart_item_variation( $cart_item );
+	foreach ( (array) apply_filters( 'woocommerce_get_item_data', array(), $cart_item ) as $data ) {
+		if ( empty( $data['hidden'] ) && isset( $data['key'] ) ) {
+			$rows[] = array( wp_strip_all_tags( $data['key'] ), wp_strip_all_tags( isset( $data['display'] ) && '' !== $data['display'] ? $data['display'] : ( isset( $data['value'] ) ? $data['value'] : '' ) ) );
+		}
+	}
+	if ( ! $rows ) { return ''; }
+	$out = '<div class="nexxi-variant-chips flex flex-wrap items-center gap-1.5 pt-0.5"><span class="font-label-sm text-label-sm text-outline">Phân loại:</span>';
+	foreach ( $rows as $row ) {
+		$out .= '<span class="inline-flex items-center gap-1 bg-secondary-fixed/60 text-on-secondary-fixed rounded-full px-2.5 py-0.5 font-label-sm text-label-sm"><span class="opacity-70">' . esc_html( $row[0] ) . ':</span><strong class="font-bold">' . esc_html( $row[1] ) . '</strong></span>';
+	}
+	return $out . '</div>';
+}
+
+// New/edited variations keep a clean title; attributes are listed separately.
+add_filter( 'woocommerce_product_variation_title_include_attributes', '__return_false' );
+// Always list the chosen attributes (WooCommerce hides them when they appear in the title).
+add_filter( 'woocommerce_is_attribute_in_product_name', '__return_false' );
+
+/** Checkout review / mini cart: parent title, attributes rendered underneath by WooCommerce. */
+function nexxi_kids_cart_item_name( $name, $cart_item ) {
+	if ( empty( $cart_item['variation_id'] ) ) { return $name; }
+	$title = nexxi_kids_cart_item_title( $cart_item );
+	if ( '' === $title ) { return $name; }
+	// Keep a link if WooCommerce rendered one (mini cart).
+	if ( false !== strpos( $name, '<a ' ) && preg_match( '~<a [^>]*>~', $name, $m ) ) {
+		return $m[0] . esc_html( $title ) . '</a>';
+	}
+	return esc_html( $title );
+}
+add_filter( 'woocommerce_cart_item_name', 'nexxi_kids_cart_item_name', 10, 2 );
+
+/** Orders / emails: store the clean title, attributes are saved as item meta. */
+function nexxi_kids_order_item_name( $item, $cart_item_key, $values ) {
+	if ( ! empty( $values['variation_id'] ) ) {
+		$title = nexxi_kids_cart_item_title( $values );
+		if ( $title ) { $item->set_name( $title ); }
+	}
+}
+add_action( 'woocommerce_checkout_create_order_line_item', 'nexxi_kids_order_item_name', 20, 3 );
