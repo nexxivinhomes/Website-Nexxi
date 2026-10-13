@@ -28,6 +28,9 @@ function nexxi_kids_page_content( $post ) {
 
 /** Main element for a page screen. */
 function nexxi_kids_page_main( $post = null ) {
+	if ( is_404() ) {
+		return nexxi_kids_page_shell( 'Không tìm thấy trang', 'Lỗi 404', nexxi_kids_empty_state( 'Trang mẹ tìm không tồn tại', 'Đường dẫn có thể đã thay đổi hoặc trang đã bị gỡ. Mẹ quay lại cửa hàng để xem những mẫu mới nhất nhé.', 'Về cửa hàng', nexxi_kids_shop_url() ) );
+	}
 	$post = get_post( $post );
 	if ( ! $post ) { return ''; }
 	$kind = nexxi_kids_page_kind( $post );
