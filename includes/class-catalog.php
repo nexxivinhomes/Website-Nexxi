@@ -80,7 +80,7 @@ final class Nexxi_Kids_Catalog {
 	public static function color_hex( $term ) {
 		$term = is_numeric( $term ) ? get_term( (int) $term ) : $term;
 		$hex = $term instanceof WP_Term ? get_term_meta( $term->term_id, 'nexxi_color_hex', true ) : '';
-		return $hex ? $hex : '#e4e2de';
+		return $hex ? $hex : self::color_guess( $term instanceof WP_Term ? $term->name : '' );
 	}
 
 	/** Size number from a term slug/name such as "size-4" or "Size 4". */
@@ -94,8 +94,21 @@ final class Nexxi_Kids_Catalog {
 		return isset( $chart[ $size ] ) ? $chart[ $size ][0] . ' - ' . $chart[ $size ][1] . 'kg' : '';
 	}
 
-	/** Ordered term objects of an attribute that the product actually uses. */
+	/**
+	 * Ordered term objects of an attribute that the product actually uses.
+	 * 'size' and 'mau-sac' resolve to whichever variation attribute plays that
+	 * role (e.g. pa_kich-co, a custom "SIZE" attribute, pa_mau...).
+	 */
 	public static function product_terms( WC_Product $product, $slug ) {
+		if ( in_array( $slug, array( 'size', 'mau-sac' ), true ) && $product->is_type( 'variable' ) ) {
+			$role = 'size' === $slug ? 'size' : 'color';
+			foreach ( self::variation_attributes( $product ) as $attribute ) {
+				if ( $role !== $attribute['role'] ) { continue; }
+				return array_map( static function ( $option ) {
+					return (object) array( 'slug' => $option['value'], 'name' => $option['name'], 'term_id' => $option['term_id'] );
+				}, $attribute['options'] );
+			}
+		}
 		$taxonomy = wc_attribute_taxonomy_name( $slug );
 		$terms = wc_get_product_terms( $product->get_id(), $taxonomy, array( 'fields' => 'all' ) );
 		if ( 'size' === $slug ) {
@@ -104,21 +117,107 @@ final class Nexxi_Kids_Catalog {
 		return is_array( $terms ) ? $terms : array();
 	}
 
+	/** 'size', 'color' or '' guessed from an attribute name / label (Vietnamese or English). */
+	public static function attribute_role( $name, $label = '' ) {
+		$haystack = '-' . sanitize_title( remove_accents( $name . ' ' . $label ) ) . '-';
+		if ( preg_match( '~(size|kich-co|kich-thuoc|-co-)~', $haystack ) ) { return 'size'; }
+		if ( preg_match( '~(mau|color|colour)~', $haystack ) ) { return 'color'; }
+		return '';
+	}
+
+	/** Normalised value used to compare parent options with variation values. */
+	public static function attribute_value( $value, $is_taxonomy ) {
+		return $is_taxonomy ? (string) $value : sanitize_title( (string) $value );
+	}
+
+	/**
+	 * Every attribute used for variations, in the order set in the product editor.
+	 * Each entry: key (variation attribute key), label, role, taxonomy flag and options.
+	 */
+	public static function variation_attributes( WC_Product $product ) {
+		static $cache = array();
+		if ( ! $product->is_type( 'variable' ) ) { return array(); }
+		if ( isset( $cache[ $product->get_id() ] ) ) { return $cache[ $product->get_id() ]; }
+		$list = array();
+		$taken = array();
+		foreach ( $product->get_attributes() as $attribute ) {
+			if ( ! $attribute instanceof WC_Product_Attribute || ! $attribute->get_variation() ) { continue; }
+			$name = $attribute->get_name();
+			$label = wc_attribute_label( $name, $product );
+			$role = self::attribute_role( $name, $label );
+			if ( $role && isset( $taken[ $role ] ) ) { $role = ''; }
+			if ( $role ) { $taken[ $role ] = true; }
+			$options = array();
+			if ( $attribute->is_taxonomy() ) {
+				foreach ( wc_get_product_terms( $product->get_id(), $name, array( 'fields' => 'all' ) ) as $term ) {
+					$options[] = array( 'value' => $term->slug, 'name' => $term->name, 'term_id' => $term->term_id, 'hex' => 'color' === $role ? self::color_hex( $term ) : '' );
+				}
+			} else {
+				foreach ( $attribute->get_options() as $option ) {
+					$options[] = array( 'value' => self::attribute_value( $option, false ), 'name' => $option, 'term_id' => 0, 'hex' => 'color' === $role ? self::color_guess( $option ) : '' );
+				}
+			}
+			if ( 'size' === $role ) {
+				$numeric = array_filter( $options, static function ( $o ) { return self::size_number( $o['name'] ) > 0; } );
+				if ( count( $numeric ) === count( $options ) ) {
+					usort( $options, static function ( $a, $b ) { return self::size_number( $a['name'] ) <=> self::size_number( $b['name'] ); } );
+				}
+			}
+			$list[] = array(
+				'key'      => sanitize_title( $name ),
+				'label'    => $label,
+				'role'     => $role,
+				'taxonomy' => $attribute->is_taxonomy(),
+				'options'  => $options,
+			);
+		}
+		$cache[ $product->get_id() ] = $list;
+		return $list;
+	}
+
+	/** Swatch colour guessed from a Vietnamese/English colour name such as "Hồng", "TRANG". */
+	public static function color_guess( $name ) {
+		$map = array(
+			'trang' => '#ffffff', 'white' => '#ffffff', 'den' => '#1b1c1a', 'black' => '#1b1c1a', 'do' => '#d93a3a', 'red' => '#d93a3a',
+			'hong' => '#f6b8c8', 'pink' => '#f6b8c8', 'xanh-duong' => '#4a7bd0', 'xanh-la' => '#5bab6c', 'xanh-navy' => '#1b2a59', 'navy' => '#1b2a59',
+			'xanh' => '#7fb3d5', 'blue' => '#7fb3d5', 'vang' => '#f5d36b', 'yellow' => '#f5d36b', 'cam' => '#f39a4c', 'tim' => '#a77bc9',
+			'nau' => '#8a5a3c', 'be' => '#e9dcc3', 'kem' => '#f6edd9', 'xam' => '#a3a3a3', 'ghi' => '#a3a3a3', 'grey' => '#a3a3a3', 'gray' => '#a3a3a3',
+		);
+		$slug = sanitize_title( remove_accents( (string) $name ) );
+		foreach ( $map as $key => $hex ) {
+			if ( $slug === $key || 0 === strpos( $slug, $key . '-' ) ) { return $hex; }
+		}
+		return '#e4e2de';
+	}
+
 	/** Compact variation payload consumed by the storefront scripts. */
 	public static function variation_payload( WC_Product $product ) {
 		static $cache = array();
 		if ( ! $product->is_type( 'variable' ) ) { return array(); }
 		if ( isset( $cache[ $product->get_id() ] ) ) { return $cache[ $product->get_id() ]; }
+		$defs = self::variation_attributes( $product );
 		$rows = array();
 		foreach ( $product->get_children() as $child_id ) {
 			$variation = wc_get_product( $child_id );
 			if ( ! $variation || ! $variation->exists() || 'publish' !== $variation->get_status() || ! $variation->is_purchasable() ) { continue; }
 			$attributes = $variation->get_attributes();
+			$attrs = array();
+			$roles = array( 'size' => '', 'color' => '' );
+			$any = false;
+			foreach ( $defs as $def ) {
+				$raw = isset( $attributes[ $def['key'] ] ) ? $attributes[ $def['key'] ] : '';
+				$value = '' === $raw ? '' : self::attribute_value( $raw, $def['taxonomy'] );
+				if ( '' === $value ) { $any = true; }
+				$attrs[ $def['key'] ] = $value;
+				if ( $def['role'] ) { $roles[ $def['role'] ] = $value; }
+			}
 			$image = $variation->get_image_id() ? wp_get_attachment_image_url( $variation->get_image_id(), 'large' ) : '';
 			$rows[] = array(
 				'id'      => $variation->get_id(),
-				'size'    => isset( $attributes['pa_size'] ) ? $attributes['pa_size'] : '',
-				'color'   => isset( $attributes['pa_mau-sac'] ) ? $attributes['pa_mau-sac'] : '',
+				'attrs'   => (object) $attrs,
+				'any'     => $any,
+				'size'    => $roles['size'],
+				'color'   => $roles['color'],
 				'price'   => (float) wc_get_price_to_display( $variation ),
 				'regular' => (float) wc_get_price_to_display( $variation, array( 'price' => $variation->get_regular_price() ) ),
 				'stock'   => $variation->managing_stock() ? (int) $variation->get_stock_quantity() : null,
