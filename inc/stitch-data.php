@@ -1,0 +1,173 @@
+<?php
+/** Store settings, URLs and product view-models shared by every Stitch screen. */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+/** Store contact settings (Customizer → NEXXI – Thông tin cửa hàng). */
+function nexxi_kids_setting( $key ) {
+	$defaults = array(
+		'nexxi_kids_hotline'   => '1900 8888',
+		'nexxi_kids_email'     => get_option( 'admin_email' ),
+		'nexxi_kids_address'   => '',
+		'nexxi_kids_hours'     => '8:00 – 21:00 hằng ngày',
+		'nexxi_kids_chat_url'  => '',
+		'nexxi_kids_map_embed' => '',
+	);
+	$value = get_theme_mod( $key, '' );
+	return '' !== $value ? $value : ( isset( $defaults[ $key ] ) ? $defaults[ $key ] : '' );
+}
+
+function nexxi_kids_customize_store( $customizer ) {
+	$customizer->add_section( 'nexxi_kids_store', array( 'title' => __( 'NEXXI – Thông tin cửa hàng', 'nexxi-kids' ), 'priority' => 30 ) );
+	$fields = array(
+		'nexxi_kids_hotline'   => array( __( 'Hotline', 'nexxi-kids' ), 'text', 'sanitize_text_field' ),
+		'nexxi_kids_email'     => array( __( 'Email liên hệ', 'nexxi-kids' ), 'email', 'sanitize_email' ),
+		'nexxi_kids_address'   => array( __( 'Địa chỉ cửa hàng', 'nexxi-kids' ), 'textarea', 'sanitize_textarea_field' ),
+		'nexxi_kids_hours'     => array( __( 'Giờ mở cửa', 'nexxi-kids' ), 'text', 'sanitize_text_field' ),
+		'nexxi_kids_chat_url'  => array( __( 'Link chat tư vấn (Zalo / Messenger)', 'nexxi-kids' ), 'url', 'esc_url_raw' ),
+		'nexxi_kids_map_embed' => array( __( 'Link nhúng Google Maps (src của iframe)', 'nexxi-kids' ), 'url', 'esc_url_raw' ),
+	);
+	foreach ( $fields as $key => $field ) {
+		$customizer->add_setting( $key, array( 'default' => '', 'sanitize_callback' => $field[2] ) );
+		$customizer->add_control( $key, array( 'label' => $field[0], 'section' => 'nexxi_kids_store', 'type' => $field[1] ) );
+	}
+}
+add_action( 'customize_register', 'nexxi_kids_customize_store', 20 );
+
+/** Permalink of a page by slug with a pretty-URL fallback. */
+function nexxi_kids_page_url( $slug ) {
+	$page = get_page_by_path( $slug );
+	return $page ? get_permalink( $page ) : home_url( '/' . $slug . '/' );
+}
+
+function nexxi_kids_shop_url() {
+	return function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/cua-hang/' );
+}
+
+function nexxi_kids_flash_url() {
+	return add_query_arg( 'on_sale', '1', nexxi_kids_shop_url() );
+}
+
+function nexxi_kids_category_url( $slug ) {
+	$term = get_term_by( 'slug', $slug, 'product_cat' );
+	$link = $term ? get_term_link( $term ) : '';
+	return $link && ! is_wp_error( $link ) ? $link : nexxi_kids_shop_url();
+}
+
+function nexxi_kids_tel( $phone ) {
+	return 'tel:' . preg_replace( '~[^0-9+]~', '', (string) $phone );
+}
+
+/**
+ * Flash Sale end as a UNIX timestamp. Uses the Customizer value when it is in the
+ * future, otherwise the end of the current day in the site timezone (daily deals).
+ */
+function nexxi_kids_flash_end() {
+	$configured = strtotime( (string) get_theme_mod( 'nexxi_kids_flash_sale_end', '' ) );
+	if ( $configured && $configured > time() ) { return $configured; }
+	$now = new DateTimeImmutable( 'now', wp_timezone() );
+	return $now->setTime( 23, 59, 59 )->getTimestamp();
+}
+
+function nexxi_kids_money( $amount ) {
+	return number_format( (float) $amount, 0, ',', '.' ) . '₫';
+}
+
+/** Compact sold counter: 1200 → "1.2k". */
+function nexxi_kids_compact_number( $number ) {
+	$number = (int) $number;
+	return $number >= 1000 ? rtrim( rtrim( number_format( $number / 1000, 1, '.', '' ), '0' ), '.' ) . 'k' : (string) $number;
+}
+
+/** First category name for labels. */
+function nexxi_kids_product_category( WC_Product $product ) {
+	$terms = get_the_terms( $product->get_id(), 'product_cat' );
+	return $terms && ! is_wp_error( $terms ) ? $terms[0] : null;
+}
+
+/** Comma separated attribute names (non-variation attributes such as material). */
+function nexxi_kids_product_attr_names( WC_Product $product, $slug ) {
+	if ( ! class_exists( 'Nexxi_Kids_Catalog' ) ) { return array(); }
+	return wp_list_pluck( Nexxi_Kids_Catalog::product_terms( $product, $slug ), 'name' );
+}
+
+/** Lowest / highest display prices (regular prices for strike-through). */
+function nexxi_kids_price_range( WC_Product $product ) {
+	if ( $product->is_type( 'variable' ) ) {
+		$prices = $product->get_variation_prices( true );
+		$min = $prices['price'] ? (float) min( $prices['price'] ) : 0;
+		$max = $prices['price'] ? (float) max( $prices['price'] ) : 0;
+		$regular = $prices['regular_price'] ? (float) min( $prices['regular_price'] ) : 0;
+		return array( 'min' => $min, 'max' => $max, 'regular' => $regular );
+	}
+	$price = (float) wc_get_price_to_display( $product );
+	return array( 'min' => $price, 'max' => $price, 'regular' => (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) ) );
+}
+
+/**
+ * View-model for product cards. All values are plain data; markup lives in
+ * stitch-components.php so every card stays identical to the Stitch design.
+ */
+function nexxi_kids_card_data( WC_Product $product ) {
+	$catalog = class_exists( 'Nexxi_Kids_Catalog' );
+	$category = nexxi_kids_product_category( $product );
+	$range = nexxi_kids_price_range( $product );
+	$sizes = array();
+	if ( $catalog ) {
+		foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
+			$sizes[] = array( 'slug' => $term->slug, 'label' => Nexxi_Kids_Catalog::size_number( $term->slug ) . 'Y', 'name' => $term->name );
+		}
+	}
+	$image = wp_get_attachment_image_url( $product->get_image_id(), 'large' );
+	$sold = (int) $product->get_total_sales();
+	$left = $catalog ? Nexxi_Kids_Catalog::stock_left( $product ) : null;
+	$variations = $catalog ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
+	return array(
+		'id'         => $product->get_id(),
+		'type'       => $product->get_type(),
+		'name'       => $product->get_name(),
+		'url'        => $product->get_permalink(),
+		'image'      => $image ? $image : wc_placeholder_img_src( 'large' ),
+		'category'   => $category ? $category->name : 'NEXXI Kids',
+		'categorySlug' => $category ? $category->slug : '',
+		'material'   => implode( ', ', array_slice( nexxi_kids_product_attr_names( $product, 'chat-lieu' ), 0, 1 ) ),
+		'price'      => $range['min'] < $range['max'] ? nexxi_kids_money( $range['min'] ) . ' – ' . nexxi_kids_money( $range['max'] ) : nexxi_kids_money( $range['min'] ),
+		'priceFrom'  => nexxi_kids_money( $range['min'] ),
+		'regular'    => $product->is_on_sale() && $range['regular'] > $range['min'] ? nexxi_kids_money( $range['regular'] ) : '',
+		'saving'     => $product->is_on_sale() && $range['regular'] > $range['min'] ? nexxi_kids_money( $range['regular'] - $range['min'] ) : '',
+		'discount'   => $catalog ? Nexxi_Kids_Catalog::discount_percent( $product ) : 0,
+		'rating'     => (float) $product->get_average_rating(),
+		'reviews'    => (int) $product->get_review_count(),
+		'sold'       => $sold,
+		'left'       => $left,
+		'soldPercent'=> null !== $left && ( $sold + $left ) > 0 ? (int) round( $sold / ( $sold + $left ) * 100 ) : 0,
+		'inStock'    => $product->is_in_stock(),
+		'sizes'      => $sizes,
+		'variations' => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'] ); }, $variations ),
+		'isNew'      => $product->get_date_created() ? ( time() - (int) $product->get_date_created()->getTimestamp() ) < 30 * DAY_IN_SECONDS : false,
+	);
+}
+
+/** Card payload for scripts (adds to cart, wishlist) embedded on each card root. */
+function nexxi_kids_card_attrs( array $card ) {
+	$payload = array( 'id' => $card['id'], 'type' => $card['type'], 'url' => $card['url'], 'name' => $card['name'], 'variations' => $card['variations'] );
+	return 'data-nexxi-card="' . esc_attr( wp_json_encode( $payload ) ) . '" data-category="' . esc_attr( $card['categorySlug'] ) . '"';
+}
+
+/** Products for a home/flash rail. */
+function nexxi_kids_query_products( $args ) {
+	if ( ! function_exists( 'wc_get_products' ) ) { return array(); }
+	$args = wp_parse_args( $args, array( 'status' => 'publish', 'limit' => 4, 'visibility' => 'catalog' ) );
+	return wc_get_products( $args );
+}
+
+function nexxi_kids_sale_products( $limit = 4 ) {
+	$ids = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
+	$ids = nexxi_kids_sale_parent_ids( $ids );
+	if ( ! $ids ) { return array(); }
+	return nexxi_kids_query_products( array( 'include' => $ids, 'limit' => $limit, 'orderby' => 'popularity' ) );
+}
+
+/** Keep only parent product IDs (wc_get_product_ids_on_sale also returns variation IDs). */
+function nexxi_kids_sale_parent_ids( $ids ) {
+	return array_values( array_filter( array_map( 'absint', (array) $ids ), static function ( $id ) { return $id && 'product' === get_post_type( $id ); } ) );
+}

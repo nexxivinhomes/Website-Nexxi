@@ -1,0 +1,901 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_standard" name="shell-type"><title>NEXXI Kids Fashion Boutique</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300..800;1,6..12,300..800&amp;family=Quicksand:wght@400..700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"primary-fixed":"#dce1ff","on-tertiary-fixed":"#2a1700","surface-container":"#efeeea","on-secondary-container":"#640f00","tertiary":"#261400","on-secondary-fixed-variant":"#8c1900","primary-fixed-dim":"#b6c4fd","inverse-on-surface":"#f2f0ed","surface-variant":"#e4e2de","surface-container-highest":"#e4e2de","secondary":"#ae3115","on-error":"#ffffff","on-primary":"#ffffff","on-surface-variant":"#45464f","on-surface":"#1b1c1a","tertiary-container":"#422700","outline-variant":"#c6c6d0","tertiary-fixed-dim":"#ffb95f","on-error-container":"#93000a","surface-container-low":"#f5f3ef","primary-container":"#1b2a59","on-primary-container":"#8492c8","error-container":"#ffdad6","surface-container-lowest":"#ffffff","primary":"#031444","background":"#fbf9f5","secondary-fixed-dim":"#ffb4a3","on-tertiary-container":"#cf8400","surface-dim":"#dbdad6","surface-container-high":"#eae8e4","on-primary-fixed-variant":"#364475","inverse-surface":"#30312e","on-background":"#1b1c1a","on-secondary":"#ffffff","tertiary-fixed":"#ffddb8","error":"#ba1a1a","inverse-primary":"#b6c4fd","secondary-container":"#fd6a49","secondary-fixed":"#ffdad2","on-tertiary-fixed-variant":"#653e00","on-secondary-fixed":"#3d0600","on-tertiary":"#ffffff","surface-tint":"#4e5c8e","on-primary-fixed":"#061847","surface":"#fbf9f5","outline":"#767680","surface-bright":"#fbf9f5"},"borderRadius":{"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},"spacing":{"space-xl":"2.5rem","gutter":"1.25rem","gutter-mobile":"0.75rem","margin":"2rem","space-sm":"0.5rem","space-xs":"0.25rem","space-lg":"1.5rem","space-md":"1rem","margin-mobile":"1rem"},"fontFamily":{"label-md":["Quicksand"],"body-lg":["Nunito Sans"],"display-lg":["Quicksand"],"display-lg-mobile":["Quicksand"],"body-sm":["Nunito Sans"],"headline-lg":["Quicksand"],"headline-lg-mobile":["Quicksand"],"headline-md":["Quicksand"],"label-sm":["Quicksand"],"body-md":["Nunito Sans"],"label-lg":["Quicksand"],"title-md":["Quicksand"],"headline-sm":["Quicksand"]},"fontSize":{"label-md":["13px",{"lineHeight":"18px","fontWeight":"600"}],"body-lg":["16px",{"lineHeight":"26px","fontWeight":"400"}],"display-lg":["48px",{"lineHeight":"56px","letterSpacing":"-0.02em","fontWeight":"700"}],"display-lg-mobile":["34px",{"lineHeight":"42px","letterSpacing":"-0.01em","fontWeight":"700"}],"body-sm":["12px",{"lineHeight":"18px","fontWeight":"400"}],"headline-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.01em","fontWeight":"700"}],"headline-lg-mobile":["26px",{"lineHeight":"34px","letterSpacing":"0em","fontWeight":"700"}],"headline-md":["24px",{"lineHeight":"32px","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.04em","fontWeight":"700"}],"body-md":["14px",{"lineHeight":"22px","fontWeight":"400"}],"label-lg":["15px",{"lineHeight":"20px","fontWeight":"700"}],"title-md":["18px",{"lineHeight":"24px","fontWeight":"600"}],"headline-sm":["20px",{"lineHeight":"28px","fontWeight":"600"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface antialiased"><header class="fixed top-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(27,42,89,0.05)]"><div class="bg-secondary-container text-on-secondary px-gutter py-space-xs text-center font-label-sm text-label-sm tracking-wide hidden md:flex items-center justify-center gap-space-md shadow-inner"><span>✨ Freeship cho mọi đơn hàng từ 299K toàn quốc!</span><span class="opacity-75">•</span><span>🎁 Tặng kèm vớ gấu bông xinh xắn cho bé yêu</span><span class="opacity-75">•</span><span>🔄 Đổi size &amp; mẫu miễn phí 30 ngày tận nhà mẹ nhé</span></div><div class="h-20 w-full px-margin flex items-center justify-between gap-gutter"><div class="flex items-center gap-space-md"><img alt="logo.jpg" class="h-8 w-auto object-contain" src="{{STITCH_ASSET}}/images/logo.jpg"><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-primary tracking-tight">NEXXI</span><span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest -mt-1">Kids Boutique</span></div></div><div class="hidden lg:flex items-center flex-1 max-w-xs mx-gutter"><div class="w-full flex items-center bg-surface-container-low rounded-full px-space-md py-space-xs transition-all focus-within:ring-2 focus-within:ring-secondary-container"><span class="material-symbols-outlined text-outline text-[18px] mr-space-xs">search</span><input class="bg-transparent border-0 outline-none w-full font-body-sm text-body-sm text-on-surface placeholder:text-outline" placeholder="Tìm áo váy xinh, đồ organic bé yêu..." type="text"></div></div><nav class="hidden xl:flex items-center gap-space-md font-label-md text-label-md" data-active-classes="bg-secondary-fixed text-on-secondary-fixed font-bold rounded-full px-space-md py-space-xs"><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm" data-path="trang-chu" href="index.html">Trang Chủ</a><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm" data-path="gioi-thieu" href="index.html#about">Giới Thiệu</a><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm" data-path="cua-hang-san-pham" href="shop.html">Cửa Hàng &amp; Sản Phẩm</a><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm flex items-center gap-space-xs" data-path="flash-sale" href="flash-sale.html">Flash Sale</a><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm" data-path="bang-size" href="index.html#size-guide">Bảng Size</a><a class="text-on-surface-variant hover:text-on-surface transition-colors py-space-xs px-space-sm" data-path="lien-he" href="index.html#contact">Liên Hệ</a></nav><div class="flex items-center gap-space-md"><button class="relative p-space-xs rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant hover:text-on-surface flex items-center justify-center"><span class="material-symbols-outlined text-[22px]">favorite</span><span class="absolute -top-1 -right-1 bg-secondary-container text-on-secondary rounded-full font-label-sm text-[10px] w-4 h-4 flex items-center justify-center font-bold">0</span></button><a class="flex items-center gap-space-xs bg-surface-container-lowest hover:bg-surface-container px-space-md py-space-xs rounded-full shadow-[0_2px_8px_rgba(27,42,89,0.06)] transition-all" data-path="gio-hang-thanh-toan" href="checkout.html"><div class="relative flex items-center justify-center"><span class="material-symbols-outlined text-[22px] text-primary">shopping_bag</span><span class="absolute -top-1 -right-1 bg-secondary text-on-secondary rounded-full font-label-sm text-[10px] w-4 h-4 flex items-center justify-center font-bold">0</span></div><div class="hidden md:flex flex-col text-left font-label-sm"><span class="text-[11px] text-outline leading-tight">Giỏ Hàng</span><span class="text-[12px] font-bold text-primary leading-tight">0đ / 0 món</span></div></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 bg-background min-h-screen"><div class="flex flex-col w-full">
+<!-- Top Breadcrumb & Live Ticker -->
+<div class="w-full px-margin-mobile md:px-margin py-space-sm">
+<div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-space-xs text-on-surface-variant font-label-md text-label-md">
+<div class="flex items-center gap-space-xs">
+<a class="hover:text-secondary transition-colors flex items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[18px]">home</span>
+<span>Trang Chủ</span>
+</a>
+<span>/</span>
+<span class="text-secondary font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">bolt</span>
+          Flash Sale Giờ Vàng
+        </span>
+</div>
+<div data-nx="flash-ticker" class="hidden sm:flex items-center gap-space-xs bg-secondary-fixed text-on-secondary-fixed px-space-md py-1 rounded-full shadow-sm">
+<span class="inline-block w-2 h-2 rounded-full bg-secondary-container animate-ping"></span>
+<span class="font-label-sm text-label-sm">Đang có 142 ba mẹ cùng săn deal trực tuyến</span>
+</div>
+</div>
+</div>
+<!-- Hero Banner: Kẹo Ngọt Flash Sale -->
+<section data-nxr="flash-hero" class="w-full px-margin-mobile md:px-margin mb-space-lg">
+<div class="max-w-7xl mx-auto relative overflow-hidden bg-gradient-to-br from-surface-container-lowest via-secondary-fixed/40 to-surface-container-low rounded-xl p-space-lg md:p-space-xl shadow-md">
+<!-- Decorative Pastel Blobs -->
+<div class="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-secondary-fixed-dim/30 blur-2xl pointer-events-none"></div>
+<div class="absolute -bottom-20 -left-12 w-72 h-72 rounded-full bg-tertiary-fixed/30 blur-3xl pointer-events-none"></div>
+<div class="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-center">
+<!-- Left Content -->
+<div class="lg:col-span-7 space-y-space-md">
+<div class="inline-flex items-center gap-space-xs bg-secondary-container text-on-secondary px-space-md py-1.5 rounded-full shadow-sm -rotate-1">
+<span data-nxe="flash-hero__t1" class="material-symbols-outlined text-[18px]">bolt</span>
+<span data-nxe="flash-hero__t2" class="font-label-md text-label-md tracking-wide uppercase">Cơn Lốc Ưu Đãi • Giảm Đến 50%</span>
+<span data-nxe="flash-hero__t3" class="text-[16px]">🧸</span>
+</div>
+<h1 data-nxe="flash-hero__t5" class="font-display-lg text-display-lg text-primary tracking-tight leading-tight">
+            Flash Sale Kẹo Ngọt <br>
+<span data-nxe="flash-hero__t4" class="text-secondary">Giờ Vàng Bé Yêu</span>
+</h1>
+<p data-nxe="flash-hero__t6" class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+            Săn deal đồ xinh sợi tre hữu cơ, đũi mát và cotton kháng khuẩn chuẩn chứng nhận Oeko-Tex Châu Âu. Mềm êm tựa mây trời, số lượng có hạn theo từng khung giờ!
+          </p>
+<!-- Countdown Component Box -->
+<div class="bg-surface-container-lowest/95 backdrop-blur-md p-space-md md:p-space-lg rounded-lg shadow-sm max-w-xl space-y-space-sm">
+<div class="flex items-center justify-between">
+<span data-nxe="flash-hero__t8" class="font-label-md text-label-md text-primary font-bold flex items-center gap-1.5">
+<span data-nxe="flash-hero__t7" class="material-symbols-outlined text-secondary text-[20px]">timer</span>
+                Kết thúc trong khung giờ hôm nay:
+              </span>
+<span data-nx="flash-slot" class="font-label-sm text-label-sm text-secondary bg-secondary-fixed px-space-sm py-0.5 rounded-full font-bold">
+                Khung 09:00 - 12:00
+              </span>
+</div>
+<!-- Digital Counter Tiles -->
+<div class="flex items-center gap-space-sm pt-1">
+<div class="flex flex-col items-center">
+<div class="w-14 h-14 md:w-16 md:h-16 bg-primary text-on-primary rounded-lg flex items-center justify-center font-display-lg text-[28px] md:text-[34px] font-bold shadow-inner" id="hours-box">
+                  02
+                </div>
+<span data-nxe="flash-hero__t9" class="font-label-sm text-label-sm text-outline mt-1 uppercase">Giờ</span>
+</div>
+<span class="font-display-lg text-display-lg text-secondary -mt-5 font-bold">:</span>
+<div class="flex flex-col items-center">
+<div class="w-14 h-14 md:w-16 md:h-16 bg-primary text-on-primary rounded-lg flex items-center justify-center font-display-lg text-[28px] md:text-[34px] font-bold shadow-inner" id="minutes-box">
+                  48
+                </div>
+<span data-nxe="flash-hero__t10" class="font-label-sm text-label-sm text-outline mt-1 uppercase">Phút</span>
+</div>
+<span class="font-display-lg text-display-lg text-secondary -mt-5 font-bold">:</span>
+<div class="flex flex-col items-center">
+<div class="w-14 h-14 md:w-16 md:h-16 bg-secondary-container text-on-secondary rounded-lg flex items-center justify-center font-display-lg text-[28px] md:text-[34px] font-bold shadow-md animate-pulse" id="seconds-box">
+                  25
+                </div>
+<span data-nxe="flash-hero__t11" class="font-label-sm text-label-sm text-outline mt-1 uppercase">Giây</span>
+</div>
+</div>
+<!-- Total Campaign Claim Progress -->
+<div class="space-y-1.5 pt-2">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span data-nx="flash-claimed" class="flex items-center gap-1 font-bold text-primary">
+<span class="material-symbols-outlined text-[16px] text-secondary">local_mall</span>
+                  Đã chốt thành công: 1.250 / 1.500 món
+                </span>
+<span data-nx="flash-claimed-percent" class="text-secondary font-bold">83% Suất Ưu Đãi</span>
+</div>
+<div class="w-full bg-surface-container h-2.5 rounded-full overflow-hidden">
+<div data-nx="flash-claimed-bar" class="bg-gradient-to-r from-secondary-fixed-dim via-secondary-container to-secondary h-full rounded-full transition-all duration-700" style="width: 83%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Visual Showcase -->
+<div class="lg:col-span-5 relative flex justify-center">
+<div class="relative w-full max-w-sm aspect-[4/5] rounded-xl overflow-hidden shadow-xl bg-surface-container-high">
+<img data-nxi="flash-hero__i1" class="w-full h-full object-cover transition-transform duration-700 hover:scale-105" data-alt="Two cheerful young Asian toddlers, a boy and a girl standing playfully in cozy organic beige and dusty pink children clothes in a warm sunlit Scandinavian boutique nursery room, high key soft studio lighting, cute aesthetic, warm cream tones" src="{{STITCH_ASSET}}/images/stitch-071.jpg">
+<!-- Overlaid Badge -->
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-md px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5">
+<span data-nxe="flash-hero__t12" class="material-symbols-outlined text-secondary text-[20px]">verified</span>
+<span data-nxe="flash-hero__t13" class="font-label-sm text-label-sm text-primary font-bold">100% Vải Lành Bé Yêu</span>
+</div>
+<!-- Bottom Floating Pill -->
+<div class="absolute bottom-4 inset-x-4 bg-surface-container-lowest/95 backdrop-blur-md p-space-sm rounded-lg shadow-lg flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
+<span data-nxe="flash-hero__t14" class="material-symbols-outlined text-[20px]">local_shipping</span>
+</div>
+<div>
+<div data-nxe="flash-hero__t15" class="font-label-md text-label-md text-primary leading-tight">Freeship Tận Cửa</div>
+<div data-nxe="flash-hero__t16" class="font-body-sm text-body-sm text-on-surface-variant">Đơn từ 199K toàn quốc</div>
+</div>
+</div>
+<span data-nxe="flash-hero__t17" class="bg-secondary text-on-secondary px-space-sm py-1 rounded-full font-label-sm text-label-sm font-bold">HOT</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Sticky-Ready Time Slots Timeline -->
+<section data-nxr="flash-steps" class="w-full px-margin-mobile md:px-margin mb-space-lg">
+<div class="max-w-7xl mx-auto">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
+<!-- Slot 1: Active -->
+<button class="flex flex-col items-center justify-center p-space-md rounded-lg bg-secondary-container text-on-secondary shadow-md transition-all scale-[1.02] text-left">
+<div class="flex items-center gap-1 font-headline-md text-headline-md font-bold leading-none">
+            09:00
+            <span data-nxe="flash-steps__t1" class="text-xs bg-surface-container-lowest text-secondary px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold ml-1">Đang Săn</span>
+</div>
+<div data-nxe="flash-steps__t2" class="font-label-md text-label-md mt-1 opacity-95">Đang Diễn Ra • Tới -50%</div>
+<div class="w-12 h-1 bg-surface-container-lowest/70 rounded-full mt-2"></div>
+</button>
+<!-- Slot 2: Upcoming -->
+<button class="flex flex-col items-center justify-center p-space-md rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-all text-left shadow-sm">
+<div class="font-headline-md text-headline-md font-bold text-primary">12:00</div>
+<div data-nxe="flash-steps__t3" class="font-label-md text-label-md text-on-surface-variant mt-1">Sắp Mở • Chuẩn Bị Bán</div>
+<div data-nxe="flash-steps__t5" class="font-label-sm text-label-sm text-outline mt-1 flex items-center gap-0.5">
+<span data-nxe="flash-steps__t4" class="material-symbols-outlined text-[14px]">notifications</span> Nhắc Tôi
+          </div>
+</button>
+<!-- Slot 3: Upcoming -->
+<button class="flex flex-col items-center justify-center p-space-md rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-all text-left shadow-sm">
+<div class="font-headline-md text-headline-md font-bold text-primary">15:00</div>
+<div data-nxe="flash-steps__t6" class="font-label-md text-label-md text-on-surface-variant mt-1">Pijama &amp; Đồ Ngủ Êm</div>
+<div data-nxe="flash-steps__t5" class="font-label-sm text-label-sm text-outline mt-1 flex items-center gap-0.5">
+<span data-nxe="flash-steps__t4" class="material-symbols-outlined text-[14px]">notifications</span> Nhắc Tôi
+          </div>
+</button>
+<!-- Slot 4: Upcoming -->
+<button class="flex flex-col items-center justify-center p-space-md rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container transition-all text-left shadow-sm">
+<div class="font-headline-md text-headline-md font-bold text-primary">20:00</div>
+<div data-nxe="flash-steps__t7" class="font-label-md text-label-md text-on-surface-variant mt-1">Váy Tiệc &amp; Dạo Phố</div>
+<div data-nxe="flash-steps__t5" class="font-label-sm text-label-sm text-outline mt-1 flex items-center gap-0.5">
+<span data-nxe="flash-steps__t4" class="material-symbols-outlined text-[14px]">notifications</span> Nhắc Tôi
+          </div>
+</button>
+</div>
+</div>
+</section>
+<!-- Interactive Filter & Category Tabs -->
+<section class="w-full px-margin-mobile md:px-margin mb-space-lg">
+<div class="max-w-7xl mx-auto bg-surface-container-lowest rounded-lg p-space-md shadow-sm space-y-space-sm">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
+<!-- Categories Chips -->
+<div class="flex flex-wrap items-center gap-space-xs font-label-md text-label-md" data-nx="flash-filters" id="filter-container">
+<button class="filter-btn active bg-primary text-on-primary px-space-md py-2 rounded-full transition-all shadow-sm flex items-center gap-1.5" data-category="all">
+<span>Tất Cả Deal Hot</span>
+<span class="text-xs bg-secondary-container text-on-secondary px-1.5 py-0.5 rounded-full font-bold">12</span>
+</button>
+<button class="filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1" data-category="girl">
+<span>🌸 Bé Gái (Váy &amp; Đầm)</span>
+</button>
+<button class="filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1" data-category="boy">
+<span>🚀 Bé Trai (Polo &amp; Kaki)</span>
+</button>
+<button class="filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1" data-category="baby">
+<span>🍼 Sơ Sinh (0-12 Tháng)</span>
+</button>
+<button class="filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1" data-category="accessories">
+<span>👒 Phụ Kiện Xinh</span>
+</button>
+</div>
+<!-- Sorting Selector -->
+<div class="flex items-center gap-space-xs font-label-md text-label-md">
+<span class="text-on-surface-variant shrink-0 flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">sort</span> Sắp xếp:
+          </span>
+<select class="bg-surface-container-low text-primary font-bold px-space-md py-2 rounded-full outline-none focus:bg-surface-container cursor-pointer transition-colors border-none text-label-sm">
+<option>⚡ Ưu đãi khủng nhất (-50%)</option>
+<option>🔥 Bán chạy nhất hôm nay</option>
+<option>⏳ Số lượng sắp hết trước</option>
+<option>💰 Giá từ thấp đến cao</option>
+</select>
+</div>
+</div>
+</div>
+</section>
+<!-- Product Grid Section (4-column Boutique Layout) -->
+<section class="w-full px-margin-mobile md:px-margin mb-space-xl">
+<div class="max-w-7xl mx-auto">
+<div data-nx="flash-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Cute toddler girl smiling wearing a natural beige ruffled organic cotton princess dress with delicate flower embroidery, standing next to wooden vintage shelf, soft warm cozy lighting" src="{{STITCH_ASSET}}/images/stitch-039.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -45%
+            </div>
+<div class="absolute top-2 right-2 flex flex-col gap-1">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-2 left-2 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-label-sm text-label-sm text-secondary font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">local_fire_department</span> Còn 4 chiếc
+            </div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.9 <span class="text-on-surface-variant font-normal">(328)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Sợi Tre Cao Cấp</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Váy Xòe Công Chúa Sợi Tre Thêu Hoa Nhí
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">198.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">360.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 162.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 88%</span>
+<span class="text-secondary font-bold">Sắp Cháy Hàng</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 88%"></div>
+</div>
+</div>
+<!-- Quick Size Selector -->
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">1Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">2Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3Y</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Smart little Asian boy wearing a chic beige knitted polo shirt with khaki shorts, standing smiling indoors with modern wooden kid furniture, cozy aesthetic photography" src="{{STITCH_ASSET}}/images/stitch-025.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -50%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-2 left-2 bg-secondary-container text-on-secondary px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[14px]">bolt</span> Best Seller
+            </div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  5.0 <span class="text-on-surface-variant font-normal">(412)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Cotton Oeko-Tex</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Set Polo Dệt Kim Bảnh Bao Kèm Quần Kaki Mềm
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">185.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">370.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 185.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 92%</span>
+<span class="text-secondary font-bold">Chỉ còn 3 bộ</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 92%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">2Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">4Y</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Cute newborn Asian baby peacefully resting on pure white organic muslin sheet wearing a pastel peach organic bamboo kimono bodysuit, gentle soft window light" src="{{STITCH_ASSET}}/images/stitch-005.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -40%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-2 left-2 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-label-sm text-label-sm text-primary font-bold">
+              🌿 Kháng Khuẩn 99%
+            </div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.9 <span class="text-on-surface-variant font-normal">(198)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Sơ Sinh An Toàn</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Body Kimono Sợi Tre Kháng Khuẩn Giữ Ấm Bụng
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">145.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">240.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 95.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 75%</span>
+<span class="text-secondary font-bold">Còn 12 bộ</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 75%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">0-3M</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3-6M</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">6-12M</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Children boutique flatlay presentation of light pastel linen baby pajamas set with tiny cloud buttons on natural cotton rug with small knitted bear toy" src="{{STITCH_ASSET}}/images/stitch-051.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -35%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-2 left-2 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-label-sm text-label-sm text-primary font-bold">
+              💨 Đũi Mát Thoáng Khí
+            </div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.8 <span class="text-on-surface-variant font-normal">(165)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Pijama Thoải Mái</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Set Pijama Đũi Hàn Siêu Thoáng Mát Ngủ Sâu Giấc
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">165.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">255.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 90.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 60%</span>
+<span class="text-secondary font-bold">Còn 18 bộ</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 60%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">1Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">2Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3Y</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 5 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Baby boy wearing an organic natural cotton striped romper overalls playing playfully with pastel wooden blocks on fluffy carpet, bright aesthetic children portrait" src="{{STITCH_ASSET}}/images/stitch-048.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -42%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.9 <span class="text-on-surface-variant font-normal">(280)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Xô Muslin 4 Lớp</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Set Yếm Xô Muslin 4 Lớp Chống Thấm Cho Bé Ăn Dặm
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">115.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">198.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 83.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 80%</span>
+<span class="text-secondary font-bold">Còn 9 set</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 80%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<span class="font-label-sm text-label-sm text-outline">Bộ 3 cái tiện lợi</span>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 6 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Little stylish baby girl wearing a vintage handwoven straw hat with delicate white lace ribbon outdoors under gentle sunbeam, boutique children headwear" src="{{STITCH_ASSET}}/images/stitch-020.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -50%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  5.0 <span class="text-on-surface-variant font-normal">(140)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Phụ Kiện Nắng Hè</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Mũ Cói Vintage Nơ Ren Mềm Bảo Vệ Da Đầu Bé
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">99.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">198.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 99.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 95%</span>
+<span class="text-secondary font-bold">Còn 2 chiếc!</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 95%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<span class="font-label-sm text-label-sm text-outline">Freesize (6M - 3Y)</span>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 7 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Cute toddler in soft cream yellow knitted organic cardigan sweater holding a plush toy rabbit, minimalist studio look, warm tone boutique portrait" src="{{STITCH_ASSET}}/images/stitch-003.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -38%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.9 <span class="text-on-surface-variant font-normal">(210)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Len Hữu Cơ Mềm</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Áo Khoác Cardigan Len Mỏng Giữ Ấm Phòng Điều Hòa
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">179.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">289.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 110.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 70%</span>
+<span class="text-secondary font-bold">Còn 15 chiếc</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 70%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">1Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">2Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3Y</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 8 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
+<div class="relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="Baby boy wearing comfortable sage green linen shorts and ivory button shirt walking barefoot happily in a bright wooden play space, joyful expression" src="{{STITCH_ASSET}}/images/stitch-040.jpg">
+<div class="absolute top-2 left-2 bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3">
+              -45%
+            </div>
+<div class="absolute top-2 right-2">
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest/90 hover:bg-surface-container-lowest text-outline hover:text-secondary flex items-center justify-center shadow-sm transition-transform active:scale-90">
+<span class="material-symbols-outlined text-[18px]">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-2 left-2 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-label-sm text-label-sm text-primary font-bold">
+              🌟 Thiết Kế Độc Quyền
+            </div>
+</div>
+<div class="space-y-space-xs flex-1 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between text-body-sm text-outline mb-1">
+<span class="flex items-center gap-0.5 text-secondary font-bold">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">star</span>
+                  4.9 <span class="text-on-surface-variant font-normal">(184)</span>
+</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Linen Tự Nhiên</span>
+</div>
+<h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors">
+                Set Quần Sooc Đũi Xanh Bạc Hà Kèm Áo Cổ Tàu
+              </h3>
+</div>
+<div class="pt-space-xs space-y-space-xs">
+<div class="flex items-baseline gap-2">
+<span class="font-headline-sm text-headline-sm text-secondary font-bold">195.000đ</span>
+<span class="font-body-sm text-body-sm text-outline line-through">355.000đ</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">
+                Tiết kiệm: 160.000đ
+              </div>
+<!-- Stock Bar -->
+<div class="space-y-1 pt-1">
+<div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant">
+<span>Đã bán 84%</span>
+<span class="text-secondary font-bold">Còn 6 bộ</span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full rounded-full" style="width: 84%"></div>
+</div>
+</div>
+<div class="pt-2 flex items-center justify-between gap-1">
+<div class="flex items-center gap-1 text-[11px] font-bold text-on-surface">
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">2Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">3Y</button>
+<button class="w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center">4Y</button>
+</div>
+<button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add_shopping_cart</span>
+<span>Mua</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Load More / View All Button -->
+<div class="mt-space-lg flex justify-center">
+<button data-nx="flash-more" class="bg-surface-container-lowest hover:bg-surface-container text-primary font-bold px-space-xl py-space-sm rounded-full shadow-sm hover:shadow-md transition-all flex items-center gap-2 font-label-lg text-label-lg">
+<span>Xem Thêm 24 Deal Săn Giờ Vàng Đang Mở</span>
+<span class="material-symbols-outlined text-[20px]">expand_more</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Flash Sale Cumulative Vouchers Section -->
+<section data-nxr="flash-vouchers" class="w-full px-margin-mobile md:px-margin mb-space-xl">
+<div class="max-w-7xl mx-auto bg-gradient-to-r from-secondary-fixed/40 via-surface-container-lowest to-secondary-fixed/30 rounded-xl p-space-lg md:p-space-xl shadow-sm">
+<div class="text-center max-w-2xl mx-auto mb-space-lg space-y-1">
+<span data-nxe="flash-vouchers__t1" class="font-label-sm text-label-sm text-secondary bg-secondary-fixed px-space-md py-1 rounded-full uppercase tracking-wider font-bold">
+          🎁 Mã Giảm Chồng Mã
+        </span>
+<h2 data-nxe="flash-vouchers__t2" class="font-headline-lg text-headline-lg text-primary font-bold">
+          Thu Thập Voucher Giờ Vàng Cực Hời
+        </h2>
+<p data-nxe="flash-vouchers__t3" class="font-body-md text-body-md text-on-surface-variant">
+          Được áp dụng đồng thời trực tiếp lên các sản phẩm đang giảm giá Flash Sale!
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
+<!-- Voucher 1 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-md flex flex-col justify-between shadow-sm relative overflow-hidden group">
+<div class="flex items-start justify-between gap-2">
+<div>
+<span data-nxe="flash-vouchers__t4" class="text-secondary font-bold text-headline-sm font-headline-sm">FLASH10</span>
+<div data-nxe="flash-vouchers__t5" class="font-title-md text-title-md text-primary font-bold mt-1">Giảm Thêm 10% Tối Đa 50K</div>
+<p data-nxe="flash-vouchers__t6" class="font-body-sm text-body-sm text-on-surface-variant mt-1">Áp dụng cho mọi đơn Flash Sale từ 299K</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-vouchers__t7" class="material-symbols-outlined text-[22px]">sell</span>
+</div>
+</div>
+<div class="pt-space-md flex items-center justify-between border-t-0 mt-space-md">
+<span data-nxe="flash-vouchers__t8" class="font-label-sm text-label-sm text-outline">HSD: Hôm Nay</span>
+<button data-nxe="flash-vouchers__t9" class="voucher-btn bg-secondary-container hover:bg-secondary text-on-secondary px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm" onclick="handleClaimVoucher(this, 'FLASH10')">
+              Lưu Mã
+            </button>
+</div>
+</div>
+<!-- Voucher 2 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-md flex flex-col justify-between shadow-sm relative overflow-hidden group">
+<div class="flex items-start justify-between gap-2">
+<div>
+<span data-nxe="flash-vouchers__t10" class="text-secondary font-bold text-headline-sm font-headline-sm">FREESHIPXINH</span>
+<div data-nxe="flash-vouchers__t11" class="font-title-md text-title-md text-primary font-bold mt-1">Freeship Toàn Quốc 0Đ</div>
+<p data-nxe="flash-vouchers__t12" class="font-body-sm text-body-sm text-on-surface-variant mt-1">Áp dụng cho đơn hàng chỉ từ 199K</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-vouchers__t13" class="material-symbols-outlined text-[22px]">local_shipping</span>
+</div>
+</div>
+<div class="pt-space-md flex items-center justify-between mt-space-md">
+<span data-nxe="flash-vouchers__t14" class="font-label-sm text-label-sm text-outline">HSD: 23:59 Hôm nay</span>
+<button data-nxe="flash-vouchers__t9" class="voucher-btn bg-secondary-container hover:bg-secondary text-on-secondary px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm" onclick="handleClaimVoucher(this, 'FREESHIPXINH')">
+              Lưu Mã
+            </button>
+</div>
+</div>
+<!-- Voucher 3 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-md flex flex-col justify-between shadow-sm relative overflow-hidden group">
+<div class="flex items-start justify-between gap-2">
+<div>
+<span data-nxe="flash-vouchers__t15" class="text-secondary font-bold text-headline-sm font-headline-sm">BEYEU20</span>
+<div data-nxe="flash-vouchers__t16" class="font-title-md text-title-md text-primary font-bold mt-1">Tặng 20K Cho Mẹ Mới</div>
+<p data-nxe="flash-vouchers__t17" class="font-body-sm text-body-sm text-on-surface-variant mt-1">Đặc quyền dành riêng cho đơn đầu tiên</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-vouchers__t18" class="material-symbols-outlined text-[22px]">redeem</span>
+</div>
+</div>
+<div class="pt-space-md flex items-center justify-between mt-space-md">
+<span data-nxe="flash-vouchers__t19" class="font-label-sm text-label-sm text-outline">Dành cho mẹ bỉm mới</span>
+<button data-nxe="flash-vouchers__t9" class="voucher-btn bg-secondary-container hover:bg-secondary text-on-secondary px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm" onclick="handleClaimVoucher(this, 'BEYEU20')">
+              Lưu Mã
+            </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Commitments & Terms of Flash Sale -->
+<section data-nxr="flash-terms" class="w-full px-margin-mobile md:px-margin mb-space-xl">
+<div class="max-w-7xl mx-auto">
+<div class="text-center max-w-xl mx-auto mb-space-lg">
+<h2 data-nxe="flash-terms__t1" class="font-headline-md text-headline-md text-primary font-bold">Cam Kết Từ NEXXI Boutique</h2>
+<p data-nxe="flash-terms__t2" class="font-body-md text-body-md text-on-surface-variant mt-1">Dù giá sale sâu, chất lượng và dịch vụ nâng niu bé luôn giữ trọn 100% vẹn nguyên.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
+<!-- Feature 1 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-lg shadow-sm flex items-start gap-space-md">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-terms__t3" class="material-symbols-outlined text-[26px]">verified_user</span>
+</div>
+<div>
+<h4 data-nxe="flash-terms__t4" class="font-title-md text-title-md text-primary font-bold">100% Chuẩn Oeko-Tex</h4>
+<p data-nxe="flash-terms__t5" class="font-body-md text-body-md text-on-surface-variant mt-1">Không bao giờ xả hàng lỗi, hàng tồn cũ. Từng sản phẩm đều được kiểm tra sợi vải và đường may giấu chỉ êm ái trước khi đóng gói.</p>
+</div>
+</div>
+<!-- Feature 2 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-lg shadow-sm flex items-start gap-space-md">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-terms__t6" class="material-symbols-outlined text-[26px]">swap_horizontal_circle</span>
+</div>
+<div>
+<h4 data-nxe="flash-terms__t7" class="font-title-md text-title-md text-primary font-bold">Đổi Size 30 Ngày Tận Nhà</h4>
+<p data-nxe="flash-terms__t8" class="font-body-md text-body-md text-on-surface-variant mt-1">Bé mặc không vừa hoặc mẹ muốn đổi mẫu khác? Shiper mang size mới tới tận nhà đổi ngay, mẹ không cần mang ra bưu cục vất vả.</p>
+</div>
+</div>
+<!-- Feature 3 -->
+<div class="bg-surface-container-lowest rounded-lg p-space-lg shadow-sm flex items-start gap-space-md">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span data-nxe="flash-terms__t9" class="material-symbols-outlined text-[26px]">bolt</span>
+</div>
+<div>
+<h4 data-nxe="flash-terms__t10" class="font-title-md text-title-md text-primary font-bold">Giao Hỏa Tốc 2H Nội Thành</h4>
+<p data-nxe="flash-terms__t11" class="font-body-md text-body-md text-on-surface-variant mt-1">Kịp cho bé diện đi tiệc, đi chơi cuối tuần hoặc chuẩn bị đồ mới cho kỳ nghỉ hè gia đình mà không để ba mẹ phải chờ đợi lâu.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Notification Signup for Upcoming Slots -->
+<section data-nxr="flash-notify" class="w-full px-margin-mobile md:px-margin mb-space-xl">
+<div class="max-w-5xl mx-auto bg-primary text-on-primary rounded-xl p-space-lg md:p-space-xl shadow-lg relative overflow-hidden">
+<!-- Decorative Backdrop Circles -->
+<div class="absolute -right-10 -bottom-10 w-60 h-60 bg-secondary-container/20 rounded-full blur-2xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-space-lg">
+<div class="max-w-xl space-y-2 text-center md:text-left">
+<div data-nxe="flash-notify__t2" class="inline-flex items-center gap-1.5 bg-primary-container text-on-primary-container px-space-md py-1 rounded-full font-label-sm text-label-sm font-bold">
+<span data-nxe="flash-notify__t1" class="material-symbols-outlined text-[16px]">notifications_active</span>
+            Nhắc Hẹn Giờ Vàng Tự Động
+          </div>
+<h3 data-nxe="flash-notify__t3" class="font-headline-lg text-headline-lg text-on-primary font-bold">
+            Mẹ Bận Chăm Bé Sợ Bỏ Lỡ Khung Giờ Sau?
+          </h3>
+<p data-nxe="flash-notify__t4" class="font-body-md text-body-md text-outline-variant">
+            Để lại số điện thoại hoặc Zalo, hệ thống trợ lý NEXXI sẽ gửi tin nhắn nhắc mẹ trước 5 phút khi khung giờ 12:00, 15:00 và 20:00 chính thức mở bán nhé!
+          </p>
+</div>
+<!-- Form Widget -->
+<form class="w-full md:w-auto flex flex-col sm:flex-row items-center gap-space-xs shrink-0" onsubmit="handleNotificationSubmit(event)">
+<input data-nxp="flash-notify__p1" class="w-full sm:w-64 bg-surface-container-lowest text-on-surface px-space-md py-3 rounded-full font-body-sm text-body-sm outline-none focus:ring-2 focus:ring-secondary-container shadow-sm" id="phone-input" placeholder="Số điện thoại / Zalo mẹ..." required="" type="tel">
+<button data-nxe="flash-notify__t6" class="w-full sm:w-auto bg-secondary-container hover:bg-secondary text-on-secondary px-space-lg py-3 rounded-full font-label-md text-label-md font-bold transition-all shadow-md shrink-0 flex items-center justify-center gap-1.5 active:scale-95" type="submit">
+<span data-nxe="flash-notify__t5" class="material-symbols-outlined text-[18px]">alarm_on</span>
+            Nhắc Tôi Ngay
+          </button>
+</form>
+</div>
+<div data-nxe="flash-notify__t7" class="hidden mt-4 p-3 bg-secondary/30 rounded-lg text-center font-label-md text-label-md text-secondary-fixed" id="notify-success">
+        ✨ Đã lưu số điện thoại thành công! NEXXI sẽ nhắn tin nhắc mẹ trước 5 phút nhé!
+      </div>
+</div>
+</section>
+<!-- Interactive Logic Micro-Script -->
+<script>
+    // Live Countdown Timer Simulation
+    (function initTimer() {
+      let seconds = 25;
+      let minutes = 48;
+      let hours = 2;
+
+      const secEl = document.getElementById('seconds-box');
+      const minEl = document.getElementById('minutes-box');
+      const hrEl = document.getElementById('hours-box');
+
+      if (!secEl || !minEl || !hrEl) return;
+
+      setInterval(() => {
+        if (seconds > 0) {
+          seconds--;
+        } else {
+          seconds = 59;
+          if (minutes > 0) {
+            minutes--;
+          } else {
+            minutes = 59;
+            if (hours > 0) hours--;
+          }
+        }
+
+        secEl.textContent = seconds < 10 ? '0' + seconds : seconds;
+        minEl.textContent = minutes < 10 ? '0' + minutes : minutes;
+        hrEl.textContent = hours < 10 ? '0' + hours : hours;
+      }, 1000);
+    })();
+
+    // Category Filter Simulation
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterButtons.forEach(b => {
+          b.classList.remove('bg-primary', 'text-on-primary', 'shadow-sm');
+          b.classList.add('bg-surface-container', 'text-on-surface-variant');
+        });
+        btn.classList.remove('bg-surface-container', 'text-on-surface-variant');
+        btn.classList.add('bg-primary', 'text-on-primary', 'shadow-sm');
+      });
+    });
+
+    // Voucher Claim Interactive State
+    function handleClaimVoucher(btn, code) {
+      btn.innerText = 'Đã Lưu Mã ✓';
+      btn.classList.remove('bg-secondary-container', 'hover:bg-secondary');
+      btn.classList.add('bg-surface-container-high', 'text-on-surface-variant', 'cursor-default');
+      btn.disabled = true;
+    }
+
+    // Notification Submit Interactive State
+    function handleNotificationSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('phone-input');
+      const successBox = document.getElementById('notify-success');
+      if (input && input.value) {
+        input.value = '';
+        successBox.classList.remove('hidden');
+        setTimeout(() => {
+          successBox.classList.add('hidden');
+        }, 5000);
+      }
+    }
+  </script>
+</div></main><footer class="w-full bg-surface-container-low pt-space-xl pb-space-lg"><div class="w-full px-margin"><div class="bg-surface-container-lowest rounded-lg p-space-lg mb-space-xl shadow-[0_4px_16px_rgba(27,42,89,0.04)] grid grid-cols-1 md:grid-cols-3 gap-space-lg"><div class="flex items-center gap-space-md"><div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[24px]">eco</span></div><div><h4 class="font-title-md text-title-md text-primary">100% Vải An Toàn Cho Bé</h4><p class="font-body-sm text-body-sm text-on-surface-variant">Sợi bông Organic mềm mại &amp; sợi tre kháng khuẩn tự nhiên.</p></div></div><div class="flex items-center gap-space-md"><div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[24px]">styler</span></div><div><h4 class="font-title-md text-title-md text-primary">Đường May Giấu Chỉ Êm Ái</h4><p class="font-body-sm text-body-sm text-on-surface-variant">Không cộm ngứa, chuẩn form tôn nét hồn nhiên cho con.</p></div></div><div class="flex items-center gap-space-md"><div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[24px]">featured_seasonal_and_gifts</span></div><div><h4 class="font-title-md text-title-md text-primary">Đóng Gói Quà Tặng Xinh</h4><p class="font-body-sm text-body-sm text-on-surface-variant">Hộp thắt nơ &amp; thiệp chúc may mắn gửi trọn tình yêu cho bé.</p></div></div></div><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-xl mb-space-xl"><div class="space-y-space-md"><div class="flex items-center gap-space-xs"><span class="font-headline-md text-headline-md text-primary font-bold">NEXXI</span><span class="font-label-sm text-label-sm text-secondary bg-secondary-fixed px-space-xs py-0.5 rounded-full">Boutique</span></div><p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">NEXXI Kids Fashion Boutique – Thương hiệu thời trang trẻ em cao cấp mang đến sự êm dịu thuần khiết nhất từ thiên nhiên. Từng đường kim mũi chỉ là tấm lòng nâng niu từng bước khôn lớn của bé thơ.</p><div class="flex items-center gap-space-xs text-on-surface-variant font-label-md text-label-md"><span class="material-symbols-outlined text-secondary text-[20px]">verified</span>Cam kết kiểm định an toàn Oeko-Tex</div></div><div class="space-y-space-md"><h3 class="font-title-md text-title-md text-primary font-bold">Bé &amp; Mẹ Yêu Thích</h3><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-secondary transition-colors" href="#">Thời trang Bé Gái Xinh Xắn</a></li><li><a class="hover:text-secondary transition-colors" href="#">Bộ Sưu Tập Bé Trai Năng Động</a></li><li><a class="hover:text-secondary transition-colors" href="#">Đồ Sơ Sinh Pure Organic</a></li><li><a class="hover:text-secondary transition-colors" href="#">Cẩm Nang Chuẩn Size Bé</a></li></ul></div><div class="space-y-space-md"><h3 class="font-title-md text-title-md text-primary font-bold">Chăm Sóc Khách Hàng</h3><ul class="space-y-space-sm font-body-md text-body-md text-on-surface-variant"><li><a class="hover:text-secondary transition-colors" href="#">Chính Sách Đổi Trả 30 Ngày Tận Nhà</a></li><li><a class="hover:text-secondary transition-colors" href="#">Bảo Hành Chỉ May &amp; Cúc Bấm</a></li><li><a class="hover:text-secondary transition-colors" href="#">Tra Cứu Tiến Độ Vận Đơn</a></li><li><a class="hover:text-secondary transition-colors font-bold text-primary" href="#">Hotline Mẹ &amp; Bé: 1900 8888</a></li></ul></div><div class="space-y-space-md"><h3 class="font-title-md text-title-md text-primary font-bold">Nhận Quà Xinh Cho Bé</h3><p class="font-body-md text-body-md text-on-surface-variant">Đăng ký thành viên CLB Mẹ Bỉm NEXXI để nhận ngay voucher 50.000đ cho đơn hàng đầu tiên!</p><div class="flex flex-col sm:flex-row gap-space-xs"><input class="bg-surface-container-lowest px-space-md py-space-xs rounded-full font-body-sm text-body-sm text-on-surface placeholder:text-outline outline-none ring-1 ring-outline-variant focus:ring-2 focus:ring-secondary-container" placeholder="Nhập email mẹ nhé..." type="email"><button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-md py-space-xs rounded-full font-label-md text-label-md transition-all shadow-[0_4px_12px_rgba(253,106,73,0.3)]">Nhận Ngay</button></div></div></div><div class="pt-space-lg text-center font-body-sm text-body-sm text-outline"><p>© 2025 NEXXI Kids Fashion Boutique. All rights reserved. Cùng mẹ chăm chút tuổi thơ ngọt ngào của bé.</p></div></div></footer></body></html>

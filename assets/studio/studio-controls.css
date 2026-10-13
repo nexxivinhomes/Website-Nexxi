@@ -1,0 +1,56 @@
+/* NEXXI Studio – Customizer controls styling. */
+#customize-theme-controls [id^="accordion-panel-nxs_"] > .accordion-section-title {
+	border-left: 4px solid #fd6a49;
+}
+#customize-theme-controls [id^="accordion-section-nxs_"] > .accordion-section-title {
+	border-left: 4px solid #ffdad2;
+}
+#customize-theme-controls [id^="accordion-section-nxs_"] > .accordion-section-title:hover,
+#customize-theme-controls [id^="accordion-section-nxs_"] > .accordion-section-title:focus {
+	border-left-color: #fd6a49;
+}
+#accordion-section-nxs_guide > .accordion-section-title {
+	background: #031444;
+	color: #fff;
+	border-left: 4px solid #fd6a49;
+}
+#accordion-section-nxs_guide > .accordion-section-title:after { color: #fff; }
+
+.customize-control-nexxi-heading { margin: 18px 0 4px; }
+.nxs-heading {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 700;
+	font-size: 12px;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+	color: #ae3115;
+}
+.nxs-heading:after { content: ""; flex: 1; height: 1px; background: #ffdad2; }
+.nxs-heading__desc { margin: 4px 0 0; color: #646970; }
+
+.nxs-help {
+	background: #fff7f4;
+	border: 1px solid #ffdad2;
+	border-radius: 8px;
+	padding: 10px 12px;
+	line-height: 1.55;
+}
+.nxs-help ol { margin: 6px 0 6px 18px; }
+.nxs-help li { margin-bottom: 4px; }
+.nxs-pages { margin: 8px 0; }
+.nxs-pages li { padding: 6px 0; border-bottom: 1px dashed #ffdad2; }
+
+#customize-theme-controls [id^="sub-accordion-section-nxs_"] .customize-section-description {
+	background: #fff7f4;
+	border-left: 3px solid #fd6a49;
+	padding: 8px 10px;
+	margin-top: 8px;
+}
+#customize-theme-controls [id^="sub-accordion-section-nxs_"] .customize-control-checkbox:first-of-type {
+	background: #f6f7f7;
+	border-radius: 6px;
+	padding: 8px 10px;
+	box-sizing: border-box;
+}
