@@ -1,0 +1,199 @@
+<?php
+/**
+ * Account screen (logged-in): the Stitch "Hồ Sơ & Thiết Lập Tài Khoản" layout
+ * driven by real WooCommerce data. Every endpoint (orders, view-order, addresses,
+ * account details, downloads, payment methods, plugin endpoints) still renders
+ * through WooCommerce's own hooks so forms, nonces and redirects keep working.
+ */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+function nexxi_kids_stitch_account( $html ) {
+	if ( ! function_exists( 'WC' ) || ! is_user_logged_in() ) { return $html; }
+	$user = wp_get_current_user();
+	$endpoint = WC()->query->get_current_endpoint();
+
+	$html = nexxi_dom_set_outer( $html, '<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-lg">', nexxi_kids_account_heading( $user, $endpoint ) );
+	$aside = nexxi_dom_get_inner( $html, '<aside class="lg:col-span-4' );
+	$html = nexxi_dom_set_inner( $html, '<aside class="lg:col-span-4', nexxi_kids_account_sidebar( $user ) . nexxi_kids_tail_from( (string) $aside, '<!-- Quick Assistance Box' ) );
+	$html = nexxi_dom_set_inner( $html, '<main class="lg:col-span-8', nexxi_kids_account_content( $user, $endpoint ) );
+	return $html;
+}
+
+function nexxi_kids_account_name( WP_User $user ) {
+	$name = trim( $user->first_name . ' ' . $user->last_name );
+	return $name ? $name : $user->display_name;
+}
+
+/** Section card header in the Stitch "Mục 01" style. */
+function nexxi_kids_account_section_head( $kicker, $title, $action = '' ) {
+	return '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm mb-space-md pb-space-sm bg-surface-container-low/50 -mx-space-lg -mt-space-lg px-space-lg pt-space-lg rounded-t-xl"><div><span class="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">' . esc_html( $kicker ) . '</span><h3 class="font-title-md text-title-md text-primary font-bold">' . esc_html( $title ) . '</h3></div>' . $action . '</div>';
+}
+
+function nexxi_kids_account_heading( WP_User $user, $endpoint ) {
+	$title = $endpoint ? WC()->query->get_endpoint_title( $endpoint ) : '';
+	$h1 = $endpoint ? ( $title ? $title : 'Tài khoản của mẹ' ) : 'Xin chào, ' . nexxi_kids_account_name( $user ) . '!';
+	$sub = $endpoint ? 'Quản lý đơn hàng, sổ địa chỉ và thông tin tài khoản NEXXI Club của mẹ.' : 'Theo dõi đơn hàng, sổ địa chỉ và thiết lập tài khoản của mẹ tại một nơi.';
+	$crumb = $endpoint ? '<a class="hover:text-secondary transition-colors" href="' . esc_url( wc_get_page_permalink( 'myaccount' ) ) . '">Tài Khoản NEXXI Club</a><span>/</span><span class="text-primary font-bold">' . esc_html( wp_strip_all_tags( $h1 ) ) . '</span>' : '<span class="text-primary font-bold">Tài Khoản NEXXI Club</span>';
+	$since = $user->user_registered ? mysql2date( 'm/Y', $user->user_registered ) : '';
+	ob_start(); ?>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-lg">
+<div>
+<div class="flex items-center gap-space-xs text-on-surface-variant font-label-sm text-label-sm mb-space-xs"><?php echo $crumb; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight"><?php echo esc_html( wp_strip_all_tags( $h1 ) ); ?></h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1"><?php echo esc_html( $sub ); ?></p>
+</div>
+<div class="flex items-center gap-space-sm bg-surface-container-lowest px-space-md py-space-xs rounded-full shadow-sm self-start md:self-auto">
+<div class="w-7 h-7 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[18px]">verified</span></div>
+<div class="flex flex-col"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Thành viên NEXXI Club</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo $since ? esc_html( 'Đồng hành từ ' . $since ) : 'Chào mừng mẹ'; ?></span></div>
+</div>
+</div>
+	<?php
+	return ob_get_clean();
+}
+
+function nexxi_kids_account_order_count( $user_id ) {
+	return function_exists( 'wc_get_customer_order_count' ) ? (int) wc_get_customer_order_count( $user_id ) : 0;
+}
+
+function nexxi_kids_account_wishlist_count( $user_id ) {
+	return class_exists( 'Nexxi_Kids_Catalog' ) ? count( Nexxi_Kids_Catalog::wishlist_ids( $user_id ) ) : 0;
+}
+
+function nexxi_kids_account_sidebar( WP_User $user ) {
+	$orders = nexxi_kids_account_order_count( $user->ID );
+	$wishlist = nexxi_kids_account_wishlist_count( $user->ID );
+	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
+	$icons = array( 'dashboard' => 'dashboard', 'orders' => 'shopping_bag', 'downloads' => 'download', 'edit-address' => 'home_pin', 'payment-methods' => 'credit_card', 'edit-account' => 'manage_accounts' );
+	$link_idle = 'flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors';
+	$link_active = 'flex items-center justify-between px-space-md py-space-sm rounded-lg bg-secondary-fixed text-on-secondary-fixed font-bold shadow-sm';
+	$items = '';
+	foreach ( wc_get_account_menu_items() as $key => $label ) {
+		if ( 'customer-logout' === $key ) { continue; }
+		$active = wc_is_current_account_menu_item( $key );
+		$icon = isset( $icons[ $key ] ) ? $icons[ $key ] : 'chevron_right';
+		$badge = 'orders' === $key && $orders ? '<span class="bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold">' . (int) $orders . ' đơn</span>' : ( $active ? '<span class="w-2 h-2 rounded-full bg-secondary"></span>' : '<span class="material-symbols-outlined text-[18px] text-outline">chevron_right</span>' );
+		$items .= '<a class="' . esc_attr( $active ? $link_active : $link_idle ) . '" href="' . esc_url( wc_get_account_endpoint_url( $key ) ) . '"' . ( $active ? ' aria-current="page"' : '' ) . '><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] ' . ( $active ? 'text-secondary' : 'text-outline' ) . '">' . esc_html( $icon ) . '</span><span class="font-label-md text-label-md">' . esc_html( $label ) . '</span></div>' . $badge . '</a>';
+		if ( 'orders' === $key && $wishlist_url ) {
+			$items .= '<a class="' . esc_attr( $link_idle ) . '" href="' . esc_url( $wishlist_url ) . '"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[20px] text-outline">favorite</span><span class="font-label-md text-label-md">Mẫu đồ bé yêu thích</span></div>' . ( $wishlist ? '<span class="bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold">' . (int) $wishlist . '</span>' : '<span class="material-symbols-outlined text-[18px] text-outline">chevron_right</span>' ) . '</a>';
+		}
+	}
+	ob_start(); ?>
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center text-center relative overflow-hidden">
+<div class="absolute -top-12 -right-12 w-28 h-28 bg-secondary-fixed/50 rounded-full blur-xl pointer-events-none"></div>
+<div class="relative mt-2 mb-space-sm"><div class="w-24 h-24 rounded-full p-1 bg-secondary-fixed/60 shadow-inner"><img class="w-full h-full object-cover rounded-full shadow-sm" src="<?php echo esc_url( get_avatar_url( $user->ID, array( 'size' => 192 ) ) ); ?>" alt="<?php echo esc_attr( nexxi_kids_account_name( $user ) ); ?>"></div></div>
+<h2 class="font-headline-sm text-headline-sm text-primary mb-0.5"><?php echo esc_html( nexxi_kids_account_name( $user ) ); ?></h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-space-sm break-all"><?php echo esc_html( $user->user_email ); ?></p>
+<div class="w-full grid grid-cols-2 gap-space-xs pt-space-sm mt-space-xs bg-surface-container-low rounded-lg p-space-sm">
+<div class="flex flex-col items-center"><span class="font-label-sm text-label-sm text-outline">Đơn hàng</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo (int) $orders; ?> đơn</span></div>
+<div class="flex flex-col items-center"><span class="font-label-sm text-label-sm text-outline">Yêu thích</span><span class="font-label-md text-label-md text-secondary font-bold" data-nexxi-wishlist-count><?php echo (int) $wishlist; ?></span></div>
+</div>
+</div>
+<nav class="bg-surface-container-lowest rounded-xl p-space-sm shadow-sm flex flex-col gap-1" aria-label="Tài khoản">
+<?php echo $items; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<div class="pt-space-xs mt-space-xs"><a class="w-full flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-error hover:bg-error-container/40 transition-colors text-left font-label-md text-label-md" href="<?php echo esc_url( wc_logout_url() ); ?>"><span class="material-symbols-outlined text-[20px]">logout</span><span>Đăng xuất tài khoản</span></a></div>
+</nav>
+	<?php
+	return ob_get_clean();
+}
+
+function nexxi_kids_account_content( WP_User $user, $endpoint ) {
+	ob_start();
+	echo '<div class="nexxi-account-notices">';
+	wc_print_notices();
+	echo '</div>';
+	if ( ! $endpoint ) {
+		echo nexxi_kids_account_dashboard( $user ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	} else {
+		$title = WC()->query->get_endpoint_title( $endpoint );
+		echo '<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">' . nexxi_kids_account_section_head( 'NEXXI Club', wp_strip_all_tags( $title ? $title : 'Tài khoản' ) ) . '<div class="woocommerce nexxi-account">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		do_action( 'woocommerce_account_content' );
+		echo '</div></section>';
+	}
+	return ob_get_clean();
+}
+
+function nexxi_kids_account_status_badge( $status ) {
+	$colors = array( 'completed' => 'bg-primary-fixed text-primary', 'processing' => 'bg-secondary-fixed text-on-secondary-fixed', 'on-hold' => 'bg-tertiary-fixed text-on-tertiary-fixed', 'pending' => 'bg-tertiary-fixed text-on-tertiary-fixed', 'cancelled' => 'bg-surface-container-high text-on-surface-variant', 'refunded' => 'bg-surface-container-high text-on-surface-variant', 'failed' => 'bg-error-container text-on-error-container' );
+	$class = isset( $colors[ $status ] ) ? $colors[ $status ] : 'bg-surface-container-high text-on-surface-variant';
+	return '<span class="' . esc_attr( $class ) . ' font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-bold">' . esc_html( wc_get_order_status_name( $status ) ) . '</span>';
+}
+
+function nexxi_kids_account_dashboard( WP_User $user ) {
+	$uid = $user->ID;
+	$count = nexxi_kids_account_order_count( $uid );
+	$spent = function_exists( 'wc_get_customer_total_spent' ) ? (float) wc_get_customer_total_spent( $uid ) : 0;
+	$open = wc_get_orders( array( 'customer_id' => $uid, 'status' => array( 'wc-pending', 'wc-processing', 'wc-on-hold' ), 'return' => 'ids', 'limit' => -1 ) );
+	$recent = wc_get_orders( array( 'customer_id' => $uid, 'limit' => 3, 'orderby' => 'date', 'order' => 'DESC' ) );
+	$wishlist = nexxi_kids_account_wishlist_count( $uid );
+	$orders_url = wc_get_account_endpoint_url( 'orders' );
+	$address_url = wc_get_account_endpoint_url( 'edit-address' );
+	$account_url = wc_get_account_endpoint_url( 'edit-account' );
+	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
+	$stats = array(
+		array( 'shopping_bag', 'Tổng đơn hàng', $count . ' đơn', $orders_url ),
+		array( 'local_shipping', 'Đang xử lý', count( $open ) . ' đơn', $orders_url ),
+		array( 'payments', 'Đã mua sắm', wc_price( $spent ), $orders_url ),
+		array( 'favorite', 'Mẫu yêu thích', $wishlist . ' mẫu', $wishlist_url ? $wishlist_url : $orders_url ),
+	);
+	$customer = new WC_Customer( $uid );
+	$addresses = array(
+		'billing'  => array( 'Địa chỉ thanh toán', 'receipt_long', wc_get_account_formatted_address( 'billing' ), $customer->get_billing_phone() ),
+	);
+	if ( ! wc_ship_to_billing_address_only() && wc_shipping_enabled() ) {
+		$addresses['shipping'] = array( 'Địa chỉ giao hàng', 'home', wc_get_account_formatted_address( 'shipping' ), $customer->get_shipping_phone() );
+	}
+	ob_start(); ?>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
+<?php foreach ( $stats as $stat ) : ?>
+<a class="bg-surface-container-low hover:bg-surface-container-high/60 rounded-lg p-space-md flex flex-col gap-1 transition-colors" href="<?php echo esc_url( $stat[3] ); ?>"><span class="w-9 h-9 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center"><span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $stat[0] ); ?></span></span><span class="font-label-sm text-label-sm text-outline mt-1"><?php echo esc_html( $stat[1] ); ?></span><span class="font-title-md text-title-md text-primary font-bold"><?php echo wp_kses_post( $stat[2] ); ?></span></a>
+<?php endforeach; ?>
+</div>
+</section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'Mục 02', 'Đơn Hàng Gần Đây', $count ? '<a class="inline-flex items-center gap-1 font-label-md text-label-md text-secondary font-bold hover:underline self-start sm:self-auto" href="' . esc_url( $orders_url ) . '">Xem tất cả <span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>' : '' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<?php if ( $recent ) : ?>
+<div class="flex flex-col gap-space-sm">
+<?php foreach ( $recent as $order ) :
+	$items = $order->get_items();
+	$first = $items ? reset( $items ) : null;
+	$thumb = $first && $first->get_product() ? $first->get_product()->get_image( 'woocommerce_thumbnail', array( 'class' => 'w-full h-full object-cover' ) ) : '';
+	$more = count( $items ) > 1 ? ' và ' . ( count( $items ) - 1 ) . ' sản phẩm khác' : ''; ?>
+<a class="flex items-center gap-space-md p-space-md bg-surface-container-low rounded-lg hover:bg-surface-container-high/60 transition-colors" href="<?php echo esc_url( $order->get_view_order_url() ); ?>">
+<span class="w-14 h-16 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0"><?php echo wp_kses_post( $thumb ); ?></span>
+<span class="flex-1 min-w-0 flex flex-col gap-0.5"><span class="flex flex-wrap items-center gap-space-xs"><span class="font-label-lg text-label-lg text-primary">Đơn #<?php echo esc_html( $order->get_order_number() ); ?></span><?php echo nexxi_kids_account_status_badge( $order->get_status() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span><span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1"><?php echo esc_html( ( $first ? $first->get_name() : '' ) . $more ); ?></span><span class="font-body-sm text-body-sm text-outline"><?php echo esc_html( wc_format_datetime( $order->get_date_created(), 'd/m/Y H:i' ) ); ?></span></span>
+<span class="text-right shrink-0"><span class="block font-title-md text-title-md text-secondary font-bold"><?php echo wp_kses_post( $order->get_formatted_order_total() ); ?></span><span class="font-label-sm text-label-sm text-primary">Xem chi tiết →</span></span>
+</a>
+<?php endforeach; ?>
+</div>
+<?php else : ?>
+<div class="bg-surface-container-low rounded-lg p-space-lg text-center flex flex-col items-center gap-space-sm"><span class="material-symbols-outlined text-secondary text-[36px]">shopping_bag</span><p class="font-body-md text-body-md text-on-surface-variant">Mẹ chưa có đơn hàng nào. Cùng chọn những bộ đồ xinh cho bé nhé!</p><a class="bg-secondary text-on-secondary px-space-lg py-2.5 rounded-full font-label-md text-label-md hover:bg-secondary-container transition-all shadow-md" href="<?php echo esc_url( nexxi_kids_shop_url() ); ?>">Khám phá sản phẩm</a></div>
+<?php endif; ?>
+</section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'Mục 03', 'Sổ Địa Chỉ Nhận Hàng', '<a class="inline-flex items-center gap-space-xs bg-primary text-on-primary px-space-md py-space-xs rounded-full font-label-md text-label-md hover:bg-primary-container transition-all shadow-sm self-start sm:self-auto" href="' . esc_url( $address_url ) . '"><span class="material-symbols-outlined text-[18px]">edit_location_alt</span><span>Quản lý địa chỉ</span></a>' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<?php foreach ( $addresses as $type => $address ) : ?>
+<div class="bg-surface-container-low p-space-md rounded-xl flex flex-col justify-between shadow-sm relative overflow-hidden">
+<?php if ( 'shipping' === $type || 1 === count( $addresses ) ) : ?><div class="absolute top-0 right-0 bg-secondary text-on-secondary text-[11px] font-bold px-3 py-1 rounded-bl-xl font-label-sm tracking-wide">MẶC ĐỊNH</div><?php endif; ?>
+<div>
+<div class="flex items-center gap-space-xs mb-2"><span class="material-symbols-outlined text-secondary text-[20px]"><?php echo esc_html( $address[1] ); ?></span><span class="font-label-lg text-label-lg text-primary font-bold"><?php echo esc_html( $address[0] ); ?></span></div>
+<?php if ( $address[2] ) : ?><p class="font-body-md text-body-md text-on-surface-variant mb-1"><?php echo wp_kses_post( $address[2] ); ?></p><?php if ( $address[3] ) : ?><p class="font-label-md text-label-md text-on-surface mb-space-md"><?php echo esc_html( $address[3] ); ?></p><?php endif; ?>
+<?php else : ?><p class="font-body-md text-body-md text-outline mb-space-md">Mẹ chưa lưu địa chỉ này.</p><?php endif; ?>
+</div>
+<div class="flex items-center justify-end pt-space-sm bg-surface-container-lowest/60 -mx-space-md -mb-space-md px-space-md py-space-xs rounded-b-xl"><a class="px-3 py-1 rounded-full text-primary hover:bg-surface-container-high transition-colors font-label-sm text-label-sm" href="<?php echo esc_url( wc_get_endpoint_url( 'edit-address', $type, wc_get_page_permalink( 'myaccount' ) ) ); ?>"><?php echo $address[2] ? 'Sửa' : '+ Thêm địa chỉ'; ?></a></div>
+</div>
+<?php endforeach; ?>
+</div>
+</section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'Mục 04', 'Thông Tin & Bảo Mật Tài Khoản' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<a class="flex items-start gap-space-md p-space-md bg-surface-container-low rounded-lg hover:bg-surface-container-high/60 transition-colors" href="<?php echo esc_url( $account_url ); ?>"><span class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0"><span class="material-symbols-outlined text-[20px]">manage_accounts</span></span><span><span class="block font-label-lg text-label-lg text-primary">Thông tin cá nhân</span><span class="block font-body-sm text-body-sm text-on-surface-variant">Cập nhật họ tên, tên hiển thị và email nhận hóa đơn.</span></span></a>
+<a class="flex items-start gap-space-md p-space-md bg-surface-container-low rounded-lg hover:bg-surface-container-high/60 transition-colors" href="<?php echo esc_url( $account_url ); ?>#password_current"><span class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary shrink-0"><span class="material-symbols-outlined text-[20px]">lock</span></span><span><span class="block font-label-lg text-label-lg text-primary">Đổi mật khẩu</span><span class="block font-body-sm text-body-sm text-on-surface-variant">Đặt mật khẩu mới để bảo vệ tài khoản của mẹ.</span></span></a>
+</div>
+</section>
+	<?php
+	return ob_get_clean();
+}

@@ -3,7 +3,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 define( 'NEXXI_KIDS_VERSION', '1.0.0' );
-foreach ( array( 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch', 'stitch-cart', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
+foreach ( array( 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch', 'stitch-cart', 'stitch-account', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
 	require_once get_template_directory() . '/inc/' . $nexxi_kids_module . '.php';
 }
 
