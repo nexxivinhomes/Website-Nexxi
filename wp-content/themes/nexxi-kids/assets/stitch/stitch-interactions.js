@@ -110,6 +110,8 @@
         $$('[data-nexxi-size]:not(.is-unavailable)', card).forEach(button => { button.animate([{transform: 'scale(1)'}, {transform: 'scale(1.18)'}, {transform: 'scale(1)'}], {duration: 420}); });
         return;
       }
+      // Several colours / other options still possible, or an "any value" variation: choose on the product page.
+      if (pool.length > 1 || pool[0].any) { location.href = data.url; return; }
       target = pool[0].id;
     } else if (data.type && data.type !== 'simple') {
       location.href = data.url;
@@ -325,7 +327,7 @@
       const pill = $(`[data-nexxi-pill][data-number="${size}"]`);
       if (!size) { toast('Mẹ nhập cân nặng và chiều cao của bé trước nhé', {icon: 'straighten'}); return; }
       if (!pill) { toast(`Mẫu này chưa có Size ${size}, mẹ tham khảo mẫu khác nhé`, {error: true}); return; }
-      if (pill.disabled) { toast(`Size ${size} đang tạm hết với màu đã chọn`, {error: true}); return; }
+      if (pill.classList.contains('is-unavailable')) { toast(`Size ${size} đang tạm hết với phân loại đã chọn`, {error: true}); return; }
       pill.click();
       pill.scrollIntoView({behavior: 'smooth', block: 'center'});
     });
@@ -336,7 +338,7 @@
   const product = config.currentProduct;
   if (config.screen === 'product' && product) {
     const variations = product.variations || [];
-    const state = {size: '', color: '', qty: 1};
+    const state = {attrs: {}, qty: 1};
     const mainImg = $('#mainProductImg');
     const zoom = $('[data-nexxi-zoom]');
     const showImage = src => { if (!src || !mainImg) return; mainImg.src = src; if (zoom) zoom.href = src; };
@@ -351,38 +353,35 @@
       });
     }));
 
-    const pills = $$('[data-nexxi-pill]');
-    const colors = $$('[data-nexxi-color]');
-    const needsSize = pills.length > 0;
-    const needsColor = colors.length > 0;
-    const matches = (v, size, color) => (!size || v.size === size) && (!color || v.color === color);
-    const current = () => (product.type === 'variable' && (!needsSize || state.size) && (!needsColor || state.color) ? variations.find(v => matches(v, state.size, state.color)) || null : null);
+    // One selector group per variation attribute (colour, size or any custom attribute).
+    const groups = $$('[data-nexxi-attr-group]').map(el => ({
+      key: el.dataset.nexxiAttrGroup,
+      label: el.dataset.label || 'phân loại',
+      el,
+      buttons: $$('[data-nexxi-attr]', el),
+      selected: $('[data-nexxi-attr-selected]', el),
+    }));
+    // '' on a variation means "any value" for that attribute.
+    const fits = (v, sel) => Object.entries(sel).every(([key, value]) => !value || !v.attrs || !v.attrs[key] || v.attrs[key] === value);
+    const complete = () => groups.every(g => state.attrs[g.key]);
+    const current = () => (product.type === 'variable' && complete() ? variations.find(v => fits(v, state.attrs)) || null : null);
+    const available = (key, value) => variations.some(v => v.inStock && fits(v, {...state.attrs, [key]: value}));
 
-    const paintOptions = () => {
-      pills.forEach(pill => {
-        const slug = pill.dataset.nexxiPill;
-        const available = variations.some(v => v.inStock && matches(v, slug, state.color));
-        const on = slug === state.size;
-        pill.disabled = !available;
-        pill.classList.toggle('is-unavailable', !available);
-        pill.classList.toggle('ring-2', on);
-        pill.classList.toggle('ring-secondary-container', on);
-        pill.classList.toggle('bg-secondary-fixed', on);
-        pill.classList.toggle('bg-surface-container-low', !on);
-        pill.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-      colors.forEach(button => {
-        const slug = button.dataset.nexxiColor;
-        const available = variations.some(v => v.inStock && matches(v, state.size, slug));
-        const on = slug === state.color;
-        button.classList.toggle('is-unavailable', !available);
-        button.classList.toggle('ring-2', on);
-        button.classList.toggle('ring-secondary-container', on);
-        button.classList.toggle('bg-secondary-fixed', on);
-        button.classList.toggle('bg-surface-container-low', !on);
-        button.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-    };
+    const paintOptions = () => groups.forEach(g => g.buttons.forEach(button => {
+      const value = button.dataset.value;
+      const on = state.attrs[g.key] === value;
+      button.classList.toggle('is-unavailable', !available(g.key, value));
+      button.classList.toggle('ring-2', on);
+      button.classList.toggle('ring-secondary-container', on);
+      button.classList.toggle('bg-secondary-fixed', on);
+      button.classList.toggle('bg-surface-container-low', !on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }));
+    const paintLabels = () => groups.forEach(g => {
+      if (!g.selected) return;
+      const button = g.buttons.find(b => b.dataset.value === state.attrs[g.key]);
+      g.selected.textContent = button ? button.dataset.name : g.selected.dataset.placeholder;
+    });
 
     const qtyEl = $('#productQtyDisplay');
     const paintQty = () => { if (qtyEl) qtyEl.textContent = String(state.qty); };
@@ -410,61 +409,64 @@
       state.qty = Math.min(state.qty, maxQty());
       paintQty();
     };
+    const repaint = () => { paintLabels(); paintOptions(); paintVariation(); };
 
-    pills.forEach(pill => pill.addEventListener('click', () => {
-      if (pill.disabled) return;
-      state.size = pill.dataset.nexxiPill === state.size ? '' : pill.dataset.nexxiPill;
-      const badge = $('#currentSelectedSizeBadge');
-      if (badge) badge.textContent = state.size ? ($('div', pill)?.textContent.trim() || pill.textContent.trim()) : 'Chọn size cho bé';
+    const select = (key, value) => {
+      state.attrs[key] = value;
+      if (value) {
+        // Drop other choices that no longer combine with this one.
+        groups.forEach(g => {
+          if (g.key !== key && state.attrs[g.key] && !variations.some(v => v.inStock && fits(v, {[key]: value, [g.key]: state.attrs[g.key]}))) state.attrs[g.key] = '';
+        });
+        // Auto-pick a group when only one option is left.
+        groups.forEach(g => {
+          if (state.attrs[g.key]) return;
+          const left = g.buttons.filter(b => available(g.key, b.dataset.value));
+          if (left.length === 1) state.attrs[g.key] = left[0].dataset.value;
+        });
+      }
       $('[data-nexxi-size-hint]')?.classList.add('hidden');
-      // Auto-pick the only colour left for this size.
-      if (state.size && needsColor && !state.color) {
-        const left = [...new Set(variations.filter(v => v.inStock && v.size === state.size).map(v => v.color))];
-        if (left.length === 1) selectColor(left[0]);
-      }
-      if (state.size && state.color && !variations.some(v => v.inStock && matches(v, state.size, state.color))) selectColor('');
-      paintOptions();
-      paintVariation();
-    }));
-    const selectColor = slug => {
-      state.color = slug;
-      const button = colors.find(b => b.dataset.nexxiColor === slug);
-      const name = $('#selectedColorName');
-      if (name) name.textContent = button ? button.dataset.name : 'Chọn màu';
-      if (state.size && slug && !variations.some(v => v.inStock && matches(v, state.size, slug))) {
-        state.size = '';
-        const badge = $('#currentSelectedSizeBadge');
-        if (badge) badge.textContent = 'Chọn size cho bé';
-      }
+      groups.forEach(g => g.el.classList.remove('nexxi-attr-missing'));
+      repaint();
     };
-    colors.forEach(button => button.addEventListener('click', () => {
-      selectColor(button.dataset.nexxiColor === state.color ? '' : button.dataset.nexxiColor);
-      paintOptions();
-      paintVariation();
-    }));
-    if (colors.length === 1) selectColor(colors[0].dataset.nexxiColor);
-    if (pills.length === 1 && !pills[0].disabled) { state.size = pills[0].dataset.nexxiPill; const badge = $('#currentSelectedSizeBadge'); if (badge) badge.textContent = $('div', pills[0])?.textContent.trim() || ''; }
-    paintOptions();
-    paintVariation();
+    groups.forEach(g => g.buttons.forEach(button => button.addEventListener('click', () => {
+      select(g.key, state.attrs[g.key] === button.dataset.value ? '' : button.dataset.value);
+    })));
+    groups.forEach(g => { if (g.buttons.length === 1) state.attrs[g.key] = g.buttons[0].dataset.value; });
+    repaint();
 
     $$('[data-nexxi-qty]').forEach(button => button.addEventListener('click', () => {
       state.qty = Math.min(maxQty(), Math.max(1, state.qty + Number(button.dataset.nexxiQty)));
       paintQty();
     }));
 
+    // Variations with an "any value" attribute need the chosen values posted: use WooCommerce's form handler.
+    const postForm = (v, buyNow) => {
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = buyNow ? config.checkout : (config.cart || product.url);
+      const fields = {'add-to-cart': product.id, product_id: product.id, variation_id: v.id, quantity: state.qty};
+      groups.forEach(g => { const b = g.buttons.find(x => x.dataset.value === state.attrs[g.key]); if (b) fields['attribute_' + g.key] = b.dataset.raw || b.dataset.value; });
+      Object.entries(fields).forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = String(value); form.appendChild(input); });
+      document.body.appendChild(form);
+      form.submit();
+    };
+
     const purchase = async (button, buyNow) => {
       let target = product.id;
       if (product.type === 'variable') {
         const v = current();
         if (!v) {
+          const missing = groups.find(g => !state.attrs[g.key]);
+          const what = missing ? missing.label : 'phân loại';
           const hint = $('[data-nexxi-size-hint]');
-          const missing = needsSize && !state.size ? 'size' : 'màu';
-          if (hint) { hint.textContent = `Mẹ chọn ${missing} cho bé trước khi ${buyNow ? 'mua' : 'thêm vào giỏ'} nhé!`; hint.classList.remove('hidden'); }
-          toast(`Mẹ chọn ${missing} cho bé trước nhé!`, {icon: 'straighten'});
-          ($('[data-nexxi-size-grid]') || colors[0])?.scrollIntoView({behavior: 'smooth', block: 'center'});
+          if (hint) { hint.textContent = `Mẹ chọn ${what} cho bé trước khi ${buyNow ? 'mua' : 'thêm vào giỏ'} nhé!`; hint.classList.remove('hidden'); }
+          toast(missing ? `Mẹ chọn ${what} cho bé trước nhé!` : 'Phân loại này tạm hết, mẹ chọn phân loại khác nhé!', {icon: 'straighten', error: !missing});
+          if (missing) { missing.el.classList.add('nexxi-attr-missing'); missing.el.scrollIntoView({behavior: 'smooth', block: 'center'}); }
           return;
         }
         if (!v.inStock) { failedToast(); return; }
+        if (v.any) { postForm(v, buyNow); return; }
         target = v.id;
       } else if (product.type !== 'simple') {
         return;

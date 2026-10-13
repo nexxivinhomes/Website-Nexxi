@@ -31,7 +31,18 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		'regular'    => (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) ),
 		'inStock'    => $product->is_in_stock(),
 		'max'        => $product->get_max_purchase_quantity(),
+		'attributes' => Nexxi_Kids_Catalog::variation_attributes( $product ),
 	);
+}
+
+/** "MÀU SẮC" / "mau sac" → "Màu sắc" for selector headings. */
+function nexxi_kids_attr_label( $label ) {
+	$label = trim( (string) $label );
+	if ( $label === mb_strtoupper( $label ) || $label === mb_strtolower( $label ) ) {
+		$label = mb_strtolower( $label );
+		$label = mb_strtoupper( mb_substr( $label, 0, 1 ) ) . mb_substr( $label, 1 );
+	}
+	return $label;
 }
 
 function nexxi_kids_stitch_product( $html ) {
@@ -87,7 +98,7 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
 	$discount = Nexxi_Kids_Catalog::discount_percent( $product );
 	ob_start(); ?>
-<div class="relative w-full aspect-[4/5] bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
+<div class="relative w-full aspect-square max-h-[min(78vh,640px)] bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
 <img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
 <div class="absolute top-space-md left-space-md flex flex-col gap-space-xs items-start pointer-events-none">
 <?php if ( $materials ) : ?><span class="bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5 transform -rotate-2"><span class="material-symbols-outlined text-secondary text-[16px]">eco</span><?php echo esc_html( implode( ' · ', $materials ) ); ?></span><?php endif; ?>
@@ -164,27 +175,38 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 </div>
 <?php endif; ?>
 </div>
-<?php if ( $config['colors'] ) : ?>
-<div class="space-y-space-xs">
-<div class="flex justify-between items-center font-label-md text-label-md"><span class="text-primary font-bold">Màu Sắc: <span class="text-secondary font-semibold" id="selectedColorName">Chọn màu</span></span><span class="text-outline font-body-sm text-body-sm"><?php echo count( $config['colors'] ); ?> màu</span></div>
-<div class="flex items-center gap-space-sm flex-wrap">
-<?php foreach ( $config['colors'] as $color ) : ?>
-<button class="color-btn group relative flex items-center gap-2 px-space-md py-space-xs rounded-full bg-surface-container-low hover:bg-surface-container transition-all" type="button" data-nexxi-color="<?php echo esc_attr( $color['slug'] ); ?>" data-name="<?php echo esc_attr( $color['name'] ); ?>" aria-pressed="false"><span class="w-4 h-4 rounded-full shadow-inner inline-block" style="background:<?php echo esc_attr( $color['hex'] ); ?>"></span><span class="font-label-md text-label-md text-on-surface-variant group-hover:text-primary"><?php echo esc_html( $color['name'] ); ?></span></button>
+<?php
+$nexxi_numeric_size = false;
+foreach ( $config['attributes'] as $attr ) :
+	$is_size = 'size' === $attr['role'];
+	$is_color = 'color' === $attr['role'];
+	$label = nexxi_kids_attr_label( $attr['label'] );
+	$numbers = array_map( static function ( $o ) { return Nexxi_Kids_Catalog::size_number( $o['name'] ); }, $attr['options'] );
+	$numeric = $is_size && $numbers && ! in_array( 0, $numbers, true );
+	if ( $numeric ) { $nexxi_numeric_size = true; }
+	$placeholder = $is_size ? 'Chọn size cho bé' : ( $is_color ? 'Chọn màu' : 'Chọn ' . mb_strtolower( $label ) );
+	?>
+<div class="space-y-space-xs" data-nexxi-attr-group="<?php echo esc_attr( $attr['key'] ); ?>" data-label="<?php echo esc_attr( mb_strtolower( $label ) ); ?>">
+<div class="flex justify-between items-center gap-space-sm font-label-md text-label-md"><span class="text-primary font-bold"><?php echo esc_html( $label ); ?>: <span class="text-secondary font-semibold" data-nexxi-attr-selected data-placeholder="<?php echo esc_attr( $placeholder ); ?>"><?php echo esc_html( $placeholder ); ?></span></span>
+<?php if ( $numeric ) : ?><button class="text-secondary hover:underline flex items-center gap-0.5 font-label-sm text-label-sm shrink-0" type="button" data-nexxi-size-table-open><span class="material-symbols-outlined text-[16px]">straighten</span> Bảng Size</button><?php else : ?><span class="text-outline font-body-sm text-body-sm shrink-0"><?php echo count( $attr['options'] ); ?> lựa chọn</span><?php endif; ?></div>
+<div class="<?php echo $is_size ? 'grid grid-cols-3 sm:grid-cols-4 gap-space-xs' : 'flex items-center gap-space-sm flex-wrap'; ?>"<?php echo $is_size ? ' data-nexxi-size-grid' : ''; ?>>
+<?php foreach ( $attr['options'] as $option ) :
+	$common = 'type="button" aria-pressed="false" data-nexxi-attr="' . esc_attr( $attr['key'] ) . '" data-value="' . esc_attr( $option['value'] ) . '" data-raw="' . esc_attr( $attr['taxonomy'] ? $option['value'] : $option['name'] ) . '" data-name="' . esc_attr( $option['name'] ) . '"';
+	if ( $is_color ) : ?>
+<button class="color-btn group relative flex items-center gap-2 px-space-md py-space-xs rounded-full bg-surface-container-low hover:bg-surface-container transition-all" <?php echo $common; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="w-4 h-4 rounded-full shadow-inner inline-block ring-1 ring-outline-variant" style="background:<?php echo esc_attr( $option['hex'] ); ?>"></span><span class="font-label-md text-label-md text-on-surface-variant group-hover:text-primary"><?php echo esc_html( $option['name'] ); ?></span></button>
+	<?php elseif ( $is_size ) :
+		$n = Nexxi_Kids_Catalog::size_number( $option['name'] );
+		$weight = $numeric ? Nexxi_Kids_Catalog::size_weight( $n ) : ''; ?>
+<button class="size-pill py-2.5 px-space-sm rounded-lg text-center bg-surface-container-low hover:bg-surface-container transition-all" <?php echo $common; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> data-nexxi-pill="<?php echo esc_attr( $option['value'] ); ?>" data-number="<?php echo (int) $n; ?>"><div class="font-title-md text-title-md text-primary"><?php echo esc_html( is_numeric( $option['name'] ) ? 'Size ' . $option['name'] : $option['name'] ); ?></div><?php if ( $weight ) : ?><div class="font-body-sm text-body-sm text-outline"><?php echo esc_html( $weight ); ?></div><?php endif; ?></button>
+	<?php else : ?>
+<button class="size-pill px-space-md py-2 rounded-full bg-surface-container-low hover:bg-surface-container transition-all font-label-md text-label-md text-primary" <?php echo $common; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><?php echo esc_html( $option['name'] ); ?></button>
+	<?php endif;
+endforeach; ?>
+</div>
+</div>
 <?php endforeach; ?>
-</div>
-</div>
-<?php endif; ?>
-<?php if ( $config['sizes'] ) : ?>
-<div class="space-y-space-xs">
-<div class="flex justify-between items-center font-label-md text-label-md"><span class="text-primary font-bold">Kích Cỡ Cho Bé: <span class="text-secondary font-semibold" id="currentSelectedSizeBadge">Chọn size cho bé</span></span>
-<button class="text-secondary hover:underline flex items-center gap-0.5 font-label-sm text-label-sm" type="button" data-nexxi-size-table-open><span class="material-symbols-outlined text-[16px]">straighten</span> Mở Bảng Size Đầy Đủ</button></div>
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-space-xs" data-nexxi-size-grid>
-<?php foreach ( $config['sizes'] as $size ) : ?>
-<button class="size-pill py-2.5 px-space-sm rounded-lg text-center bg-surface-container-low hover:bg-surface-container transition-all" type="button" data-nexxi-pill="<?php echo esc_attr( $size['slug'] ); ?>" data-number="<?php echo (int) $size['number']; ?>" aria-pressed="false"><div class="font-title-md text-title-md text-primary"><?php echo esc_html( $size['name'] ); ?></div><div class="font-body-sm text-body-sm text-outline"><?php echo esc_html( $size['weight'] ); ?></div></button>
-<?php endforeach; ?>
-</div>
-<p class="hidden font-label-sm text-label-sm text-secondary" data-nexxi-size-hint>Mẹ chọn size cho bé trước khi thêm vào giỏ nhé!</p>
-</div>
+<?php if ( $config['attributes'] ) : ?><p class="hidden font-label-sm text-label-sm text-secondary" data-nexxi-size-hint>Mẹ chọn phân loại cho bé trước khi thêm vào giỏ nhé!</p><?php endif; ?>
+<?php if ( $nexxi_numeric_size ) : ?>
 <div class="bg-secondary-fixed/40 rounded-xl p-space-md space-y-space-sm" id="sizeAdvisorModal" data-nexxi-size-advisor>
 <div class="flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-8 h-8 rounded-full bg-secondary-container text-on-secondary flex items-center justify-center shadow-xs"><span class="material-symbols-outlined text-[18px]">smart_toy</span></div><div><h4 class="font-label-lg text-label-lg text-primary">Trợ Lý Gợi Ý Size Bé Yêu</h4><p class="font-body-sm text-body-sm text-outline"><?php echo $advisor_title; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></p></div></div><span class="material-symbols-outlined text-secondary text-[20px]">auto_awesome</span></div>
 <div class="grid grid-cols-2 gap-space-sm pt-space-xs">

@@ -92,3 +92,24 @@ body > header nav a span { white-space: nowrap !important; }
 [data-nexxi-wishlist][aria-pressed="true"] { color: #ae3115 !important; }
 [data-nexxi-wishlist][aria-pressed="true"] .material-symbols-outlined { font-variation-settings: 'FILL' 1 !important; }
 [data-nexxi-add].is-loading, [data-nexxi-pdp-add].is-loading, [data-nexxi-pdp-buy].is-loading { opacity: .6; pointer-events: none; }
+/* Variation selectors (PDP) and "Phân loại" in cart / checkout. */
+[data-nexxi-attr].is-unavailable { opacity: .45; text-decoration: line-through; }
+[data-nexxi-attr-group].nexxi-attr-missing { border-radius: 16px; outline: 2px dashed #fd6a49; outline-offset: 6px; animation: nexxiShake .35s ease; }
+@keyframes nexxiShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation,
+.nexxi-stitch-commerce .woocommerce-cart-form dl.variation,
+.woocommerce-mini-cart dl.variation,
+.woocommerce-table--order-details .wc-item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation::before { content: "Phân loại:"; color: #757682; align-self: center; }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation dt,
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation dd,
+.woocommerce-mini-cart dl.variation dt,
+.woocommerce-mini-cart dl.variation dd { margin: 0; padding: 2px 0; float: none; font-weight: 600; }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation dt,
+.woocommerce-mini-cart dl.variation dt { background: rgba(255,218,210,.6); color: #3f0300; border-radius: 999px 0 0 999px; padding: 2px 2px 2px 10px; opacity: .9; font-weight: 500; }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation dd,
+.woocommerce-mini-cart dl.variation dd { background: rgba(255,218,210,.6); color: #3f0300; border-radius: 0 999px 999px 0; padding: 2px 10px 2px 2px; margin-right: 4px; font-weight: 700; }
+.nexxi-stitch-commerce .woocommerce-checkout-review-order-table .product-name dl.variation dd p,
+.woocommerce-mini-cart dl.variation dd p { margin: 0; display: inline; }
+.woocommerce-table--order-details .wc-item-meta li { background: rgba(255,218,210,.6); color: #3f0300; border-radius: 999px; padding: 2px 10px; }
+.woocommerce-table--order-details .wc-item-meta li p { display: inline; margin: 0; }
