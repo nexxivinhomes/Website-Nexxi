@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_blank" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300..800;1,6..12,300..800&amp;family=Quicksand:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-surface-variant":"#45464f","on-primary":"#ffffff","secondary":"#ae3115","on-background":"#1b1c1a","surface-dim":"#dbdad6","on-primary-container":"#8492c8","on-tertiary-fixed":"#2a1700","outline-variant":"#c6c6d0","primary-container":"#1b2a59","on-primary-fixed-variant":"#364475","surface-variant":"#e4e2de","tertiary":"#261400","on-error-container":"#93000a","surface-container-highest":"#e4e2de","secondary-fixed":"#ffdad2","secondary-fixed-dim":"#ffb4a3","surface-container-low":"#f5f3ef","secondary-container":"#fd6a49","inverse-primary":"#b6c4fd","on-secondary-container":"#640f00","on-primary-fixed":"#061847","inverse-on-surface":"#f2f0ed","error":"#ba1a1a","on-surface":"#1b1c1a","primary":"#031444","surface-container":"#efeeea","on-secondary":"#ffffff","primary-fixed":"#dce1ff","tertiary-fixed-dim":"#ffb95f","on-secondary-fixed-variant":"#8c1900","tertiary-container":"#422700","on-tertiary-container":"#cf8400","surface-container-high":"#eae8e4","background":"#fbf9f5","surface-bright":"#fbf9f5","outline":"#767680","on-secondary-fixed":"#3d0600","primary-fixed-dim":"#b6c4fd","on-tertiary":"#ffffff","inverse-surface":"#30312e","on-error":"#ffffff","error-container":"#ffdad6","surface":"#fbf9f5","on-tertiary-fixed-variant":"#653e00","surface-tint":"#4e5c8e","tertiary-fixed":"#ffddb8","surface-container-lowest":"#ffffff"},borderRadius:{DEFAULT:"1rem",lg:"2rem",xl:"3rem",full:"9999px"},spacing:{"space-sm":"0.5rem",margin:"2rem","space-xs":"0.25rem","space-lg":"1.5rem","gutter-mobile":"0.75rem",gutter:"1.25rem","space-xl":"2.5rem","margin-mobile":"1rem","space-md":"1rem"},fontFamily:{"headline-sm":["Quicksand"],"body-sm":["Nunito Sans"],"body-md":["Nunito Sans"],"label-md":["Quicksand"],"display-lg":["Quicksand"],"label-sm":["Quicksand"],"title-md":["Quicksand"],"headline-md":["Quicksand"],"label-lg":["Quicksand"],"body-lg":["Nunito Sans"],"headline-lg":["Quicksand"],"headline-lg-mobile":["Quicksand"],"display-lg-mobile":["Quicksand"]},fontSize:{"headline-sm":["20px",{lineHeight:"28px",fontWeight:"600"}],"body-sm":["12px",{lineHeight:"18px",fontWeight:"400"}],"body-md":["14px",{lineHeight:"22px",fontWeight:"400"}],"label-md":["13px",{lineHeight:"18px",fontWeight:"600"}],"display-lg":["48px",{lineHeight:"56px",letterSpacing:"-0.02em",fontWeight:"700"}],"label-sm":["11px",{lineHeight:"14px",letterSpacing:"0.04em",fontWeight:"700"}],"title-md":["18px",{lineHeight:"24px",fontWeight:"600"}],"headline-md":["24px",{lineHeight:"32px",fontWeight:"600"}],"label-lg":["15px",{lineHeight:"20px",fontWeight:"700"}],"body-lg":["16px",{lineHeight:"26px",fontWeight:"400"}],"headline-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.01em",fontWeight:"700"}],"headline-lg-mobile":["26px",{lineHeight:"34px",letterSpacing:"0em",fontWeight:"700"}],"display-lg-mobile":["34px",{lineHeight:"42px",letterSpacing:"-0.01em",fontWeight:"700"}]}}}};</script></head><body class="bg-background font-body-md text-on-surface antialiased min-h-screen flex items-center justify-center p-margin-mobile md:p-margin"><main class="w-full flex justify-center items-center"><div class="flex flex-col w-full max-w-6xl mx-auto py-space-md">
+<!-- Top Navigation Pill Bar -->
+<div class="flex items-center justify-between mb-space-lg">
+<a class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-surface-container-low hover:bg-surface-container text-primary transition-all shadow-sm" href="#">
+<span class="material-symbols-outlined text-secondary text-lg">arrow_back</span>
+<span class="font-label-md text-label-md">Quay lại Trang Chủ</span>
+</a>
+<div class="flex items-center gap-3">
+<span class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm shadow-sm rotate-[-1deg]">
+<span class="material-symbols-outlined text-base">verified</span>
+        Bảo chứng an toàn Oeko-Tex® 100
+      </span>
+<span class="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container-highest text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-sm">support_agent</span>
+        Hotline: 1900 6886
+      </span>
+</div>
+</div>
+<!-- Main Split Canvas Card -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-stretch">
+<!-- LEFT COLUMN: Brand Story & Club Perks (5 cols) -->
+<div class="lg:col-span-5 flex flex-col justify-between bg-surface-container-lowest rounded-xl p-space-lg sm:p-space-xl shadow-md relative overflow-hidden">
+<!-- Decorative Pastel Glow Accents -->
+<div class="absolute -top-16 -left-16 w-48 h-48 rounded-full bg-secondary-fixed-dim/30 blur-2xl pointer-events-none"></div>
+<div class="absolute bottom-10 -right-12 w-44 h-44 rounded-full bg-primary-fixed/40 blur-2xl pointer-events-none"></div>
+<!-- Top Section: Header & Image -->
+<div class="relative z-10">
+<!-- Playful Badge -->
+<div class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary shadow-sm font-label-md text-label-md mb-space-md">
+<span class="material-symbols-outlined text-base">toys</span>
+<span>Gia Đình NEXXI Club 🧸</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight mb-space-xs">
+          Chào Mừng Ba Mẹ Đến Với NEXXI Kids
+        </h1>
+<p class="font-body-md text-body-md text-on-surface-variant mb-space-lg">
+          Không gian thời trang thủ công sợi tre tự nhiên, chăm chút cho nụ cười rạng rỡ của bé yêu mỗi ngày.
+        </p>
+<!-- Brand Visual Banner -->
+<div class="relative w-full h-56 rounded-lg overflow-hidden shadow-sm mb-space-lg group">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" data-alt="A warm, cozy aesthetic photo of a stylish mother holding her laughing toddler in soft organic cotton knitwear. The scene features warm natural sunlight, neutral cream tones, minimal Scandinavian nursery backdrop, peach coral accents, conveying tenderness, safety and high-end kids boutique fashion." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpTDlCHJM8BrEt4tPe8HZpslj2Sbc-OEQUqzAI3gPdYaKskZKBLYyksdvyVBsZe3S3JxfnT4FoS92wTgfyuzcsqzlZIH9Ij5zZcWNT_18VBt_DaNKIwIgbjzDJPQkIB_1f-C8sN-9HDb6k2eTZih5QGyNeGSSjLeTqecyCuG-eactjaLFFvVzNGwQ6oBeMYSEJl-_Uhki791QXKKo-AzeiLfKBUl8KQXBX_AOqGVzVLiTsbvm5UqvHag"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/60 via-transparent to-transparent flex items-end p-space-md">
+<span class="font-label-md text-label-md text-on-primary bg-primary/40 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm text-secondary-fixed">spa</span>
+              100% Sợi tre hữu cơ kháng khuẩn
+            </span>
+</div>
+</div>
+<!-- Membership Perks List -->
+<div class="space-y-3">
+<h2 class="font-title-md text-title-md text-primary flex items-center gap-2">
+<span>Đặc quyền dành riêng cho gia đình</span>
+<span class="text-xs px-2 py-0.5 rounded-full bg-secondary-fixed text-secondary font-label-sm">ĐỘC QUYỀN</span>
+</h2>
+<div class="grid grid-cols-1 gap-2.5">
+<!-- Perk 1 -->
+<div class="flex items-center gap-3 p-3 rounded-DEFAULT bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-xl">confirmation_number</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Tặng Voucher 50.000đ</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Áp dụng ngay cho đơn hàng đầu tiên</p>
+</div>
+</div>
+<!-- Perk 2 -->
+<div class="flex items-center gap-3 p-3 rounded-DEFAULT bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-full bg-primary-fixed/40 text-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-xl">savings</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Tích Điểm Kẹo Bông 5%</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Quy đổi voucher giảm giá trọn đời</p>
+</div>
+</div>
+<!-- Perk 3 -->
+<div class="flex items-center gap-3 p-3 rounded-DEFAULT bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-full bg-tertiary-fixed/60 text-tertiary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-xl">cake</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Quà Sinh Nhật Bé Yêu</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Hộp quà thời trang bất ngờ hàng năm</p>
+</div>
+</div>
+<!-- Perk 4 -->
+<div class="flex items-center gap-3 p-3 rounded-DEFAULT bg-surface-container-low hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed/50 text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-xl">published_with_changes</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-primary">Đổi Size Miễn Phí 30 Ngày</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Shipper đến lấy đổi tận cửa tiện lợi</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom: Testimonial Bubble -->
+<div class="mt-space-lg relative z-10 pt-space-md bg-surface-container-low rounded-lg p-space-md">
+<div class="flex items-start gap-3">
+<div class="w-11 h-11 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 text-secondary font-headline-sm">
+            🧸
+          </div>
+<div class="min-w-0">
+<div class="flex items-center gap-1 text-secondary mb-1">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface italic line-clamp-2">
+              “Mua sắm tại NEXXI từ khi bé mới lọt lòng, chất liệu xô và sợi tre siêu mềm mịn, giặt máy không lo xù lông!”
+            </p>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-1">
+              Mẹ Thảo Linh • Bé Bắp (18 tháng tuổi)
+            </p>
+</div>
+</div>
+</div>
+</div>
+<!-- RIGHT COLUMN: Authentication Form Box (7 cols) -->
+<div class="lg:col-span-7 flex flex-col justify-between bg-surface-container-lowest rounded-xl p-space-lg sm:p-space-xl shadow-md">
+<div>
+<!-- Pill Interactive Tab Switcher -->
+<div class="flex p-1.5 bg-surface-container rounded-full max-w-sm mx-auto mb-space-lg shadow-inner">
+<button class="flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-primary bg-primary shadow-sm flex items-center justify-center gap-2" id="tab-login-btn" onclick="switchAuthTab('login')" type="button">
+<span class="material-symbols-outlined text-base">login</span>
+<span>Đăng Nhập</span>
+</button>
+<button class="flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-surface-variant hover:text-primary flex items-center justify-center gap-2" id="tab-register-btn" onclick="switchAuthTab('register')" type="button">
+<span class="material-symbols-outlined text-base">person_add</span>
+<span>Đăng Ký</span>
+</button>
+</div>
+<!-- TAB CONTENT 1: ĐĂNG NHẬP -->
+<div class="space-y-space-md" id="login-form-container">
+<div class="text-center sm:text-left">
+<h2 class="font-headline-md text-headline-md text-primary">Mừng Ba Mẹ Trở Lại! 👋</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
+              Đăng nhập để theo dõi hành trình đơn hàng và nhận ưu đãi riêng
+            </p>
+</div>
+<form class="space-y-4" onsubmit="handleAuthSubmit(event, 'login')">
+<!-- Account Field -->
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1.5" for="login-account">
+                Số điện thoại hoặc Email
+              </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">account_circle</span>
+<input class="w-full pl-12 pr-4 py-3.5 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="login-account" placeholder="0912 345 678 hoặc meyeu@gmail.com" required="" type="text"/>
+</div>
+</div>
+<!-- Password Field -->
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1.5" for="login-password">
+                Mật khẩu
+              </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">lock</span>
+<input class="w-full pl-12 pr-12 py-3.5 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="login-password" placeholder="Nhập mật khẩu an toàn của bạn" required="" type="password"/>
+<button aria-label="Hiện/Ẩn mật khẩu" class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary p-1 focus:outline-none" onclick="togglePasswordVisibility('login-password', this)" type="button">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+</div>
+</div>
+<!-- Remember & Forgot Password -->
+<div class="flex items-center justify-between pt-1">
+<label class="inline-flex items-center gap-2 cursor-pointer select-none">
+<input checked="" class="w-4 h-4 rounded text-secondary bg-surface-container accent-secondary focus:ring-0 cursor-pointer" type="checkbox"/>
+<span class="font-body-md text-body-md text-on-surface-variant">Ghi nhớ đăng nhập</span>
+</label>
+<a class="font-label-md text-label-md text-secondary hover:underline transition-colors" href="#">
+                Quên mật khẩu?
+              </a>
+</div>
+<!-- Submit CTA -->
+<button class="w-full py-4 px-6 rounded-full bg-secondary-container hover:bg-secondary text-on-secondary font-headline-sm text-headline-sm tracking-wide shadow-md hover:shadow-lg transition-all active:scale-[0.99] flex items-center justify-center gap-2" type="submit">
+<span>Đăng Nhập Vào Tài Khoản</span>
+<span class="material-symbols-outlined text-xl">arrow_forward</span>
+</button>
+</form>
+<!-- Divider -->
+<div class="relative flex items-center justify-center py-2">
+<div class="absolute inset-0 flex items-center">
+<div class="w-full bg-surface-variant h-0.5"></div>
+</div>
+<span class="relative px-4 bg-surface-container-lowest font-body-sm text-body-sm text-on-surface-variant">
+              Hoặc đăng nhập nhanh qua
+            </span>
+</div>
+<!-- Social Logins (Google, Zalo, Apple) -->
+<div class="grid grid-cols-3 gap-3">
+<!-- Google -->
+<button class="flex items-center justify-center gap-2 py-3 px-3 rounded-full bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-label-md transition-all active:scale-95 shadow-sm" onclick="notifySocialLogin('Google')" type="button">
+<svg class="w-5 h-5 shrink-0" viewbox="0 0 24 24">
+<path d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z" fill="#EA4335"></path>
+<path d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z" fill="#4285F4"></path>
+<path d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.7s.1-2 .4-2.7L1.9 6.4C.7 8.8 0 10.4 0 12s.7 3.2 1.9 5.6l3.7-2.9z" fill="#FBBC05"></path>
+<path d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.3L1.9 16c1.8 3.8 5.6 7 10.1 7z" fill="#34A853"></path>
+</svg>
+<span>Google</span>
+</button>
+<!-- Zalo -->
+<button class="flex items-center justify-center gap-2 py-3 px-3 rounded-full bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-label-md transition-all active:scale-95 shadow-sm" onclick="notifySocialLogin('Zalo')" type="button">
+<span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center tracking-tighter">Z</span>
+<span>Zalo</span>
+</button>
+<!-- Apple -->
+<button class="flex items-center justify-center gap-2 py-3 px-3 rounded-full bg-surface-container-low hover:bg-surface-container text-primary font-label-md text-label-md transition-all active:scale-95 shadow-sm" onclick="notifySocialLogin('Apple ID')" type="button">
+<svg class="w-5 h-5 shrink-0 fill-current" viewbox="0 0 24 24">
+<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.89c.64-.78 1.08-1.86.96-2.95-.93.04-2.06.62-2.72 1.4-.58.67-1.09 1.76-.95 2.82 1.04.08 2.1-.55 2.71-1.27z"></path>
+</svg>
+<span>Apple</span>
+</button>
+</div>
+</div>
+<!-- TAB CONTENT 2: ĐĂNG KÝ (Hidden initially) -->
+<div class="space-y-space-md hidden" id="register-form-container">
+<div class="text-center sm:text-left">
+<h2 class="font-headline-md text-headline-md text-primary">Tạo Tài Khoản Mới 🌸</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
+              Nhận ngay voucher 50K và quà tặng đặc quyền thành viên
+            </p>
+</div>
+<form class="space-y-3.5" onsubmit="handleAuthSubmit(event, 'register')">
+<!-- Full Name -->
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1" for="reg-fullname">
+                Họ và tên Ba/Mẹ
+              </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">person</span>
+<input class="w-full pl-12 pr-4 py-3 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="reg-fullname" placeholder="Ví dụ: Nguyễn Thị Mai Phương" required="" type="text"/>
+</div>
+</div>
+<!-- Phone & Email Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1" for="reg-phone">
+                  Số điện thoại
+                </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">phone_iphone</span>
+<input class="w-full pl-12 pr-4 py-3 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="reg-phone" placeholder="09xx xxx xxx" required="" type="tel"/>
+</div>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1" for="reg-email">
+                  Địa chỉ Email
+                </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">mail</span>
+<input class="w-full pl-12 pr-4 py-3 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="reg-email" placeholder="meba@example.com" required="" type="email"/>
+</div>
+</div>
+</div>
+<!-- New Password -->
+<div>
+<label class="block font-label-md text-label-md text-primary mb-1" for="reg-password">
+                Tạo mật khẩu an toàn
+              </label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">lock_reset</span>
+<input class="w-full pl-12 pr-12 py-3 rounded-lg bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-outline/70 focus:outline-none focus:bg-surface-container-lowest transition-all" id="reg-password" placeholder="Tối thiểu 6 ký tự, gồm chữ và số" required="" type="password"/>
+<button aria-label="Hiện/Ẩn mật khẩu" class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary p-1 focus:outline-none" onclick="togglePasswordVisibility('reg-password', this)" type="button">
+<span class="material-symbols-outlined text-lg">visibility</span>
+</button>
+</div>
+</div>
+<!-- Baby Profile Opt-in Box -->
+<div class="p-3.5 rounded-lg bg-secondary-fixed/40 space-y-2">
+<label class="inline-flex items-start gap-2.5 cursor-pointer select-none">
+<input checked="" class="mt-1 w-4 h-4 rounded text-secondary bg-surface-container accent-secondary focus:ring-0 cursor-pointer" id="reg-baby-optin" onchange="toggleBabyFields(this.checked)" type="checkbox"/>
+<div>
+<span class="font-label-md text-label-md text-primary block">
+                    Đăng ký hồ sơ bé ngay để nhận quà sinh nhật 🎁
+                  </span>
+<span class="font-body-sm text-body-sm text-on-surface-variant block">
+                    NEXXI sẽ gửi set đồ thiết kế độc quyền vào đúng ngày sinh nhật của thiên thần nhỏ
+                  </span>
+</div>
+</label>
+<!-- Optional Baby Fields expandable -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2" id="baby-info-inputs">
+<input class="w-full px-3 py-2 rounded-DEFAULT bg-surface-container-lowest font-body-sm text-body-sm text-on-surface placeholder:text-outline/70 focus:outline-none" placeholder="Tên hoặc biệt danh của bé" type="text"/>
+<input class="w-full px-3 py-2 rounded-DEFAULT bg-surface-container-lowest font-body-sm text-body-sm text-on-surface focus:outline-none" type="date"/>
+</div>
+</div>
+<!-- Terms agreement -->
+<div class="flex items-center gap-2">
+<input checked="" class="w-4 h-4 rounded text-secondary bg-surface-container accent-secondary focus:ring-0" id="reg-terms" required="" type="checkbox"/>
+<label class="font-body-sm text-body-sm text-on-surface-variant" for="reg-terms">
+                Tôi đồng ý với <a class="text-secondary underline" href="#">Điều khoản dịch vụ</a> và <a class="text-secondary underline" href="#">Chính sách bảo mật</a> của NEXXI Kids.
+              </label>
+</div>
+<!-- Submit CTA -->
+<button class="w-full py-4 px-6 rounded-full bg-secondary-container hover:bg-secondary text-on-secondary font-headline-sm text-headline-sm tracking-wide shadow-md hover:shadow-lg transition-all active:scale-[0.99] flex items-center justify-center gap-2" type="submit">
+<span>Đăng Ký Thành Viên Mới</span>
+<span class="material-symbols-outlined text-xl">card_giftcard</span>
+</button>
+</form>
+</div>
+</div>
+<!-- Trust Footer Guarantee Badge -->
+<div class="mt-space-lg pt-space-md bg-surface-container-low rounded-lg p-3.5 flex items-center gap-3">
+<div class="w-9 h-9 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-lg">shield</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+<strong class="text-primary font-semibold">Cam kết bảo mật 100%:</strong> Dữ liệu gia đình và trẻ nhỏ được mã hóa an toàn, không chia sẻ với bên thứ ba dưới bất kỳ hình thức nào.
+        </p>
+</div>
+</div>
+</div>
+<!-- Notification Toast for Interactive feedback -->
+<div class="fixed bottom-6 right-6 z-50 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none" id="auth-toast">
+<div class="bg-primary text-on-primary px-5 py-3.5 rounded-full shadow-xl flex items-center gap-3 font-label-md text-label-md">
+<span class="material-symbols-outlined text-secondary-fixed" id="toast-icon">check_circle</span>
+<span id="toast-msg">Thông báo thành công</span>
+</div>
+</div>
+</div>
+<script>
+  function switchAuthTab(tab) {
+    const loginBtn = document.getElementById('tab-login-btn');
+    const registerBtn = document.getElementById('tab-register-btn');
+    const loginContainer = document.getElementById('login-form-container');
+    const registerContainer = document.getElementById('register-form-container');
+
+    if (tab === 'login') {
+      // Button states
+      loginBtn.className = "flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-primary bg-primary shadow-sm flex items-center justify-center gap-2";
+      registerBtn.className = "flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-surface-variant hover:text-primary flex items-center justify-center gap-2";
+      
+      // Container visibility
+      loginContainer.classList.remove('hidden');
+      registerContainer.classList.add('hidden');
+    } else {
+      // Button states
+      registerBtn.className = "flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-primary bg-primary shadow-sm flex items-center justify-center gap-2";
+      loginBtn.className = "flex-1 py-2.5 px-6 rounded-full font-label-md text-label-md transition-all duration-300 text-on-surface-variant hover:text-primary flex items-center justify-center gap-2";
+      
+      // Container visibility
+      registerContainer.classList.remove('hidden');
+      loginContainer.classList.add('hidden');
+    }
+  }
+
+  function togglePasswordVisibility(inputId, btn) {
+    const input = document.getElementById(inputId);
+    const icon = btn.querySelector('.material-symbols-outlined');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.textContent = 'visibility_off';
+    } else {
+      input.type = 'password';
+      icon.textContent = 'visibility';
+    }
+  }
+
+  function toggleBabyFields(isChecked) {
+    const container = document.getElementById('baby-info-inputs');
+    if (isChecked) {
+      container.classList.remove('hidden');
+    } else {
+      container.classList.add('hidden');
+    }
+  }
+
+  function showToast(message, isSuccess = true) {
+    const toast = document.getElementById('auth-toast');
+    const msgElem = document.getElementById('toast-msg');
+    const iconElem = document.getElementById('toast-icon');
+
+    msgElem.textContent = message;
+    iconElem.textContent = isSuccess ? 'check_circle' : 'info';
+    
+    toast.classList.remove('translate-y-24', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+
+    setTimeout(() => {
+      toast.classList.add('translate-y-24', 'opacity-0');
+      toast.classList.remove('translate-y-0', 'opacity-100');
+    }, 3200);
+  }
+
+  function handleAuthSubmit(event, type) {
+    event.preventDefault();
+    if (type === 'login') {
+      showToast('Đăng nhập thành công! Đang chuyển hướng về NEXXI...');
+    } else {
+      showToast('Đăng ký thành viên thành công! Quà tặng 50K đã sẵn sàng 🎉');
+    }
+  }
+
+  function notifySocialLogin(provider) {
+    showToast(`Đang kết nối tài khoản ${provider} an toàn...`);
+  }
+</script></main><script src="./site.js"></script></body></html>

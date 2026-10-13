@@ -1,0 +1,56 @@
+name: nexxi-preview
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: preview_only
+      MARIADB_ROOT_PASSWORD: preview_root_only
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  wordpress:
+    image: wordpress:php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: preview_only
+      WORDPRESS_DEBUG: "1"
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/themes/nexxi-kids:/var/www/html/wp-content/themes/nexxi-kids
+      - ./wp-content/plugins/nexxi-kids-commerce:/var/www/html/wp-content/plugins/nexxi-kids-commerce
+      - ./stitch-export:/preview-assets:ro
+      - ./docker-preview-assets:/preview-import:ro
+  cli:
+    image: wordpress:cli-php8.3
+    profiles: ["tools"]
+    user: "33:33"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: preview_only
+    volumes:
+      - wp_data:/var/www/html
+      - ./wp-content/themes/nexxi-kids:/var/www/html/wp-content/themes/nexxi-kids
+      - ./wp-content/plugins/nexxi-kids-commerce:/var/www/html/wp-content/plugins/nexxi-kids-commerce
+      - ./stitch-export:/preview-assets:ro
+      - ./docker-preview-assets:/preview-import:ro
+volumes:
+  db_data:
+  wp_data:
