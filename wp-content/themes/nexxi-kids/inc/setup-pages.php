@@ -9,7 +9,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const NEXXI_KIDS_PAGES_VERSION = '1';
+const NEXXI_KIDS_PAGES_VERSION = '2';
 
 function nexxi_kids_default_pages() {
 	return array(
@@ -50,19 +50,24 @@ function nexxi_kids_default_pages() {
 	);
 }
 
-/** True when any post of type page (any status) already uses the slug. */
-function nexxi_kids_page_slug_taken( $slug ) {
-	$found = get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids', 'suppress_filters' => true ) );
-	if ( $found ) { return true; }
-	$trashed = get_posts( array( 'post_type' => 'page', 'name' => $slug . '__trashed', 'post_status' => 'trash', 'numberposts' => 1, 'fields' => 'ids', 'suppress_filters' => true ) );
-	return (bool) $trashed;
+/**
+ * Status of the page that owns a slug: 'publish', another status (draft,
+ * private, pending, future) or '' when the slug is free. Trashed pages do not
+ * count: WordPress renames their slug to "slug__trashed", so the link is broken.
+ */
+function nexxi_kids_page_slug_status( $slug ) {
+	$found = get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => array( 'publish', 'draft', 'pending', 'private', 'future' ), 'numberposts' => 1, 'suppress_filters' => true ) );
+	return $found ? $found[0]->post_status : '';
 }
 
-/** Create missing pages; returns the slugs created. */
+/** Create missing pages; returns array( created slugs, unpublished slugs ). */
 function nexxi_kids_ensure_pages() {
 	$created = array();
+	$hidden = array();
 	foreach ( nexxi_kids_default_pages() as $slug => $page ) {
-		if ( nexxi_kids_page_slug_taken( $slug ) ) { continue; }
+		$status = nexxi_kids_page_slug_status( $slug );
+		if ( 'publish' === $status ) { continue; }
+		if ( $status ) { $hidden[] = $slug; continue; } // Never publish or edit the owner's own draft/private page.
 		$id = wp_insert_post( array(
 			'post_type'    => 'page',
 			'post_status'  => 'publish',
@@ -71,32 +76,50 @@ function nexxi_kids_ensure_pages() {
 			'post_content' => $page['content'],
 			'post_author'  => get_current_user_id(),
 		), true );
-		if ( ! is_wp_error( $id ) ) { $created[] = $slug; }
+		if ( is_wp_error( $id ) ) { continue; }
+		// Another post may already own the slug (e.g. a trashed page restored later): keep the link working.
+		if ( get_post_field( 'post_name', $id ) !== $slug ) { wp_update_post( array( 'ID' => $id, 'post_name' => $slug ) ); }
+		$created[] = $slug;
 	}
-	return $created;
+	return array( $created, $hidden );
 }
 
 function nexxi_kids_maybe_setup_pages() {
-	if ( NEXXI_KIDS_PAGES_VERSION === get_option( 'nexxi_kids_pages_version' ) || ! current_user_can( 'publish_pages' ) ) { return; }
-	$created = nexxi_kids_ensure_pages();
-	update_option( 'nexxi_kids_pages_version', NEXXI_KIDS_PAGES_VERSION, false );
-	if ( $created ) {
-		flush_rewrite_rules( false );
-		set_transient( 'nexxi_kids_pages_created', $created, HOUR_IN_SECONDS );
+	if ( ! current_user_can( 'publish_pages' ) ) { return; }
+	if ( NEXXI_KIDS_PAGES_VERSION !== get_option( 'nexxi_kids_pages_version' ) ) {
+		list( $created ) = nexxi_kids_ensure_pages();
+		update_option( 'nexxi_kids_pages_version', NEXXI_KIDS_PAGES_VERSION, false );
+		if ( $created ) {
+			flush_rewrite_rules( false );
+			set_transient( 'nexxi_kids_pages_created', $created, HOUR_IN_SECONDS );
+		}
 	}
 }
 add_action( 'admin_init', 'nexxi_kids_maybe_setup_pages' );
 add_action( 'after_switch_theme', static function () { delete_option( 'nexxi_kids_pages_version' ); } );
 
 function nexxi_kids_pages_notice() {
+	if ( ! current_user_can( 'publish_pages' ) ) { return; }
 	$created = get_transient( 'nexxi_kids_pages_created' );
-	if ( ! $created || ! current_user_can( 'publish_pages' ) ) { return; }
-	delete_transient( 'nexxi_kids_pages_created' );
-	$links = array();
-	foreach ( $created as $slug ) {
-		$page = get_page_by_path( $slug );
-		if ( $page ) { $links[] = '<a href="' . esc_url( get_edit_post_link( $page->ID ) ) . '">' . esc_html( get_the_title( $page ) ) . '</a>'; }
+	if ( $created ) {
+		delete_transient( 'nexxi_kids_pages_created' );
+		$links = array();
+		foreach ( $created as $slug ) {
+			$page = get_page_by_path( $slug );
+			if ( $page ) { $links[] = '<a href="' . esc_url( get_edit_post_link( $page->ID ) ) . '">' . esc_html( get_the_title( $page ) ) . '</a>'; }
+		}
+		echo '<div class="notice notice-success is-dismissible"><p><strong>NEXXI Kids:</strong> đã tạo các trang còn thiếu: ' . wp_kses_post( implode( ', ', $links ) ) . '. Mẹ có thể sửa nội dung trong trình soạn thảo, khung giao diện vẫn theo thiết kế NEXXI.</p></div>';
 	}
-	echo '<div class="notice notice-success is-dismissible"><p><strong>NEXXI Kids:</strong> đã tạo các trang còn thiếu: ' . wp_kses_post( implode( ', ', $links ) ) . '. Mẹ có thể sửa nội dung trong trình soạn thảo, khung giao diện vẫn theo thiết kế NEXXI.</p></div>';
+	// Pages the theme links to but which are not published: the owner decides.
+	$links = array();
+	foreach ( array_keys( nexxi_kids_default_pages() ) as $slug ) {
+		$found = get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => array( 'draft', 'pending', 'private', 'future' ), 'numberposts' => 1, 'suppress_filters' => true ) );
+		if ( $found && ! get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => 'publish', 'numberposts' => 1, 'fields' => 'ids', 'suppress_filters' => true ) ) ) {
+			$links[] = '<a href="' . esc_url( get_edit_post_link( $found[0]->ID ) ) . '">' . esc_html( get_the_title( $found[0] ) ) . '</a> (/' . esc_html( $slug ) . '/)';
+		}
+	}
+	if ( $links ) {
+		echo '<div class="notice notice-warning"><p><strong>NEXXI Kids:</strong> các trang sau đang được menu/footer liên kết nhưng <b>chưa xuất bản</b> nên khách sẽ thấy lỗi 404: ' . wp_kses_post( implode( ', ', $links ) ) . '. Mẹ mở trang và bấm <b>Xuất bản</b> nhé.</p></div>';
+	}
 }
 add_action( 'admin_notices', 'nexxi_kids_pages_notice' );
