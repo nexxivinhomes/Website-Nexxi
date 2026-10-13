@@ -303,7 +303,7 @@ function nexxi_kids_render_stitch( $screen ) {
 			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_stitch_commerce_main( do_shortcode( '[woocommerce_checkout]' ), 'Thanh Toán Đơn Hàng' ) );
 			break;
 		case 'account':
-			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_stitch_commerce_main( do_shortcode( '[woocommerce_my_account]' ) ) );
+			$html = nexxi_kids_stitch_account( $html );
 			break;
 		case 'page':
 			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_page_main() );

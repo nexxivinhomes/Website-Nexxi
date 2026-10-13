@@ -113,3 +113,56 @@ body > header nav a span { white-space: nowrap !important; }
 .woocommerce-mini-cart dl.variation dd p { margin: 0; display: inline; }
 .woocommerce-table--order-details .wc-item-meta li { background: rgba(255,218,210,.6); color: #3f0300; border-radius: 999px; padding: 2px 10px; }
 .woocommerce-table--order-details .wc-item-meta li p { display: inline; margin: 0; }
+/* Account endpoints (WooCommerce markup inside the Stitch account layout). */
+.nexxi-account { color: #1b1c1a; font-family: "Nunito Sans", sans-serif; font-size: 14px; line-height: 1.6; }
+.nexxi-account h2, .nexxi-account h3, .nexxi-account legend { color: #031444; font-family: Quicksand, sans-serif; font-weight: 700; font-size: 18px; margin: 20px 0 10px; }
+.nexxi-account > :first-child, .nexxi-account form > :first-child { margin-top: 0; }
+.nexxi-account p { margin: 0 0 12px; }
+.nexxi-account a:not(.button) { color: #ae3115; }
+.nexxi-account mark { background: #ffdad2; color: #3d0600; border-radius: 999px; padding: 1px 8px; font-weight: 700; }
+.nexxi-account table.shop_table { width: 100%; border-collapse: separate; border-spacing: 0; background: #f5f3ef; border-radius: 20px; overflow: hidden; margin: 0 0 20px; border: 0; }
+.nexxi-account table.shop_table th { background: #efeeea; color: #031444; font-family: Quicksand, sans-serif; font-weight: 700; font-size: 13px; text-align: left; padding: 12px 14px; border: 0; }
+.nexxi-account table.shop_table td { padding: 12px 14px; border: 0; border-top: 1px solid #e4e2de; vertical-align: middle; }
+.nexxi-account table.shop_table tfoot th, .nexxi-account table.shop_table tfoot td { background: #fff; }
+.nexxi-account .woocommerce-orders-table__cell-order-actions { text-align: right; }
+.nexxi-account .button, .nexxi-account button[type="submit"], .nexxi-account input[type="submit"] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #fd6a49; color: #fff !important; border: 0; border-radius: 999px; padding: 9px 18px; font-family: Quicksand, sans-serif; font-weight: 700; font-size: 13px; line-height: 1.2; cursor: pointer; text-decoration: none; transition: background .2s; margin: 2px; }
+.nexxi-account .button:hover, .nexxi-account button[type="submit"]:hover { background: #ae3115; }
+.nexxi-account .woocommerce-button.view, .nexxi-account .button.view { background: #031444; }
+.nexxi-account .woocommerce-button.view:hover { background: #1b2a59; }
+.nexxi-account .button.cancel { background: #efeeea; color: #031444 !important; }
+.nexxi-account form .form-row { display: flex; flex-direction: column; gap: 4px; margin: 0 0 14px; padding: 0; }
+.nexxi-account form .form-row label { color: #031444; font-family: Quicksand, sans-serif; font-weight: 600; font-size: 13px; }
+.nexxi-account form .form-row .required { color: #ae3115; text-decoration: none; border: 0; }
+.nexxi-account input.input-text, .nexxi-account select, .nexxi-account textarea, .nexxi-account .select2-container .select2-selection--single { width: 100%; background: #f5f3ef; border: 1px solid transparent; border-radius: 999px; min-height: 44px; padding: 10px 16px; font-size: 14px; color: #1b1c1a; outline: none; transition: background .2s, box-shadow .2s; box-sizing: border-box; }
+.nexxi-account textarea { border-radius: 18px; }
+.nexxi-account input.input-text:focus, .nexxi-account select:focus, .nexxi-account textarea:focus { background: #fff; box-shadow: 0 0 0 2px #fd6a49; }
+.nexxi-account .select2-container .select2-selection--single .select2-selection__rendered { line-height: 22px; padding: 0; }
+.nexxi-account .select2-container .select2-selection--single .select2-selection__arrow { top: 9px; right: 10px; }
+.nexxi-account span em, .nexxi-account .form-row em { color: #767680; font-size: 12px; font-style: normal; }
+.nexxi-account fieldset { border: 0; background: #f5f3ef; border-radius: 24px; padding: 18px 20px 6px; margin: 20px 0; }
+.nexxi-account fieldset legend { float: left; width: 100%; margin: 0 0 12px; padding: 0; }
+.nexxi-account fieldset input.input-text { background: #fff; }
+.nexxi-account .clear { clear: both; }
+@media (min-width: 768px) {
+  .nexxi-account .woocommerce-EditAccountForm, .nexxi-account .woocommerce-address-fields__field-wrapper { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .nexxi-account .woocommerce-EditAccountForm > *, .nexxi-account .woocommerce-address-fields__field-wrapper > .form-row-wide { grid-column: 1 / -1; }
+  .nexxi-account .woocommerce-EditAccountForm > .form-row-first { grid-column: 1; }
+  .nexxi-account .woocommerce-EditAccountForm > .form-row-last { grid-column: 2; }
+  .nexxi-account .woocommerce-address-fields__field-wrapper > .form-row-first { grid-column: 1; }
+  .nexxi-account .woocommerce-address-fields__field-wrapper > .form-row-last { grid-column: 2; }
+}
+.nexxi-account .woocommerce-Addresses, .nexxi-account .u-columns { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 12px; }
+@media (min-width: 768px) { .nexxi-account .woocommerce-Addresses, .nexxi-account .u-columns { grid-template-columns: 1fr 1fr; } }
+.nexxi-account .woocommerce-Addresses::before, .nexxi-account .woocommerce-Addresses::after, .nexxi-account .u-columns::before, .nexxi-account .u-columns::after { display: none; }
+.nexxi-account .woocommerce-Address, .nexxi-account .u-column1, .nexxi-account .u-column2 { float: none; width: auto; background: #f5f3ef; border-radius: 24px; padding: 18px 20px; }
+.nexxi-account .woocommerce-Address-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.nexxi-account .woocommerce-Address-title h2, .nexxi-account .woocommerce-Address-title h3 { margin: 0; font-size: 16px; }
+.nexxi-account .woocommerce-Address-title .edit { background: #fff; border-radius: 999px; padding: 4px 12px; font-family: Quicksand, sans-serif; font-weight: 700; font-size: 12px; text-decoration: none; }
+.nexxi-account address { font-style: normal; color: #45464f; line-height: 1.7; }
+.nexxi-account .woocommerce-customer-details, .nexxi-account .woocommerce-order-details { margin-top: 16px; }
+.nexxi-account .woocommerce-order-details .product-name a { color: #031444; font-weight: 700; }
+.nexxi-account .woocommerce-pagination { display: flex; justify-content: space-between; gap: 8px; }
+.nexxi-account .woocommerce-message, .nexxi-account .woocommerce-info, .nexxi-account .woocommerce-error, .nexxi-account-notices .woocommerce-message, .nexxi-account-notices .woocommerce-info, .nexxi-account-notices .woocommerce-error { list-style: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: #fff; border: 0; border-left: 4px solid #fd6a49; border-radius: 16px; padding: 12px 16px; margin: 0 0 16px; box-shadow: 0 4px 16px rgba(27,42,89,.05); color: #031444; }
+.nexxi-account-notices .woocommerce-error, .nexxi-account .woocommerce-error { border-left-color: #ba1a1a; }
+.nexxi-account .woocommerce-message::before, .nexxi-account .woocommerce-info::before, .nexxi-account .woocommerce-error::before, .nexxi-account-notices *::before { display: none; }
+.nexxi-account-notices:empty { display: none; }
