@@ -106,6 +106,15 @@
 		}
 	}
 
+	var FONT_ZONES = {
+		font_header:      { sel: 'body > header', label: '① Font Header – Đầu trang (Menu & Thanh thông báo)' },
+		font_banner:      { sel: '[data-nxr="home-hero"] h1, [data-nxr="shop-hero"] h1, [data-nxr="flash-hero"] h1, [data-nx="page-hero"] h1, [data-nxr="home-lookbook"] h3', label: '② Font Banner – Tiêu đề lớn trên Banner' },
+		font_banner_desc: { sel: '[data-nxr="home-hero"] p, [data-nxr="shop-hero"] p, [data-nxr="flash-hero"] p, [data-nx="page-hero"] p, [data-nxr="home-lookbook"] p', label: '③ Font Banner – Chữ mô tả phụ trong Banner' },
+		font_heading:     { sel: '[data-nxr="home-categories"] h2, [data-nxr="home-bestsellers"] h2, [data-nxr="home-commit"] h2, main h2, main h3', label: '④ Font Tiêu đề Khu vực & Tên sản phẩm' },
+		font_body:        { sel: '[data-nxr="home-categories"] p, .nexxi-prose, .nexxi-stitch-commerce .woocommerce, .nexxi-account, footer p', label: '⑤ Font Văn bản & Nội dung chi tiết' },
+		font_button:      { sel: '[data-nx="home-cta-shop"], [data-nexxi-pdp-buy], [data-nexxi-add], [data-nx="pdp-price"], button', label: '⑥ Font Nút bấm, Nhãn & Giá tiền' }
+	};
+
 	api.bind('preview-ready', function () {
 		api.preview.bind('nexxi-studio-region', function (id) {
 			activeEl = id ? document.querySelector('[data-nxr="' + id + '"]') : null;
@@ -116,6 +125,23 @@
 			refresh();
 		});
 		api.preview.bind('nexxi-studio-field', function (key) {
+			if (FONT_ZONES[key]) {
+				var z = FONT_ZONES[key];
+				var list = document.querySelectorAll(z.sel);
+				if (list.length) {
+					activeEl = list[0];
+					activeTag.textContent = '🔤 ' + z.label;
+					reveal(activeEl);
+					refresh();
+					Array.prototype.slice.call(list, 0, 8).forEach(function (node) {
+						node.classList.remove('nxs-flash');
+						void node.offsetWidth;
+						node.classList.add('nxs-flash');
+						setTimeout(function () { node.classList.remove('nxs-flash'); }, 1800);
+					});
+				}
+				return;
+			}
 			var el = null;
 			document.querySelectorAll('[data-nxe]').forEach(function (n) {
 				if (!el && n.getAttribute('data-nxe').split(',').indexOf(key) !== -1) { el = n; }

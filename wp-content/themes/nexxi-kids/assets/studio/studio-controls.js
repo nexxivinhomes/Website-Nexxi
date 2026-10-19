@@ -52,5 +52,30 @@
 			e.preventDefault();
 			api.previewer.previewUrl.set($(this).data('url'));
 		});
+
+		// Keep custom font slot labels in all zone dropdowns updated live when a font file is uploaded or named.
+		function refreshCustomFontLabels() {
+			[1, 2, 3].forEach(function (slot) {
+				var nameSetting = api('nexxi_studio[custom_font_' + slot + '_name]');
+				var fileSetting = api('nexxi_studio[custom_font_' + slot + '_file]');
+				var name = nameSetting ? $.trim(nameSetting.get() || '') : '';
+				var file = fileSetting ? $.trim(fileSetting.get() || '') : '';
+				if (!name && file) {
+					var base = file.split('/').pop().replace(/\.[^.]+$/, '');
+					name = base.replace(/[-_]+/g, ' ');
+				}
+				var label = '📁 Font tải lên #' + slot + ' (tải file ở mục bên dưới)';
+				if (name && file) {
+					label = '📁 Font tải lên #' + slot + ': ' + name;
+				} else if (name) {
+					label = '📁 Font tải lên #' + slot + ': ' + name + ' (chưa chọn file)';
+				}
+				$('select[data-customize-setting-link^="nexxi_studio[font_"] option[value="custom_' + slot + '"]').text(label);
+			});
+		}
+		[1, 2, 3].forEach(function (slot) {
+			api('nexxi_studio[custom_font_' + slot + '_name]', function (s) { s.bind(refreshCustomFontLabels); });
+			api('nexxi_studio[custom_font_' + slot + '_file]', function (s) { s.bind(refreshCustomFontLabels); });
+		});
 	});
 })(wp.customize, jQuery);

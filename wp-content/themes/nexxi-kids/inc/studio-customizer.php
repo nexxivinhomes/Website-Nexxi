@@ -41,6 +41,19 @@ function nexxi_studio_sanitize_check( $value ) {
 function nexxi_studio_sanitize_badge( $value ) {
 	return in_array( $value, array( 'soft', 'hot', 'pink' ), true ) ? $value : 'soft';
 }
+function nexxi_studio_sanitize_font_choice( $value ) {
+	$value = trim( (string) $value );
+	if ( '' === $value ) { return ''; }
+	if ( in_array( $value, array( 'custom_1', 'custom_2', 'custom_3' ), true ) ) { return $value; }
+	$google = nexxi_studio_google_fonts();
+	return isset( $google[ $value ] ) ? $value : '';
+}
+function nexxi_studio_sanitize_font_file( $value ) {
+	$url = esc_url_raw( trim( (string) $value ) );
+	if ( '' === $url ) { return ''; }
+	$ext = strtolower( pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
+	return in_array( $ext, array( 'woff2', 'woff', 'ttf', 'otf' ), true ) ? $url : '';
+}
 
 function nexxi_studio_customize( WP_Customize_Manager $wp ) {
 	nexxi_studio_define_controls();
@@ -87,6 +100,7 @@ function nexxi_studio_customize( WP_Customize_Manager $wp ) {
 		if ( 'header-menu' === $region ) { nexxi_studio_menu_controls( $wp, $section, $priority ); }
 		if ( 'footer-social' === $region ) { nexxi_studio_social_controls( $wp, $section, $priority ); }
 		if ( 'global-colors' === $region ) { nexxi_studio_color_controls( $wp, $section, $priority ); }
+		if ( 'global-fonts' === $region ) { nexxi_studio_font_controls( $wp, $section, $priority ); }
 		if ( 'global-pages' === $region ) { nexxi_studio_pages_control( $wp, $section, $priority ); }
 	}
 
@@ -159,6 +173,93 @@ function nexxi_studio_color_controls( WP_Customize_Manager $wp, $section, $prior
 	foreach ( nexxi_studio_colors() as $key => $color ) {
 		$wp->add_setting( "nexxi_studio[$key]", array( 'type' => 'theme_mod', 'default' => $color[2], 'sanitize_callback' => 'sanitize_hex_color', 'transport' => 'refresh' ) );
 		$wp->add_control( new WP_Customize_Color_Control( $wp, "nexxi_studio[$key]", array( 'label' => $color[0], 'section' => $section, 'priority' => $priority++ ) ) );
+	}
+}
+
+function nexxi_studio_font_controls( WP_Customize_Manager $wp, $section, $priority ) {
+	$wp->add_control( new Nexxi_Studio_Html_Control( $wp, 'nxs_font_help', array(
+		'section'  => $section,
+		'settings' => array(),
+		'priority' => $priority++,
+		'html'     => '<p><b>Chỉnh sửa Font chữ theo từng khu vực rõ ràng:</b></p>'
+			. '<ul style="margin:6px 0 8px 16px;list-style:disc">'
+			. '<li><b>Bấm vào ô chọn font bất kỳ:</b> trang xem trước bên phải sẽ <b>tự cuộn đến và nhấp nháy khung cam</b> đúng vị trí chữ đó để bạn dễ nhận biết.</li>'
+			. '<li>Có sẵn <b>18 font Google chuẩn tiếng Việt</b> hoặc bạn có thể <b>tải file font riêng (.woff2, .woff, .ttf, .otf)</b> ở cuối mục này rồi chọn <b>📁 Font tải lên #1/#2/#3</b>.</li>'
+			. '<li>Chọn <b>“— Mặc định theo thiết kế —”</b> để quay về font gốc của vùng đó.</li>'
+			. '</ul>',
+	) ) );
+
+	$choices = nexxi_studio_font_choices();
+	foreach ( nexxi_studio_font_zones() as $key => $zone ) {
+		$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_fh_' . $key, array(
+			'label'       => $zone[0],
+			'description' => $zone[1],
+			'section'     => $section,
+			'settings'    => array(),
+			'priority'    => $priority++,
+		) ) );
+		$wp->add_setting( "nexxi_studio[$key]", array(
+			'type'              => 'theme_mod',
+			'default'           => '',
+			'sanitize_callback' => 'nexxi_studio_sanitize_font_choice',
+			'transport'         => 'refresh',
+		) );
+		$wp->add_control( "nexxi_studio[$key]", array(
+			'label'       => 'Chọn font cho khu vực này',
+			'description' => '💡 ' . $zone[2],
+			'section'     => $section,
+			'type'        => 'select',
+			'choices'     => $choices,
+			'priority'    => $priority++,
+		) );
+	}
+
+	// Custom font upload slots (1..3).
+	$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_fh_upload_intro', array(
+		'label'       => '📁 Tải lên Font riêng của bạn (Upload Font)',
+		'description' => 'Hỗ trợ file <b>.woff2</b> (khuyên dùng vì nhẹ và nét nhất), <b>.woff</b>, <b>.ttf</b>, <b>.otf</b>. Sau khi tải file lên khe #1, #2 hoặc #3, hãy kéo lên trên và chọn <b>“📁 Font tải lên #1 / #2 / #3”</b> cho khu vực bạn muốn áp dụng.',
+		'section'     => $section,
+		'settings'    => array(),
+		'priority'    => $priority++,
+	) ) );
+
+	for ( $slot = 1; $slot <= 3; $slot++ ) {
+		$name_key = "custom_font_{$slot}_name";
+		$file_key = "custom_font_{$slot}_file";
+
+		$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, "nxs_fh_slot_{$slot}", array(
+			'label'    => "Khe Font tải lên #{$slot}",
+			'section'  => $section,
+			'settings' => array(),
+			'priority' => $priority++,
+		) ) );
+
+		$wp->add_setting( "nexxi_studio[$name_key]", array(
+			'type'              => 'theme_mod',
+			'default'           => '',
+			'sanitize_callback' => 'sanitize_text_field',
+			'transport'         => 'postMessage',
+		) );
+		$wp->add_control( "nexxi_studio[$name_key]", array(
+			'label'       => "Tên gợi nhớ Font #{$slot} (tùy chọn)",
+			'section'     => $section,
+			'type'        => 'text',
+			'priority'    => $priority++,
+			'input_attrs' => array( 'placeholder' => 'Vd: SVN Gilroy, UTM Avo, Font Banner...' ),
+		) );
+
+		$wp->add_setting( "nexxi_studio[$file_key]", array(
+			'type'              => 'theme_mod',
+			'default'           => '',
+			'sanitize_callback' => 'nexxi_studio_sanitize_font_file',
+			'transport'         => 'refresh',
+		) );
+		$wp->add_control( new WP_Customize_Upload_Control( $wp, "nexxi_studio[$file_key]", array(
+			'label'       => "File Font #{$slot} (.woff2, .woff, .ttf, .otf)",
+			'description' => 'Bấm “Chọn tập tin” để tải file font từ máy tính lên.',
+			'section'     => $section,
+			'priority'    => $priority++,
+		) ) );
 	}
 }
 
