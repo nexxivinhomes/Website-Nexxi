@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Customizer panels, in display order. */
 function nexxi_studio_panels() {
 	return array(
-		'nxs_global'  => array( '① Toàn trang – màu sắc, liên hệ', 'Thiết lập dùng chung cho mọi trang: màu thương hiệu, thông tin cửa hàng, nội dung các trang phụ.' ),
+		'nxs_global'  => array( '① Toàn trang – màu sắc, font chữ, liên hệ', 'Thiết lập dùng chung cho mọi trang: màu thương hiệu, font chữ từng khu vực, thông tin cửa hàng, nội dung các trang phụ.' ),
 		'nxs_header'  => array( '② Header – đầu trang', 'Phần trên cùng, xuất hiện ở mọi trang: thanh thông báo chạy, logo, menu, ô tìm kiếm.' ),
 		'nxs_home'    => array( '③ Trang chủ', 'Các khu vực của trang chủ, theo thứ tự từ trên xuống dưới.' ),
 		'nxs_shop'    => array( '④ Cửa hàng', 'Trang danh sách sản phẩm (/cua-hang/). Sản phẩm, giá, bộ lọc lấy tự động từ WooCommerce.' ),
@@ -30,6 +30,7 @@ function nexxi_studio_panels() {
 function nexxi_studio_regions() {
 	return array(
 		'global-colors'     => array( 'nxs_global', 'Màu thương hiệu', '', false, 'Màu chủ đạo áp dụng cho toàn bộ website.' ),
+		'global-fonts'      => array( 'nxs_global', 'Font chữ & Tải font riêng', '', false, 'Chia rõ Font Header, Font Banner, Font Tiêu đề, Font Văn bản, Font Nút bấm/Giá và cho phép tải lên file font (.woff2, .woff, .ttf, .otf).' ),
 		'global-pages'      => array( 'nxs_global', 'Nội dung các trang phụ', '', false, 'Giới thiệu, Liên hệ, Đổi trả, Vận chuyển… soạn bằng trình soạn thảo WordPress.' ),
 		'header-ticker'     => array( 'nxs_header', 'Thanh thông báo chạy', '', true, 'Dải chữ chạy ngang trên cùng.' ),
 		'header-brand'      => array( 'nxs_header', 'Logo & nhãn thương hiệu', '', false, 'Góc trên bên trái.' ),
@@ -294,7 +295,8 @@ function nexxi_studio_apply_late( $html ) {
 		}
 	}
 	$html = nexxi_studio_footer_social( $html );
-	return nexxi_studio_apply_colors( $html );
+	$html = nexxi_studio_apply_colors( $html );
+	return nexxi_studio_apply_fonts( $html );
 }
 
 /* ------------------------------------------------------------------ header */
@@ -473,3 +475,300 @@ function nexxi_studio_stylesheet_tag( $url, $file ) {
 	$css = str_ireplace( array_keys( $map ), array_values( $map ), file_get_contents( $file ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 	return '<style id="nexxi-stitch-css">' . $css . '</style>';
 }
+
+/* ------------------------------------------------------------------ fonts & custom font uploads */
+
+/** Allow uploading .woff2, .woff, .ttf, .otf font files in WordPress Media Library / Customizer. */
+function nexxi_studio_font_mime_types() {
+	return array(
+		'woff2' => 'font/woff2',
+		'woff'  => 'font/woff',
+		'ttf'   => 'font/ttf',
+		'otf'   => 'font/otf',
+	);
+}
+add_filter( 'upload_mimes', static function ( $mimes ) {
+	if ( current_user_can( 'edit_theme_options' ) || current_user_can( 'upload_files' ) ) {
+		foreach ( nexxi_studio_font_mime_types() as $ext => $mime ) {
+			$mimes[ $ext ] = $mime;
+		}
+	}
+	return $mimes;
+} );
+add_filter( 'wp_check_filetype_and_ext', static function ( $data, $file, $filename ) {
+	if ( ! empty( $data['ext'] ) && ! empty( $data['type'] ) ) {
+		return $data;
+	}
+	$ext = strtolower( pathinfo( (string) $filename, PATHINFO_EXTENSION ) );
+	$allowed = nexxi_studio_font_mime_types();
+	if ( isset( $allowed[ $ext ] ) ) {
+		$data['ext']             = $ext;
+		$data['type']            = $allowed[ $ext ];
+		$data['proper_filename'] = $filename;
+	}
+	return $data;
+}, 10, 3 );
+
+/** Curated Vietnamese-compatible Google Fonts: family => [label, Google CSS2 spec, fallback]. */
+function nexxi_studio_google_fonts() {
+	return array(
+		'Quicksand'          => array( 'Quicksand (Mặc định tiêu đề – Tròn dịu, đáng yêu)', 'Quicksand:wght@400..700', 'sans-serif' ),
+		'Nunito Sans'        => array( 'Nunito Sans (Mặc định văn bản – Mềm mại, dễ đọc)', 'Nunito+Sans:ital,opsz,wght@0,6..12,300..800;1,6..12,300..800', 'sans-serif' ),
+		'Baloo 2'            => array( 'Baloo 2 (Tròn mập, hoạt hình vui nhộn cho bé)', 'Baloo+2:wght@400..800', 'sans-serif' ),
+		'Comfortaa'          => array( 'Comfortaa (Bo tròn hiện đại, mềm mại)', 'Comfortaa:wght@400..700', 'sans-serif' ),
+		'Mali'               => array( 'Mali (Chữ viết tay trẻ thơ đáng yêu)', 'Mali:ital,wght@0,400;0,500;0,600;0,700;1,400', 'cursive' ),
+		'Patrick Hand'       => array( 'Patrick Hand (Chữ viết tay gọn gàng, thân thiện)', 'Patrick+Hand', 'cursive' ),
+		'Paytone One'        => array( 'Paytone One (Đậm đà, nổi bật cho tiêu đề Banner)', 'Paytone+One', 'sans-serif' ),
+		'Nunito'             => array( 'Nunito (Bo tròn nhẹ, ấm áp)', 'Nunito:ital,wght@0,400..800;1,400..700', 'sans-serif' ),
+		'Be Vietnam Pro'     => array( 'Be Vietnam Pro (Thiết kế riêng cho tiếng Việt, sắc nét)', 'Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400', 'sans-serif' ),
+		'Plus Jakarta Sans'  => array( 'Plus Jakarta Sans (Thời trang Hàn Quốc hiện đại)', 'Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..700', 'sans-serif' ),
+		'Lexend'             => array( 'Lexend (Rõ ràng, thoáng mắt, cực dễ đọc)', 'Lexend:wght@300..800', 'sans-serif' ),
+		'Montserrat'         => array( 'Montserrat (Sang trọng, khỏe khoắn)', 'Montserrat:ital,wght@0,400..800;1,400..700', 'sans-serif' ),
+		'Mulish'             => array( 'Mulish (Tối giản, thanh thoát)', 'Mulish:ital,wght@0,400..800;1,400..700', 'sans-serif' ),
+		'Inter'              => array( 'Inter (Chuẩn giao diện hiện đại, gọn gàng)', 'Inter:wght@400..800', 'sans-serif' ),
+		'Playfair Display'   => array( 'Playfair Display (Có chân cổ điển – hợp Lookbook/Banner)', 'Playfair+Display:ital,wght@0,500..800;1,400..700', 'serif' ),
+		'Lora'               => array( 'Lora (Có chân mềm mại, kể chuyện)', 'Lora:ital,wght@0,400..700;1,400..700', 'serif' ),
+		'Cormorant Garamond' => array( 'Cormorant Garamond (Boutique thời trang cao cấp)', 'Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400', 'serif' ),
+		'Dancing Script'     => array( 'Dancing Script (Chữ ký nghệ thuật mềm mại)', 'Dancing+Script:wght@500..700', 'cursive' ),
+	);
+}
+
+/**
+ * Distinct visual zones for font selection:
+ * setting_key => [title, description/where-it-applies, default_hint]
+ */
+function nexxi_studio_font_zones() {
+	return array(
+		'font_header'      => array(
+			'① Font Header – Đầu trang (Menu & Thanh thông báo)',
+			'Đổi font cho toàn bộ phần đầu trang: thanh thông báo chạy trên cùng, nhãn cạnh Logo, các mục Menu chính (Trang Chủ, Giới Thiệu, Sản Phẩm, Flash Sale…) và ô tìm kiếm.',
+			'Để mặc định = tự động theo Font Tiêu đề / Nút bấm',
+		),
+		'font_banner'      => array(
+			'② Font Banner – Tiêu đề lớn trên các Banner',
+			'Đổi font cho dòng tiêu đề lớn nổi bật trên: Banner đầu Trang chủ (“Cùng Bé Khám Phá…”), 2 Banner Lookbook, Banner đầu trang Cửa hàng, Banner Flash Sale và tiêu đề lớn đầu các trang Giới thiệu / Liên hệ.',
+			'Để mặc định = Quicksand (hoặc theo Font Tiêu đề chung)',
+		),
+		'font_banner_desc' => array(
+			'③ Font Banner – Chữ mô tả phụ trong Banner',
+			'Đổi font cho đoạn văn mô tả nằm ngay dưới tiêu đề lớn trong các Banner (Trang chủ, Lookbook, Cửa hàng, Flash Sale).',
+			'Để mặc định = Nunito Sans (hoặc theo Font Văn bản chung)',
+		),
+		'font_heading'     => array(
+			'④ Font Tiêu đề Khu vực & Tên sản phẩm (Toàn trang)',
+			'Đổi font cho tiêu đề tất cả các mục trên trang (Danh mục theo độ tuổi, Flash Sale, Bán chạy, Cam kết NEXXI, Bảng size, Lời thương từ mẹ…), tên sản phẩm trong danh sách & trang chi tiết, tiêu đề cột Footer.',
+			'Mặc định thiết kế: Quicksand',
+		),
+		'font_body'        => array(
+			'⑤ Font Văn bản & Nội dung chi tiết (Toàn trang)',
+			'Đổi font cho toàn bộ đoạn văn mô tả, bài viết chi tiết sản phẩm, nội dung trang Giới thiệu / Chính sách, bảng thông tin, các ô nhập liệu (Giỏ hàng, Thanh toán, Tài khoản) và chữ nội dung Footer.',
+			'Mặc định thiết kế: Nunito Sans',
+		),
+		'font_button'      => array(
+			'⑥ Font Nút bấm, Nhãn (Badge) & Giá tiền',
+			'Đổi font cho các nút hành động (Thêm vào giỏ, Mua ngay, Khám phá ngay, Thanh toán…), các nhãn nhỏ (New In, Hot, -30%, nút chọn Size/Màu) và số Giá tiền sản phẩm.',
+			'Để mặc định = tự động theo Font Tiêu đề chung',
+		),
+	);
+}
+
+/** Label for an uploaded custom font slot (1..3). */
+function nexxi_studio_custom_font_label( $slot ) {
+	$name = trim( nexxi_studio_opt( "custom_font_{$slot}_name" ) );
+	$file = trim( nexxi_studio_opt( "custom_font_{$slot}_file" ) );
+	if ( '' === $name && '' !== $file ) {
+		$base = pathinfo( wp_parse_url( $file, PHP_URL_PATH ), PATHINFO_FILENAME );
+		$name = $base ? str_replace( array( '-', '_' ), ' ', $base ) : '';
+	}
+	if ( '' !== $name && '' !== $file ) {
+		return "📁 Font tải lên #{$slot}: {$name}";
+	}
+	if ( '' !== $name ) {
+		return "📁 Font tải lên #{$slot}: {$name} (chưa chọn file)";
+	}
+	return "📁 Font tải lên #{$slot} (tải file ở mục bên dưới)";
+}
+
+/** Dropdown choices for every font zone control. */
+function nexxi_studio_font_choices() {
+	$choices = array(
+		''         => '— Mặc định theo thiết kế —',
+		'custom_1' => nexxi_studio_custom_font_label( 1 ),
+		'custom_2' => nexxi_studio_custom_font_label( 2 ),
+		'custom_3' => nexxi_studio_custom_font_label( 3 ),
+	);
+	foreach ( nexxi_studio_google_fonts() as $family => $meta ) {
+		$choices[ $family ] = '🔤 ' . $meta[0];
+	}
+	return $choices;
+}
+
+/**
+ * Resolve a saved font key ('custom_1'..'custom_3' or a Google Font name) into:
+ * ['family' => CSS font-family name, 'fallback' => 'sans-serif', 'google' => spec|null, 'custom_slot' => int|null]
+ */
+function nexxi_studio_resolve_font( $choice ) {
+	$choice = trim( (string) $choice );
+	if ( '' === $choice ) {
+		return null;
+	}
+	if ( preg_match( '~^custom_([123])$~', $choice, $m ) ) {
+		$slot = (int) $m[1];
+		$file = trim( nexxi_studio_opt( "custom_font_{$slot}_file" ) );
+		if ( '' === $file ) {
+			return null;
+		}
+		return array(
+			'family'      => "NexxiCustomFont{$slot}",
+			'fallback'    => 'sans-serif',
+			'google'      => null,
+			'custom_slot' => $slot,
+			'file'        => $file,
+		);
+	}
+	$google = nexxi_studio_google_fonts();
+	if ( isset( $google[ $choice ] ) ) {
+		return array(
+			'family'      => $choice,
+			'fallback'    => $google[ $choice ][2],
+			'google'      => $google[ $choice ][1],
+			'custom_slot' => null,
+		);
+	}
+	return null;
+}
+
+/** Format string for @font-face src based on file URL extension. */
+function nexxi_studio_font_format( $url ) {
+	$ext = strtolower( pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
+	$map = array(
+		'woff2' => 'woff2',
+		'woff'  => 'woff',
+		'ttf'   => 'truetype',
+		'otf'   => 'opentype',
+	);
+	return isset( $map[ $ext ] ) ? $map[ $ext ] : 'woff2';
+}
+
+/** Apply site-wide and zone-specific font selections + custom @font-face rules to rendered Stitch HTML. */
+function nexxi_studio_apply_fonts( $html ) {
+	$resolved = array();
+	foreach ( array_keys( nexxi_studio_font_zones() ) as $zone_key ) {
+		$font = nexxi_studio_resolve_font( nexxi_studio_opt( $zone_key ) );
+		if ( $font ) {
+			$resolved[ $zone_key ] = $font;
+		}
+	}
+	if ( ! $resolved ) {
+		return $html;
+	}
+
+	// Collect Google Fonts & custom @font-face declarations needed.
+	$google_specs = array();
+	$custom_slots = array();
+	foreach ( $resolved as $font ) {
+		if ( ! empty( $font['google'] ) ) {
+			$google_specs[ $font['family'] ] = $font['google'];
+		}
+		if ( ! empty( $font['custom_slot'] ) ) {
+			$custom_slots[ $font['custom_slot'] ] = $font;
+		}
+	}
+
+	// Update Tailwind config fontFamily tokens for global heading, body, banner, and button/label tokens.
+	$tw_tokens = array();
+	if ( isset( $resolved['font_heading'] ) ) {
+		$fam = $resolved['font_heading']['family'];
+		foreach ( array( 'headline-lg', 'headline-lg-mobile', 'headline-md', 'headline-sm', 'title-md', 'display-lg', 'display-lg-mobile', 'label-lg', 'label-md', 'label-sm' ) as $tk ) {
+			$tw_tokens[ $tk ] = $fam;
+		}
+	}
+	if ( isset( $resolved['font_body'] ) ) {
+		$fam = $resolved['font_body']['family'];
+		foreach ( array( 'body-lg', 'body-md', 'body-sm' ) as $tk ) {
+			$tw_tokens[ $tk ] = $fam;
+		}
+	}
+	if ( isset( $resolved['font_button'] ) ) {
+		$fam = $resolved['font_button']['family'];
+		foreach ( array( 'label-lg', 'label-md', 'label-sm' ) as $tk ) {
+			$tw_tokens[ $tk ] = $fam;
+		}
+	}
+	if ( isset( $resolved['font_banner'] ) ) {
+		$fam = $resolved['font_banner']['family'];
+		foreach ( array( 'display-lg', 'display-lg-mobile' ) as $tk ) {
+			$tw_tokens[ $tk ] = $fam;
+		}
+	}
+	foreach ( $tw_tokens as $token => $family ) {
+		$safe_family = addslashes( $family );
+		$html = preg_replace(
+			'~("' . preg_quote( $token, '~' ) . '":\s*\[")[^"]+("\])~',
+			'${1}' . $safe_family . '${2}',
+			$html,
+			1
+		);
+	}
+
+	// Build CSS rules per zone.
+	$css = '';
+	foreach ( $custom_slots as $slot => $font ) {
+		$format = nexxi_studio_font_format( $font['file'] );
+		$css .= '@font-face{font-family:"' . esc_attr( $font['family'] ) . '";src:url("' . esc_url( $font['file'] ) . '") format("' . $format . '");font-weight:100 900;font-style:normal;font-display:swap;}';
+	}
+
+	// ⑤ Font Văn bản & Nội dung chi tiết toàn trang
+	if ( isset( $resolved['font_body'] ) ) {
+		$stack = '"' . esc_attr( $resolved['font_body']['family'] ) . '", ' . $resolved['font_body']['fallback'];
+		$css .= 'body, .font-body-sm, .font-body-md, .font-body-lg, .nexxi-prose, .nexxi-prose p, .nexxi-prose li, .nexxi-prose td, .nexxi-stitch-commerce .woocommerce, .nexxi-account, input, textarea, select { font-family: ' . $stack . ' !important; }';
+	}
+
+	// ④ Font Tiêu đề Khu vực & Tên sản phẩm toàn trang
+	if ( isset( $resolved['font_heading'] ) ) {
+		$stack = '"' . esc_attr( $resolved['font_heading']['family'] ) . '", ' . $resolved['font_heading']['fallback'];
+		$css .= 'h1, h2, h3, h4, h5, h6, .font-display-lg, .font-display-lg-mobile, .font-headline-lg, .font-headline-lg-mobile, .font-headline-md, .font-headline-sm, .font-title-md, .nexxi-prose h1, .nexxi-prose h2, .nexxi-prose h3, .nexxi-prose h4, .nexxi-stitch-commerce .woocommerce h1, .nexxi-stitch-commerce .woocommerce h2, .nexxi-stitch-commerce .woocommerce h3, .nexxi-account h2, .nexxi-account h3, .nexxi-account legend, .nexxi-account table.shop_table th, #size-guide .nexxi-size-guide__fields label, .nexxi-account form .form-row label { font-family: ' . $stack . ' !important; }';
+	}
+
+	// ⑥ Font Nút bấm, Nhãn (Badge) & Giá tiền (hoặc theo Font Tiêu đề nếu không chọn riêng)
+	$btn_font = isset( $resolved['font_button'] ) ? $resolved['font_button'] : ( isset( $resolved['font_heading'] ) ? $resolved['font_heading'] : null );
+	if ( $btn_font ) {
+		$stack = '"' . esc_attr( $btn_font['family'] ) . '", ' . $btn_font['fallback'];
+		$css .= '.font-label-lg, .font-label-md, .font-label-sm, button:not(.material-symbols-outlined), [data-nexxi-add], [data-nexxi-pdp-add], [data-nexxi-pdp-buy], [data-nx="pdp-price"], .nexxi-stitch-cart-totals .checkout-button, .nexxi-stitch-commerce .woocommerce a.button, .nexxi-stitch-commerce .woocommerce button.button, .nexxi-stitch-commerce .woocommerce input.button, .nexxi-stitch-commerce .woocommerce #payment #place_order, .nexxi-account .button, .nexxi-account button[type="submit"] { font-family: ' . $stack . ' !important; }';
+	}
+
+	// ① Font Header – Đầu trang (Menu, Thanh thông báo, Nhãn Logo, Ô tìm kiếm)
+	if ( isset( $resolved['font_header'] ) ) {
+		$stack = '"' . esc_attr( $resolved['font_header']['family'] ) . '", ' . $resolved['font_header']['fallback'];
+		$css .= 'body > header, body > header nav a, body > header nav span:not(.material-symbols-outlined), body > header [data-nxr="header-ticker"] span:not(.material-symbols-outlined), body > header [data-nxr="header-brand"] span:not(.material-symbols-outlined), body > header input { font-family: ' . $stack . ' !important; }';
+	}
+
+	// ② Font Banner – Tiêu đề lớn trên các Banner
+	if ( isset( $resolved['font_banner'] ) ) {
+		$stack = '"' . esc_attr( $resolved['font_banner']['family'] ) . '", ' . $resolved['font_banner']['fallback'];
+		$css .= '[data-nxr="home-hero"] h1, [data-nxr="home-hero"] h1 span:not(.material-symbols-outlined), [data-nxr="home-hero"] .font-display-lg, [data-nxr="home-hero"] .font-display-lg-mobile, [data-nxr="home-hero"] .font-title-md, [data-nxr="home-lookbook"] h2, [data-nxr="home-lookbook"] h3, [data-nxr="home-lookbook"] .font-headline-lg, [data-nxr="home-lookbook"] .font-headline-md, [data-nxr="shop-hero"] h1, [data-nxr="shop-hero"] .font-display-lg, [data-nxr="shop-hero"] .font-headline-lg, [data-nxr="flash-hero"] h1, [data-nxr="flash-hero"] h1 span:not(.material-symbols-outlined), [data-nxr="flash-hero"] .font-display-lg, [data-nxr="flash-hero"] .font-headline-lg, [data-nx="page-hero"] h1 { font-family: ' . $stack . ' !important; }';
+	}
+
+	// ③ Font Banner – Chữ mô tả phụ trong Banner
+	if ( isset( $resolved['font_banner_desc'] ) ) {
+		$stack = '"' . esc_attr( $resolved['font_banner_desc']['family'] ) . '", ' . $resolved['font_banner_desc']['fallback'];
+		$css .= '[data-nxr="home-hero"] p, [data-nxr="home-hero"] [data-nxe="home-hero__t2"], [data-nxr="home-lookbook"] p, [data-nxr="shop-hero"] p, [data-nxr="flash-hero"] p, [data-nx="page-hero"] p { font-family: ' . $stack . ' !important; }';
+	}
+
+	// Always preserve Material Symbols icon ligatures so icons never render as raw text.
+	$css .= '.material-symbols-outlined { font-family: "Material Symbols Outlined" !important; font-weight: normal; font-style: normal; }';
+
+	$inject = '';
+	if ( $google_specs ) {
+		$families = implode( '&family=', array_values( $google_specs ) );
+		$inject .= '<link id="nexxi-studio-google-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' . esc_attr( $families ) . '&display=swap">';
+	}
+	$inject .= '<style id="nexxi-studio-fonts">' . $css . '</style>';
+
+	$head_end = stripos( $html, '</head>' );
+	if ( false !== $head_end ) {
+		$html = substr( $html, 0, $head_end ) . $inject . substr( $html, $head_end );
+	}
+	return $html;
+}
+
