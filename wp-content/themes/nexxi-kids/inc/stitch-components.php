@@ -31,8 +31,8 @@ function nexxi_kids_card_sizes( array $card, $button_class, $limit = 4 ) {
  * (Flash Sale, Best Sellers, New Arrivals), Shop/Category pages, Flash Sale page,
  * Wishlist page, and Product Detail related products.
  */
-function nexxi_kids_card_unified( WC_Product $product ) {
-	$c      = nexxi_kids_card_data( $product );
+function nexxi_kids_card_unified( WC_Product $product, $context = 'regular' ) {
+	$c      = nexxi_kids_card_data( $product, $context );
 	$status = $c['soldPercent'] >= 80 ? 'Sắp Cháy Hàng' : ( $c['soldPercent'] >= 50 ? 'Bán Chạy' : 'Đang Mở Bán' );
 	ob_start(); ?>
 <article <?php echo nexxi_kids_card_attrs( $c ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> class="product-card bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
@@ -67,32 +67,32 @@ function nexxi_kids_card_unified( WC_Product $product ) {
 
 /** Shop grid card (unified layout). */
 function nexxi_kids_card_shop( WC_Product $product ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'regular' );
 }
 
 /** Home Flash Sale card (unified layout). */
 function nexxi_kids_card_home_flash( WC_Product $product ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'flash' );
 }
 
 /** Home best-seller card (unified layout). */
 function nexxi_kids_card_home_bestseller( WC_Product $product, $rank = 0 ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'regular' );
 }
 
 /** "Mẫu mới" card used on the home reference section (unified layout). */
 function nexxi_kids_card_new_arrival( WC_Product $product ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'regular' );
 }
 
 /** Flash Sale page card (unified layout). */
 function nexxi_kids_card_flash_page( WC_Product $product ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'flash' );
 }
 
 /** Accessory / related card (unified layout). */
 function nexxi_kids_card_related( WC_Product $product ) {
-	return nexxi_kids_card_unified( $product );
+	return nexxi_kids_card_unified( $product, 'regular' );
 }
 
 /** Empty-state block in Stitch style. */
