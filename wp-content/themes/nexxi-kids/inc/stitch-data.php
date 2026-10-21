@@ -257,11 +257,12 @@ function nexxi_kids_discount_percent( WC_Product $product ) {
 }
 
 /**
- * Get the active discount state of a product for a specific program:
- *  - 'regular' : Chương trình Giảm Giá Bán Sản Phẩm (🏷️ Giảm Giá SP)
- *  - 'flash'   : Chương trình Flash Sale (⚡ Flash Sale)
+ * Get the active discount state of a product for a specific program or combined frontend display:
+ *  - 'regular_admin' : Chỉ lấy chương trình Giảm Giá Bán Sản Phẩm (🏷️ Giảm Giá SP) cho bảng Admin
+ *  - 'flash_admin'   : Chỉ lấy chương trình Flash Sale (⚡ Flash Sale) cho bảng Admin
+ *  - 'combined'      : Cộng dồn cả 2 chương trình (nếu sản phẩm được bật ở cả 2 bên) cho hiển thị ngoài Web
  */
-function nexxi_kids_get_program_sale( WC_Product $product, $program = 'regular' ) {
+function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined' ) {
 	$pid   = $product->get_id();
 	$range = nexxi_kids_price_range( $product );
 	$reg   = (float) $range['regular'];
@@ -269,53 +270,107 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'regular' 
 		$reg = (float) $range['min'];
 	}
 
-	if ( 'flash' === $program ) {
-		$is_fs    = (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true );
-		$has_prod = '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true );
-		if ( '' === $is_fs && ! $has_prod && $range['regular'] > 0 && $range['min'] > 0 && $range['min'] < $range['regular'] ) {
-			$is_fs = '1';
+	// 1. Check Regular Product Discount (🏷️ Giảm Giá SP)
+	$has_prod   = '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true );
+	$prod_price = $has_prod ? (float) get_post_meta( $pid, '_nexxi_prod_sale_price', true ) : 0.0;
+	$prod_pct   = $has_prod ? (int) get_post_meta( $pid, '_nexxi_prod_sale_pct', true ) : 0;
+	if ( $has_prod && $prod_price > 0 && $prod_price < $reg ) {
+		if ( $prod_pct <= 0 ) {
+			$prod_pct = (int) round( ( 1 - $prod_price / $reg ) * 100 );
 		}
-		if ( '1' === $is_fs ) {
-			$fs_price = (float) get_post_meta( $pid, '_nexxi_fs_sale_price', true );
-			if ( $fs_price <= 0 && ! $has_prod && $range['min'] > 0 && $range['min'] < $reg ) {
-				$fs_price = (float) $range['min'];
-			}
-			if ( $fs_price > 0 && $fs_price < $reg ) {
-				$pct = (int) round( ( 1 - $fs_price / $reg ) * 100 );
-				return array(
-					'on_sale' => true,
-					'regular' => $reg,
-					'sale'    => $fs_price,
-					'pct'     => $pct,
-				);
-			}
+	} else {
+		$has_prod   = false;
+		$prod_price = 0.0;
+		$prod_pct   = 0;
+	}
+
+	// 2. Check Flash Sale Discount (⚡ Flash Sale)
+	$is_fs    = (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true );
+	if ( '' === $is_fs && ! $has_prod && $range['regular'] > 0 && $range['min'] > 0 && $range['min'] < $range['regular'] ) {
+		$is_fs = '1';
+	}
+	$has_flash = ( '1' === $is_fs );
+	$fs_price  = $has_flash ? (float) get_post_meta( $pid, '_nexxi_fs_sale_price', true ) : 0.0;
+	$fs_pct    = $has_flash ? (int) get_post_meta( $pid, '_nexxi_fs_sale_pct', true ) : 0;
+	if ( $has_flash && $fs_price <= 0 && ! $has_prod && $range['min'] > 0 && $range['min'] < $reg ) {
+		$fs_price = (float) $range['min'];
+	}
+	if ( $has_flash && $fs_price > 0 && $fs_price < $reg ) {
+		if ( $fs_pct <= 0 ) {
+			$fs_pct = (int) round( ( 1 - $fs_price / $reg ) * 100 );
 		}
+	} else {
+		$has_flash = false;
+		$fs_price  = 0.0;
+		$fs_pct    = 0;
+	}
+
+	// Admin-specific isolated views
+	if ( 'regular_admin' === $program ) {
 		return array(
-			'on_sale' => false,
-			'regular' => $reg,
-			'sale'    => $reg,
-			'pct'     => 0,
+			'on_sale'       => $has_prod,
+			'regular'       => $reg,
+			'sale'          => $has_prod ? $prod_price : $reg,
+			'pct'           => $has_prod ? $prod_pct : 0,
+			'other_active'  => $has_flash,
+			'other_pct'     => $fs_pct,
+			'other_sale'    => $fs_price,
+			'combined_sale' => ( $has_prod && $has_flash ) ? max( 1000, $reg - ( $reg - $prod_price ) - ( $reg - $fs_price ) ) : ( $has_prod ? $prod_price : $reg ),
+			'combined_pct'  => ( $has_prod && $has_flash ) ? min( 95, $prod_pct + $fs_pct ) : $prod_pct,
+		);
+	}
+	if ( 'flash_admin' === $program ) {
+		return array(
+			'on_sale'       => $has_flash,
+			'regular'       => $reg,
+			'sale'          => $has_flash ? $fs_price : $reg,
+			'pct'           => $has_flash ? $fs_pct : 0,
+			'other_active'  => $has_prod,
+			'other_pct'     => $prod_pct,
+			'other_sale'    => $prod_price,
+			'combined_sale' => ( $has_prod && $has_flash ) ? max( 1000, $reg - ( $reg - $prod_price ) - ( $reg - $fs_price ) ) : ( $has_flash ? $fs_price : $reg ),
+			'combined_pct'  => ( $has_prod && $has_flash ) ? min( 95, $prod_pct + $fs_pct ) : $fs_pct,
 		);
 	}
 
-	// Default: 'regular' program (🏷️ Giảm Giá Bán Sản Phẩm)
-	if ( '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true ) ) {
-		$prod_price = (float) get_post_meta( $pid, '_nexxi_prod_sale_price', true );
-		if ( $prod_price > 0 && $prod_price < $reg ) {
-			$pct = (int) round( ( 1 - $prod_price / $reg ) * 100 );
-			return array(
-				'on_sale' => true,
-				'regular' => $reg,
-				'sale'    => $prod_price,
-				'pct'     => $pct,
-			);
-		}
+	// Frontend display: cumulative / stacked when BOTH programs are active!
+	if ( $has_prod && $has_flash ) {
+		$disc_prod     = max( 0, $reg - $prod_price );
+		$disc_fs       = max( 0, $reg - $fs_price );
+		$combined_sale = max( 1000, $reg - $disc_prod - $disc_fs );
+		$combined_pct  = min( 95, $prod_pct + $fs_pct );
+		return array(
+			'on_sale' => true,
+			'regular' => $reg,
+			'sale'    => $combined_sale,
+			'pct'     => $combined_pct,
+			'stacked' => true,
+		);
+	}
+	if ( $has_flash ) {
+		return array(
+			'on_sale' => true,
+			'regular' => $reg,
+			'sale'    => $fs_price,
+			'pct'     => $fs_pct,
+			'stacked' => false,
+		);
+	}
+	if ( $has_prod ) {
+		return array(
+			'on_sale' => true,
+			'regular' => $reg,
+			'sale'    => $prod_price,
+			'pct'     => $prod_pct,
+			'stacked' => false,
+		);
 	}
 	return array(
 		'on_sale' => false,
 		'regular' => $reg,
 		'sale'    => $reg,
 		'pct'     => 0,
+		'stacked' => false,
 	);
 }
 
@@ -326,7 +381,7 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'regular' 
 function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 	$catalog    = class_exists( 'Nexxi_Kids_Catalog' );
 	$category   = nexxi_kids_product_category( $product );
-	$prog       = nexxi_kids_get_program_sale( $product, 'flash' === $context ? 'flash' : 'regular' );
+	$prog       = nexxi_kids_get_program_sale( $product, 'combined' );
 	$on_sale    = $prog['on_sale'];
 	$discount   = $prog['pct'];
 	$sale_price = $prog['sale'];
@@ -396,7 +451,7 @@ function nexxi_kids_flash_sale_parent_ids() {
 	foreach ( $all as $id ) {
 		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
 		if ( ! $prod ) { continue; }
-		$prog = nexxi_kids_get_program_sale( $prod, 'flash' );
+		$prog = nexxi_kids_get_program_sale( $prod, 'flash_admin' );
 		if ( $prog['on_sale'] ) {
 			$out[] = $id;
 		}
@@ -419,7 +474,7 @@ function nexxi_kids_regular_sale_parent_ids() {
 		$id   = absint( $id );
 		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
 		if ( ! $prod ) { continue; }
-		$prog = nexxi_kids_get_program_sale( $prod, 'regular' );
+		$prog = nexxi_kids_get_program_sale( $prod, 'regular_admin' );
 		if ( $prog['on_sale'] ) {
 			$out[] = $id;
 		}

@@ -402,7 +402,7 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 		// Apply discount as Regular Product Sale (_nexxi_has_prod_sale = '1', NOT Flash Sale)
 		if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, (float) $reg_override, '0' ) ) {
 			$prod = wc_get_product( $pid );
-			$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
+			$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
 			$report['updated'][] = array(
 				'id'      => $pid,
 				'sku'     => $raw_sku,
@@ -461,7 +461,7 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 				if ( '' === $sku ) {
 					$sku = '#' . $pid;
 				}
-				$prog    = nexxi_kids_get_program_sale( $prod, 'regular' );
+				$prog    = nexxi_kids_get_program_sale( $prod, 'regular_admin' );
 				$on_sale = $prog['on_sale'];
 				$pct     = $on_sale ? $prog['pct'] : '';
 				$sale_v  = $on_sale ? round( $prog['sale'] ) : '';
@@ -614,7 +614,7 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 			} else {
 				// Neither sale price nor percent is > 0: clear regular product discount if currently active or if saving single row or updating regular price
 				$prod = wc_get_product( $pid );
-				$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular' ) : array( 'on_sale' => false );
+				$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'on_sale' => false );
 				if ( $prog['on_sale'] || $only_pid === $pid || $reg_override > 0 ) {
 					nexxi_kids_apply_product_discount( $pid, 'clear', 0, $reg_override, '0' );
 					$saved_count++;
@@ -925,7 +925,7 @@ function nexxi_kids_bulk_discount_admin_page() {
 							if ( ! $prod ) { continue; }
 							$pid      = $prod->get_id();
 							$sku      = nexxi_kids_effective_sku( $prod );
-							$prog     = nexxi_kids_get_program_sale( $prod, 'regular' );
+							$prog     = nexxi_kids_get_program_sale( $prod, 'regular_admin' );
 							$on_sale  = $prog['on_sale'];
 							$pct      = $prog['pct'];
 							$thumb    = wp_get_attachment_image_url( $prod->get_image_id(), 'thumbnail' );
@@ -975,6 +975,11 @@ function nexxi_kids_bulk_discount_admin_page() {
 											<span style="background:#fd6a49;color:#fff;font-size:10.5px;padding:1px 6px;border-radius:999px;">-<?php echo (int) $pct; ?>%</span>
 										</div>
 										<span style="display:inline-block;font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:1px 6px;border-radius:4px;margin-top:2px;">🏷️ Đang giảm giá bán SP</span>
+										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<div style="font-size:11px;color:#ae3115;background:#fff4f1;border:1px solid #ffdad2;padding:2px 6px;border-radius:4px;margin-top:3px;font-weight:700;">
+												🔥 Cộng dồn Flash Sale (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( nexxi_kids_money( $prog['combined_sale'] ) ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
+											</div>
+										<?php endif; ?>
 									<?php else : ?>
 										<span style="color:#767680;font-size:12.5px;">Giá gốc (Chưa giảm)</span>
 									<?php endif; ?>
