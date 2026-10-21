@@ -9,8 +9,7 @@ function nexxi_kids_current_product() {
 /** Product + variation data for stitch-interactions.js. */
 function nexxi_kids_product_config( WC_Product $product ) {
 	nexxi_kids_normalize_variable_sale( $product );
-	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$prog     = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$prog     = nexxi_kids_get_program_sale( $product, 'combined' );
 	$sizes    = array();
 	foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
 		$n = Nexxi_Kids_Catalog::size_number( $term->slug );
@@ -105,8 +104,7 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 	$ids = array_values( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids() ) ) );
 	$main = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : wc_placeholder_img_src( 'full' );
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
-	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$prog = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$prog = nexxi_kids_get_program_sale( $product, 'combined' );
 	$discount = $prog['pct'];
 	ob_start(); ?>
 <div class="nexxi-pdp-main-media relative w-full aspect-square bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
@@ -148,8 +146,8 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 	$config = nexxi_kids_product_config( $product );
 	$cat = nexxi_kids_product_category( $product );
 	$left = Nexxi_Kids_Catalog::stock_left( $product );
-	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$prog = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$prog = nexxi_kids_get_program_sale( $product, 'combined' );
+	$fs_prog = nexxi_kids_get_program_sale( $product, 'flash_admin' );
 	$discount = $prog['pct'];
 	$on_sale = $prog['on_sale'];
 	$reviews = (int) $product->get_review_count();
@@ -188,7 +186,7 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 </div>
 <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Đã bao gồm VAT • Tặng kèm hộp quà xinh xắn</p>
 </div>
-<?php if ( 'flash' === $pdp_prog && $on_sale && nexxi_kids_flash_end() > time() ) : ?>
+<?php if ( $fs_prog['on_sale'] && nexxi_kids_flash_end() > time() ) : ?>
 <div class="bg-surface-container-lowest px-space-md py-space-xs rounded-lg shadow-sm flex items-center gap-space-xs self-start sm:self-auto">
 <span class="material-symbols-outlined text-secondary text-[20px] animate-bounce">alarm</span>
 <div class="text-right"><p class="font-label-sm text-label-sm text-outline uppercase">Kết thúc sau</p>

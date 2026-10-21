@@ -105,13 +105,9 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 		}
 	}
 
-	// Determine effective WooCommerce _sale_price to sync onto variations (Regular Product Sale takes precedence, or Flash Sale if active)
-	$wc_sale = 0.0;
-	if ( '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true ) ) {
-		$wc_sale = (float) get_post_meta( $pid, '_nexxi_prod_sale_price', true );
-	} elseif ( '1' === (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true ) ) {
-		$wc_sale = (float) get_post_meta( $pid, '_nexxi_fs_sale_price', true );
-	}
+	// Determine effective WooCommerce _sale_price to sync onto variations (cumulative/stacked if both programs are active)
+	$combined = nexxi_kids_get_program_sale( $product, 'combined' );
+	$wc_sale  = $combined['on_sale'] ? (float) $combined['sale'] : 0.0;
 
 	$apply_to_item = static function ( WC_Product $item ) use ( $wc_sale, $regular_override ) {
 		$item_reg = (float) $item->get_regular_price( 'edit' );
@@ -178,8 +174,35 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
 add_action( 'init', static function () {
-	if ( '9' !== get_option( 'nexxi_fs_cache_rev' ) ) {
-		update_option( 'nexxi_fs_cache_rev', '9', true );
+	if ( '10' !== get_option( 'nexxi_fs_cache_rev' ) ) {
+		update_option( 'nexxi_fs_cache_rev', '10', true );
+		// Sync stacked variation prices for any products that already have both programs active
+		$sale_ids = nexxi_kids_all_sale_parent_ids();
+		foreach ( $sale_ids as $sid ) {
+			$p = function_exists( 'wc_get_product' ) ? wc_get_product( $sid ) : null;
+			if ( ! $p ) { continue; }
+			$comb = nexxi_kids_get_program_sale( $p, 'combined' );
+			if ( ! empty( $comb['stacked'] ) && $comb['sale'] > 0 ) {
+				if ( $p->is_type( 'variable' ) ) {
+					foreach ( $p->get_children() as $cid ) {
+						$v = wc_get_product( $cid );
+						if ( $v ) {
+							$v->set_sale_price( (string) round( $comb['sale'] ) );
+							$v->set_price( (string) round( $comb['sale'] ) );
+							$v->save();
+						}
+					}
+					if ( class_exists( 'WC_Product_Variable' ) ) {
+						WC_Product_Variable::sync( $sid );
+					}
+				} else {
+					$p->set_sale_price( (string) round( $comb['sale'] ) );
+					$p->set_price( (string) round( $comb['sale'] ) );
+					$p->save();
+				}
+				wc_delete_product_transients( $sid );
+			}
+		}
 		nexxi_kids_flush_sale_cache();
 	}
 }, 20 );
@@ -428,7 +451,7 @@ function nexxi_kids_flash_sale_admin_page() {
 							$prod = wc_get_product( $post_obj->ID );
 							if ( ! $prod ) { continue; }
 							$pid = $prod->get_id();
-							$prog = nexxi_kids_get_program_sale( $prod, 'flash' );
+							$prog = nexxi_kids_get_program_sale( $prod, 'flash_admin' );
 							$on_sale = $prog['on_sale'];
 							$discount_pct = $prog['pct'];
 							$thumb = wp_get_attachment_image_url( $prod->get_image_id(), 'thumbnail' );
@@ -461,6 +484,11 @@ function nexxi_kids_flash_sale_admin_page() {
 									<?php if ( $on_sale ) : ?>
 										<span style="font-weight:800;color:#ae3115;font-size:14px;"><?php echo esc_html( nexxi_kids_money( $prog['sale'] ) ); ?></span>
 										<span style="display:inline-block;background:#fd6a49;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:4px;">-<?php echo (int) $discount_pct; ?>%</span>
+										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<div style="font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:2px 6px;border-radius:4px;margin-top:4px;font-weight:700;">
+												🔥 Cộng dồn Giảm SP (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( nexxi_kids_money( $prog['combined_sale'] ) ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
+											</div>
+										<?php endif; ?>
 									<?php else : ?>
 										<span style="color:#767680;">Chưa bật Flash Sale</span>
 									<?php endif; ?>
