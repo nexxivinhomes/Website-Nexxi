@@ -32,8 +32,8 @@ function nexxi_kids_flash_sale_admin_menu() {
 }
 add_action( 'admin_menu', 'nexxi_kids_flash_sale_admin_menu', 20 );
 
-/** Apply a discount (% or fixed sale price or clear) to a product and all its variations. */
-function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $regular_override = 0 ) {
+/** Apply a discount (% or fixed sale price or amount_off or clear) to a product and all its variations. */
+function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $regular_override = 0, $flash_flag = null ) {
 	$product = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $product_id ) : null;
 	if ( ! $product ) { return false; }
 
@@ -62,6 +62,8 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 			if ( $sale <= 0 || $sale >= $reg ) {
 				$sale = max( 1000, round( $reg * ( 100 - $pct ) / 100 ) );
 			}
+		} elseif ( 'amount_off' === $mode ) {
+			$sale = max( 1000, $reg - (float) $amount );
 		} else {
 			$sale = (float) $amount;
 		}
@@ -86,6 +88,12 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 		$product->save();
 	} else {
 		$apply_to_item( $product );
+	}
+
+	if ( 'clear' === $mode || $amount <= 0 ) {
+		delete_post_meta( $product->get_id(), '_nexxi_is_flash_sale' );
+	} elseif ( null !== $flash_flag ) {
+		update_post_meta( $product->get_id(), '_nexxi_is_flash_sale', (string) $flash_flag );
 	}
 
 	wc_delete_product_transients( $product->get_id() );
@@ -120,8 +128,8 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
 add_action( 'init', static function () {
-	if ( '7' !== get_option( 'nexxi_fs_cache_rev' ) ) {
-		update_option( 'nexxi_fs_cache_rev', '7', true );
+	if ( '8' !== get_option( 'nexxi_fs_cache_rev' ) ) {
+		update_option( 'nexxi_fs_cache_rev', '8', true );
 		nexxi_kids_flush_sale_cache();
 	}
 }, 20 );
@@ -146,9 +154,9 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		$pid  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		$mode = isset( $_POST['discount_mode'] ) ? sanitize_key( wp_unslash( $_POST['discount_mode'] ) ) : 'percent';
 		$val  = isset( $_POST['discount_value'] ) ? (float) preg_replace( '~[^\d.]~', '', wp_unslash( $_POST['discount_value'] ) ) : 0;
-		if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val ) ) {
+		if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val, 0, '1' ) ) {
 			nexxi_kids_flush_sale_cache();
-			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá khuyến mãi cho sản phẩm #' . $pid . '!', 'updated' );
+			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá Flash Sale cho sản phẩm #' . $pid . '!', 'updated' );
 		}
 	} elseif ( 'bulk_discount' === $action ) {
 		$pids = isset( $_POST['product_ids'] ) && is_array( $_POST['product_ids'] ) ? array_map( 'absint', wp_unslash( $_POST['product_ids'] ) ) : array();
@@ -156,13 +164,13 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		$val  = isset( $_POST['bulk_value'] ) ? (float) preg_replace( '~[^\d.]~', '', wp_unslash( $_POST['bulk_value'] ) ) : 0;
 		$count = 0;
 		foreach ( $pids as $pid ) {
-			if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val ) ) {
+			if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val, 0, '1' ) ) {
 				$count++;
 			}
 		}
 		if ( $count > 0 ) {
 			nexxi_kids_flush_sale_cache();
-			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng giảm giá cho ' . $count . ' sản phẩm!', 'updated' );
+			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng Flash Sale cho ' . $count . ' sản phẩm!', 'updated' );
 		} else {
 			add_settings_error( 'nexxi_fs', 'bulk_empty', 'Vui lòng tích chọn ít nhất 1 sản phẩm trong bảng bên dưới.', 'error' );
 		}
@@ -185,7 +193,7 @@ function nexxi_kids_flash_sale_admin_page() {
 		}
 	}
 
-	$sale_parent_ids = function_exists( 'wc_get_product_ids_on_sale' ) ? nexxi_kids_sale_parent_ids( wc_get_product_ids_on_sale() ) : array();
+	$sale_parent_ids = function_exists( 'nexxi_kids_flash_sale_parent_ids' ) ? nexxi_kids_flash_sale_parent_ids() : array();
 	$active_ts = nexxi_kids_flash_end();
 
 	// Filters for product table
@@ -235,6 +243,7 @@ function nexxi_kids_flash_sale_admin_page() {
 				</p>
 			</div>
 			<div style="display:flex;gap:8px;">
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-bulk-discount' ) ); ?>" style="font-weight:700;color:#031444;border-color:#031444;">🏷️ Mở Công Cụ Giảm Giá Bán Sản Phẩm (Hàng Loạt / SKU) →</a>
 				<a class="button" href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">Xem Trang Chủ ↗</a>
 				<a class="button button-primary" href="<?php echo esc_url( nexxi_kids_flash_url() ); ?>" target="_blank" style="background:#fd6a49;border-color:#fd6a49;">Xem Trang Flash Sale ↗</a>
 			</div>
@@ -521,13 +530,18 @@ function nexxi_kids_render_product_discount_metabox( WP_Post $post ) {
 			<input type="number" id="nexxi-mb-sale-val" name="nexxi_quick_sale_val" value="" placeholder="VD: 25 (giảm 25%) hoặc 120000" style="width:100%;" min="0">
 		</label>
 		<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
-			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='25'">-25%</button>
-			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='40'">-40%</button>
-			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='50'">-50%</button>
+			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='15'">-15%</button>
+			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='20'">-20%</button>
+			<button type="button" class="button button-small" onclick="document.getElementById('nexxi-mb-sale-val').value='30'">-30%</button>
 			<button type="button" class="button button-small" style="color:#ba1a1a;" onclick="document.getElementById('nexxi-mb-sale-val').value='0'">Tắt sale</button>
 		</div>
-		<p style="margin:8px 0 0;padding-top:8px;border-top:1px solid #eee;">
-			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-flash-sale' ) ); ?>">⚡ Mở trang Quản lý Flash Sale toàn shop →</a>
+		<label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+			<input type="checkbox" name="nexxi_quick_is_flash" value="1" <?php checked( '1' === (string) get_post_meta( $post->ID, '_nexxi_is_flash_sale', true ) ); ?>>
+			<span>Đưa vào kệ Flash Sale (bỏ tích = chỉ giảm giá bán sản phẩm thường)</span>
+		</label>
+		<p style="margin:8px 0 0;padding-top:8px;border-top:1px solid #eee;display:flex;flex-direction:column;gap:4px;">
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-bulk-discount' ) ); ?>">🏷️ Công cụ Giảm Giá SP Hàng Loạt / Upload SKU →</a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-flash-sale' ) ); ?>">⚡ Quản lý chiến dịch Flash Sale →</a>
 		</p>
 	</div>
 	<?php
@@ -540,22 +554,23 @@ function nexxi_kids_save_product_discount_metabox( $post_id ) {
 	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) { return; }
 	if ( ! current_user_can( 'edit_post', $post_id ) ) { return; }
 
-	$reg_raw  = isset( $_POST['nexxi_quick_regular_price'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['nexxi_quick_regular_price'] ) ) ) : '';
-	$sale_raw = isset( $_POST['nexxi_quick_sale_val'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['nexxi_quick_sale_val'] ) ) ) : '';
+	$reg_raw    = isset( $_POST['nexxi_quick_regular_price'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['nexxi_quick_regular_price'] ) ) ) : '';
+	$sale_raw   = isset( $_POST['nexxi_quick_sale_val'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['nexxi_quick_sale_val'] ) ) ) : '';
+	$flash_flag = ! empty( $_POST['nexxi_quick_is_flash'] ) ? '1' : '0';
 	if ( '' === $reg_raw && '' === $sale_raw ) {
 		return;
 	}
 	$reg = '' !== $reg_raw ? (float) $reg_raw : 0;
 	if ( '0' === $sale_raw ) {
-		nexxi_kids_apply_product_discount( $post_id, 'clear', 0, $reg );
+		nexxi_kids_apply_product_discount( $post_id, 'clear', 0, $reg, '0' );
 		nexxi_kids_flush_sale_cache();
 	} elseif ( '' !== $sale_raw ) {
 		$num = (float) $sale_raw;
 		$mode = $num <= 95 ? 'percent' : 'fixed';
-		nexxi_kids_apply_product_discount( $post_id, $mode, $num, $reg );
+		nexxi_kids_apply_product_discount( $post_id, $mode, $num, $reg, $flash_flag );
 		nexxi_kids_flush_sale_cache();
 	} elseif ( $reg > 0 ) {
-		nexxi_kids_apply_product_discount( $post_id, 'clear', 0, $reg );
+		nexxi_kids_apply_product_discount( $post_id, 'clear', 0, $reg, '0' );
 	}
 }
 add_action( 'woocommerce_process_product_meta', 'nexxi_kids_save_product_discount_metabox', 99 );
