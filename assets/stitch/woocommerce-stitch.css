@@ -63,6 +63,8 @@ body > header nav a span { white-space: nowrap !important; }
   .nexxi-stitch-commerce form.checkout #order_review_heading { grid-column: 2; grid-row: 1; margin: 0; }
   .nexxi-stitch-commerce form.checkout #order_review { grid-column: 2; grid-row: 2; float: none; width: 100%; }
 }
+.nexxi-stitch-commerce form.checkout #ship-to-different-address,
+.nexxi-stitch-commerce form.checkout .shipping_address { display: none !important; }
 
 /* Editor content (pages, product description) in Stitch typography. */
 .nexxi-prose { color: #45464f; font-size: 16px; line-height: 1.75; }
