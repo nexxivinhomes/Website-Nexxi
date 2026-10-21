@@ -5,14 +5,21 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 /** Store contact settings (Customizer → NEXXI – Thông tin cửa hàng). */
 function nexxi_kids_setting( $key ) {
 	$defaults = array(
-		'nexxi_kids_hotline'   => '1900 8888',
+		'nexxi_kids_hotline'   => '0942 958 091',
 		'nexxi_kids_email'     => get_option( 'admin_email' ),
 		'nexxi_kids_address'   => '',
-		'nexxi_kids_hours'     => '8:00 – 21:00 hằng ngày',
-		'nexxi_kids_chat_url'  => '',
+		'nexxi_kids_hours'     => '8h - 17h',
+		'nexxi_kids_chat_url'  => 'https://zalo.me/0942958091',
 		'nexxi_kids_map_embed' => '',
 	);
-	$value = get_theme_mod( $key, '' );
+	$legacy = array(
+		'nexxi_kids_hotline'  => array( '1900 8888', '1900 6886', '19008888', '19006886' ),
+		'nexxi_kids_hours'    => array( '8:00 – 21:00 hằng ngày', '8:00 - 21:00 hằng ngày', '8h-22h' ),
+	);
+	$value = trim( (string) get_theme_mod( $key, '' ) );
+	if ( isset( $legacy[ $key ] ) && in_array( $value, $legacy[ $key ], true ) ) {
+		$value = '';
+	}
 	return '' !== $value ? $value : ( isset( $defaults[ $key ] ) ? $defaults[ $key ] : '' );
 }
 

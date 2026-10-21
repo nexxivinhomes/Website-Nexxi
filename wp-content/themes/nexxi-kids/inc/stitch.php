@@ -164,6 +164,8 @@ function nexxi_kids_stitch_footer( $html ) {
 	if ( ! $el ) { return $html; }
 	$footer = substr( $html, $el['start'], $el['end'] - $el['start'] );
 	$hotline = nexxi_kids_setting( 'nexxi_kids_hotline' );
+	$hours   = nexxi_kids_setting( 'nexxi_kids_hours' );
+	$chat    = nexxi_kids_setting( 'nexxi_kids_chat_url' );
 	$orders = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'orders' ) : nexxi_kids_stitch_url( 'account.html' );
 	$rules = array(
 		array( 'bé gái', nexxi_kids_category_url( 'be-gai' ) ),
@@ -180,16 +182,23 @@ function nexxi_kids_stitch_footer( $html ) {
 		array( 'liên hệ', nexxi_kids_page_url( 'lien-he' ) ),
 		array( 'giới thiệu', nexxi_kids_page_url( 'gioi-thieu' ) ),
 	);
-	$footer = preg_replace_callback( '~(<a\b[^>]*>)(.*?)(</a>)~s', static function ( $m ) use ( $rules, $hotline ) {
+	$footer = preg_replace_callback( '~(<a\b[^>]*>)(.*?)(</a>)~s', static function ( $m ) use ( $rules, $hotline, $chat ) {
 		$label = function_exists( 'mb_strtolower' ) ? mb_strtolower( wp_strip_all_tags( $m[2] ) ) : strtolower( wp_strip_all_tags( $m[2] ) );
 		if ( false !== strpos( $label, 'hotline' ) ) {
 			return nexxi_dom_tag_with_attr( $m[1], 'href', nexxi_kids_tel( $hotline ) ) . 'Hotline: ' . esc_html( $hotline ) . $m[3];
+		}
+		if ( false !== strpos( $label, 'zalo' ) && $chat ) {
+			$open = nexxi_dom_tag_with_attr( $m[1], 'href', $chat );
+			return $open . 'Nhắn tin Zalo: ' . esc_html( $hotline ) . $m[3];
 		}
 		foreach ( $rules as $rule ) {
 			if ( false !== strpos( $label, $rule[0] ) ) { return nexxi_dom_tag_with_attr( $m[1], 'href', $rule[1] ) . $m[2] . $m[3]; }
 		}
 		return $m[0];
 	}, $footer );
+	if ( $hours ) {
+		$footer = preg_replace( '~(<li[^>]*data-nexxi-footer-hours[^>]*>).*?(</li>)~s', '$1Giờ mở cửa: ' . esc_html( $hours ) . '$2', $footer );
+	}
 	$footer = preg_replace( '~©\s*20\d\d~u', '© ' . wp_date( 'Y' ), $footer );
 	return substr( $html, 0, $el['start'] ) . $footer . substr( $html, $el['end'] );
 }
@@ -218,6 +227,16 @@ function nexxi_kids_stitch_login_forms( $html ) {
 		return str_replace( '</form>', $nonce . '</form>', $form );
 	}, $html );
 	$html = preg_replace( '~(<a\b[^>]*href=")#("[^>]*>\s*<span[^>]*>arrow_back</span>)~s', '$1' . esc_url( home_url( '/' ) ) . '$2', $html, 1 );
+	$hotline = nexxi_kids_setting( 'nexxi_kids_hotline' );
+	$hours   = nexxi_kids_setting( 'nexxi_kids_hours' );
+	$chat    = nexxi_kids_setting( 'nexxi_kids_chat_url' );
+	if ( $hotline ) {
+		$label = 'Hotline: ' . esc_html( $hotline ) . ( $hours ? ' (' . esc_html( $hours ) . ')' : '' );
+		$html = preg_replace( '~(<a\b[^>]*data-nexxi-login-hotline[^>]*>).*?(</a>)~s', '<a class="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-secondary transition-colors font-label-sm text-label-sm" data-nexxi-login-hotline href="' . esc_url( nexxi_kids_tel( $hotline ) ) . '"><span class="material-symbols-outlined text-sm">support_agent</span> ' . $label . '</a>', $html );
+	}
+	if ( $chat ) {
+		$html = preg_replace( '~(<a\b[^>]*data-nexxi-login-zalo[^>]*href=")[^"]*(")~s', '$1' . esc_url( $chat ) . '$2', $html );
+	}
 	return $html;
 }
 

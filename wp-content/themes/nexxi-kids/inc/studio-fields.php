@@ -799,14 +799,14 @@ return array (
     'r' => 'footer-col-2',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Hotline: 1900 8888”',
+    'l' => 'Link khi bấm: “Hotline: 0942 958 091”',
     'g' => '',
   ),
   'footer-col-2__t6' => 
   array (
     'r' => 'footer-col-2',
     't' => 'text',
-    'd' => 'Hotline: 1900 8888',
+    'd' => 'Hotline: 0942 958 091',
     'l' => 'Chữ liên kết',
     'g' => '',
   ),

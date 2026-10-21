@@ -291,10 +291,16 @@ function nexxi_kids_contact_body( $post ) {
 	$hours = nexxi_kids_setting( 'nexxi_kids_hours' );
 	$chat = nexxi_kids_setting( 'nexxi_kids_chat_url' );
 	$map = nexxi_kids_setting( 'nexxi_kids_map_embed' );
-	$cards = array( array( 'call', 'Hotline tư vấn', $hotline, nexxi_kids_tel( $hotline ) ), array( 'mail', 'Email', $email, 'mailto:' . $email ) );
-	if ( $address ) { $cards[] = array( 'storefront', 'Cửa hàng', $address, $map ? '' : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( $address ) ); }
+	$cards = array(
+		array( 'call', 'Hotline tư vấn', $hotline, nexxi_kids_tel( $hotline ) ),
+	);
 	if ( $hours ) { $cards[] = array( 'schedule', 'Giờ mở cửa', $hours, '' ); }
-	if ( $chat ) { $cards[] = array( 'forum', 'Chat với stylist', 'Zalo / Messenger', $chat ); }
+	if ( $chat ) {
+		$zalo_label = false !== stripos( $chat, 'zalo.me' ) ? 'Zalo: ' . $hotline : 'Nhắn tin trực tuyến';
+		$cards[] = array( 'forum', 'Nhắn tin Zalo', $zalo_label, $chat );
+	}
+	if ( $email ) { $cards[] = array( 'mail', 'Email', $email, 'mailto:' . $email ); }
+	if ( $address ) { $cards[] = array( 'storefront', 'Cửa hàng', $address, $map ? '' : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode( $address ) ); }
 
 	$status = isset( $_GET['nexxi_contact'] ) ? sanitize_key( wp_unslash( $_GET['nexxi_contact'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$notice = '';
