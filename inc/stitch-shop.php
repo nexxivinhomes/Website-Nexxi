@@ -294,7 +294,7 @@ function nexxi_kids_stitch_flash( $html ) {
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-grid', $cards ? $cards : nexxi_kids_empty_state( 'Khung giờ này đã hết deal', 'Mẹ quay lại khung giờ sau hoặc xem các mẫu mới nhé.', 'Xem tất cả sản phẩm', nexxi_kids_shop_url() ) );
 
 	// Category chips limited to categories that currently have sale products.
-	$sale_products = array_values( array_filter( wc_get_product_ids_on_sale(), static function ( $id ) { return 'product' === get_post_type( $id ); } ) );
+	$sale_products = nexxi_kids_all_sale_parent_ids();
 	$current = function_exists( 'is_product_category' ) && is_product_category() ? get_queried_object_id() : 0;
 	$active = 'filter-btn active bg-primary text-on-primary px-space-md py-2 rounded-full transition-all shadow-sm flex items-center gap-1.5';
 	$idle = 'filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1';

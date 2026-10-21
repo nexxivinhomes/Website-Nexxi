@@ -274,6 +274,10 @@ function nexxi_kids_stitch_config( $screen ) {
 function nexxi_kids_render_stitch( $screen ) {
 	$shells = array( 'index' => 'index', 'shop' => 'shop', 'product' => 'product', 'flash-sale' => 'flash-sale', 'cart' => 'cart', 'checkout' => 'checkout', 'account' => 'account', 'login' => 'login', 'members' => 'members', 'page' => 'index' );
 	if ( ! isset( $shells[ $screen ] ) ) { return; }
+	if ( ! headers_sent() ) {
+		nocache_headers();
+		@header( 'X-LiteSpeed-Cache-Control: no-cache' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
 	$file = get_template_directory() . '/assets/stitch/pages/' . $shells[ $screen ] . '.html';
 	if ( ! is_readable( $file ) ) { return; }
 	$html = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents

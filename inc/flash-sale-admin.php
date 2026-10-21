@@ -92,13 +92,30 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 	return true;
 }
 
-/** Flush WooCommerce on-sale cache so homepage & Flash Sale page reflect changes immediately. */
+/** Flush WooCommerce on-sale cache and page caches so homepage & Flash Sale page reflect changes immediately. */
 function nexxi_kids_flush_sale_cache() {
 	delete_transient( 'wc_products_onsale' );
-	if ( function_exists( 'wc_Cache_Helper' ) || class_exists( 'WC_Cache_Helper' ) ) {
+	if ( class_exists( 'WC_Cache_Helper' ) ) {
 		WC_Cache_Helper::get_transient_version( 'product', true );
 	}
+	if ( function_exists( 'wp_cache_flush' ) ) {
+		wp_cache_flush();
+	}
+	do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 }
+
+/** When any variation or variable product is saved in WooCommerce, sync sale price across variations and clear caches. */
+function nexxi_kids_on_variation_saved( $variation_id ) {
+	$parent_id = wp_get_post_parent_id( $variation_id );
+	if ( ! $parent_id ) { return; }
+	$parent = function_exists( 'wc_get_product' ) ? wc_get_product( $parent_id ) : null;
+	if ( $parent && $parent->is_type( 'variable' ) ) {
+		nexxi_kids_normalize_variable_sale( $parent );
+	}
+	nexxi_kids_flush_sale_cache();
+}
+add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
+add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
 
 /** Handle POST actions from the Flash Sale Admin page. */
 function nexxi_kids_handle_flash_sale_admin_post() {
