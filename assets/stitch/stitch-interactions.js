@@ -353,6 +353,49 @@
       });
     }));
 
+    // 5-item horizontal thumbnail carousel with wrap-around arrows (never changes main image).
+    const thumbCarousel = $('[data-nexxi-thumb-carousel]');
+    if (thumbCarousel) {
+      const track = $('[data-nexxi-thumb-track]', thumbCarousel);
+      const thumbs = $$('[data-nexxi-thumb]', thumbCarousel);
+      const visibleCount = 5;
+      let offsetIndex = 0;
+      const maxOffset = () => Math.max(0, thumbs.length - visibleCount);
+
+      const scrollToOffset = idx => {
+        if (!track || !thumbs.length) return;
+        const max = maxOffset();
+        offsetIndex = Math.max(0, Math.min(max, idx));
+        if (max === 0) {
+          track.scrollTo({left: 0, behavior: 'smooth'});
+          return;
+        }
+        const firstLeft = thumbs[0].offsetLeft;
+        const targetLeft = thumbs[offsetIndex] ? (thumbs[offsetIndex].offsetLeft - firstLeft) : 0;
+        track.scrollTo({left: targetLeft, behavior: 'smooth'});
+      };
+
+      $$('[data-nexxi-thumb-nav]', thumbCarousel).forEach(btn => btn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const dir = Number(btn.dataset.nexxiThumbNav) || 1;
+        const max = maxOffset();
+        if (max === 0) {
+          track?.scrollTo({left: 0, behavior: 'smooth'});
+          return;
+        }
+        if (dir > 0) {
+          // If already at the last visible position, wrap around to the beginning (0)
+          const atEnd = offsetIndex >= max || (track && track.scrollLeft >= (track.scrollWidth - track.clientWidth - 4));
+          scrollToOffset(atEnd ? 0 : offsetIndex + 1);
+        } else {
+          // If already at the beginning, wrap around to the end (max)
+          const atStart = offsetIndex <= 0 && (!track || track.scrollLeft <= 4);
+          scrollToOffset(atStart ? max : offsetIndex - 1);
+        }
+      }));
+    }
+
     // One selector group per variation attribute (colour, size or any custom attribute).
     const groups = $$('[data-nexxi-attr-group]').map(el => ({
       key: el.dataset.nexxiAttrGroup,
@@ -405,7 +448,6 @@
       if (regularEl) { regularEl.textContent = money(v.regular); regularEl.classList.toggle('hidden', !onSale); }
       if (discountEl) { discountEl.textContent = '-' + Math.round((1 - v.price / v.regular) * 100) + '%'; discountEl.classList.toggle('hidden', !onSale); }
       if (stockEl) stockEl.textContent = !v.inStock ? 'Tạm hết hàng' : (v.stock !== null && v.stock <= 10 ? `Chỉ còn ${v.stock} chiếc` : 'Còn hàng – giao ngay');
-      if (v.image) showImage(v.image);
       state.qty = Math.min(state.qty, maxQty());
       paintQty();
     };

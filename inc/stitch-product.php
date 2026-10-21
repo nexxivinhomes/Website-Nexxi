@@ -111,14 +111,22 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 <div class="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md px-space-md py-space-xs rounded-full text-on-surface-variant font-label-sm text-label-sm"><span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Ảnh thật chụp tại Studio NEXXI Baby</span><span class="text-outline"><?php echo count( $ids ) > 1 ? esc_html( count( $ids ) . ' ảnh' ) : 'Chạm để phóng to'; ?></span></div>
 </div>
 <?php if ( count( $ids ) > 1 ) : ?>
-<div class="grid grid-cols-4 gap-space-sm sm:gap-space-md">
-<?php foreach ( array_slice( $ids, 0, 8 ) as $index => $id ) :
+<div class="nexxi-thumb-carousel relative flex items-center" data-nexxi-thumb-carousel>
+<button class="nexxi-thumb-arrow nexxi-thumb-arrow--prev" type="button" data-nexxi-thumb-nav="-1" aria-label="Xem các ảnh trước">
+	<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<div class="nexxi-thumb-track" data-nexxi-thumb-track>
+<?php foreach ( $ids as $index => $id ) :
 	$caption = wp_get_attachment_caption( $id ); ?>
-<button class="thumbnail-btn relative aspect-square rounded-lg overflow-hidden bg-surface-container <?php echo 0 === $index ? 'ring-2 ring-secondary-container' : 'opacity-70 hover:opacity-100'; ?> transition-all shadow-sm" type="button" data-nexxi-thumb="<?php echo esc_url( wp_get_attachment_image_url( $id, 'full' ) ); ?>" aria-label="Xem ảnh <?php echo (int) $index + 1; ?>">
+<button class="thumbnail-btn nexxi-thumb-item relative aspect-square rounded-2xl overflow-hidden bg-surface-container <?php echo 0 === $index ? 'ring-2 ring-secondary-container' : 'opacity-70 hover:opacity-100'; ?> transition-all shadow-sm" type="button" data-nexxi-thumb="<?php echo esc_url( wp_get_attachment_image_url( $id, 'full' ) ); ?>" data-nexxi-thumb-index="<?php echo (int) $index; ?>" aria-label="Xem ảnh <?php echo (int) $index + 1; ?>">
 <img class="w-full h-full object-cover" src="<?php echo esc_url( wp_get_attachment_image_url( $id, 'woocommerce_thumbnail' ) ); ?>" alt="" loading="lazy">
 <?php if ( $caption ) : ?><span class="absolute bottom-1 inset-x-1 text-center bg-surface-container-lowest/90 rounded text-[10px] font-label-sm text-primary py-0.5 line-clamp-1"><?php echo esc_html( $caption ); ?></span><?php endif; ?>
 </button>
 <?php endforeach; ?>
+</div>
+<button class="nexxi-thumb-arrow nexxi-thumb-arrow--next" type="button" data-nexxi-thumb-nav="1" aria-label="Xem các ảnh tiếp theo">
+	<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
 </div>
 <?php endif; ?>
 	<?php

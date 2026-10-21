@@ -175,3 +175,72 @@ body > header nav a span { white-space: nowrap !important; }
 .nexxi-account-notices .woocommerce-error, .nexxi-account .woocommerce-error { border-left-color: #ba1a1a; }
 .nexxi-account .woocommerce-message::before, .nexxi-account .woocommerce-info::before, .nexxi-account .woocommerce-error::before, .nexxi-account-notices *::before { display: none; }
 .nexxi-account-notices:empty { display: none; }
+
+/* ---------- Product Thumbnail 5-Item Horizontal Carousel ---------- */
+.nexxi-thumb-carousel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  --nx-thumb-gap: 10px;
+}
+@media (min-width: 640px) {
+  .nexxi-thumb-carousel {
+    --nx-thumb-gap: 12px;
+  }
+}
+.nexxi-thumb-track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--nx-thumb-gap);
+  width: 100%;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px;
+  box-sizing: border-box;
+}
+.nexxi-thumb-track::-webkit-scrollbar {
+  display: none;
+}
+.nexxi-thumb-item {
+  flex: 0 0 calc((100% - 4 * var(--nx-thumb-gap)) / 5);
+  max-width: calc((100% - 4 * var(--nx-thumb-gap)) / 5);
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+}
+.nexxi-thumb-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #031444;
+  border: 1px solid #e4e2de;
+  box-shadow: 0 6px 16px rgba(3, 20, 68, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+.nexxi-thumb-arrow:hover {
+  background: #fd6a49;
+  color: #ffffff;
+  border-color: #fd6a49;
+  box-shadow: 0 8px 20px rgba(253, 106, 73, 0.35);
+}
+.nexxi-thumb-arrow:active {
+  transform: translateY(-50%) scale(0.94);
+}
+.nexxi-thumb-arrow--prev {
+  left: -10px;
+}
+.nexxi-thumb-arrow--next {
+  right: -10px;
+}
