@@ -39,21 +39,9 @@ function nexxi_kids_stitch_home( $html ) {
 	return $html;
 }
 
-function nexxi_kids_home_tabs( array $products ) {
-	$active = 'filter-tab active-tab px-space-md py-2 rounded-full bg-primary text-on-primary font-label-md text-label-md shadow-sm transition-all';
-	$idle = 'filter-tab px-space-md py-2 rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container font-label-md text-label-md transition-all';
-	$counts = array();
-	foreach ( $products as $product ) {
-		$term = nexxi_kids_product_category( $product );
-		if ( $term ) { $counts[ $term->slug ] = array( $term->name, ( isset( $counts[ $term->slug ] ) ? $counts[ $term->slug ][1] : 0 ) + 1 ); }
-	}
-	uasort( $counts, static function ( $a, $b ) { return $b[1] <=> $a[1]; } );
-	$total = (int) wp_count_posts( 'product' )->publish;
-	$out = '<button class="' . esc_attr( $active ) . '" onclick="filterItems(\'all\', this)" type="button">Tất Cả (' . $total . ')</button>';
-	foreach ( array_slice( $counts, 0, 3, true ) as $slug => $row ) {
-		$out .= '<button class="' . esc_attr( $idle ) . '" onclick="filterItems(\'' . esc_js( $slug ) . '\', this)" type="button">' . esc_html( $row[0] ) . '</button>';
-	}
-	return $out;
+function nexxi_kids_home_tabs( array $products = array() ) {
+	$url = add_query_arg( 'orderby', 'popularity', nexxi_kids_shop_url() );
+	return '<a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( $url ) . '"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:scale-110">local_fire_department</span><span>Xem tất cả sản phẩm bán chạy →</span></a>';
 }
 
 function nexxi_kids_home_commitments() {
