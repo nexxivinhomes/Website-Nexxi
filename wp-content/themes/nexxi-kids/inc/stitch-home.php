@@ -31,7 +31,9 @@ function nexxi_kids_stitch_home( $html ) {
 	$html = nexxi_dom_set_inner( $html, 'nx:home-tabs', nexxi_kids_home_tabs( $best ) );
 
 	// Extra reference sections + size guide.
-	$sections = nexxi_kids_home_commitments() . nexxi_kids_home_new_arrivals() . nexxi_kids_size_guide_section() . nexxi_kids_home_testimonials();
+	$lookbook = nexxi_dom_get_outer( $html, 'data-nxr="home-lookbook"' );
+	if ( $lookbook ) { $html = nexxi_dom_remove( $html, 'data-nxr="home-lookbook"' ); }
+	$sections = nexxi_kids_home_commitments() . nexxi_kids_home_new_arrivals() . nexxi_kids_size_guide_section() . nexxi_kids_home_testimonials() . $lookbook;
 	$main = nexxi_dom_locate( $html, '<main' );
 	if ( $main ) {
 		$html = substr( $html, 0, $main['inner_end'] ) . $sections . substr( $html, $main['inner_end'] );
