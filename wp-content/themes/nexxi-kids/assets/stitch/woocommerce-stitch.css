@@ -210,16 +210,29 @@ html {
 .max-w-\[1280px\] { max-width: 78rem !important; }
 .max-w-\[1440px\] { max-width: 88rem !important; }
 
-/* Shop Grid: 5 products per row + 1:1 square product image frame */
+/* Shop Grid & Home New Arrivals: 5 products per row + 1:1 square product image frame */
 .nexxi-shop-card-thumb {
   aspect-ratio: 1 / 1 !important;
 }
 @media (min-width: 1024px) {
-  [data-nx="shop-grid"] {
+  [data-nx="shop-grid"],
+  .nexxi-home-new-grid {
     display: grid !important;
     grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-    gap: 0.85rem !important;
+    gap: 0.9rem !important;
   }
+}
+.nexxi-btn-view-all {
+  background: linear-gradient(135deg, #fd6a49 0%, #ae3115 100%);
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 22px -4px rgba(253, 106, 73, 0.5);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease, filter 0.28s ease;
+}
+.nexxi-btn-view-all:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 14px 30px -4px rgba(174, 49, 21, 0.6);
+  filter: brightness(1.06);
 }
 
 /* Product Detail Page: keep gallery & info panel balanced in viewport */
