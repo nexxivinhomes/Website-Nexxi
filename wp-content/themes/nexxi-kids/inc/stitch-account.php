@@ -97,18 +97,122 @@ function nexxi_kids_account_sidebar( WP_User $user ) {
 }
 
 function nexxi_kids_account_content( WP_User $user, $endpoint ) {
+	global $wp;
 	ob_start();
 	echo '<div class="nexxi-account-notices">';
 	wc_print_notices();
 	echo '</div>';
+	$sub_address = ( 'edit-address' === $endpoint && ! empty( $wp->query_vars['edit-address'] ) ) ? sanitize_key( $wp->query_vars['edit-address'] ) : '';
 	if ( ! $endpoint ) {
 		echo nexxi_kids_account_dashboard( $user ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	} elseif ( 'edit-address' === $endpoint && '' === $sub_address ) {
+		echo nexxi_kids_account_addresses_view( $user ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	} else {
 		$title = WC()->query->get_endpoint_title( $endpoint );
-		echo '<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">' . nexxi_kids_account_section_head( 'NEXXI Club', wp_strip_all_tags( $title ? $title : 'Tài khoản' ) ) . '<div class="woocommerce nexxi-account">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		$back_btn = '';
+		if ( 'edit-address' === $endpoint && '' !== $sub_address ) {
+			$title = 'shipping' === $sub_address ? 'Cập nhật địa chỉ giao hàng' : 'Cập nhật địa chỉ thanh toán';
+			$back_btn = '<a class="inline-flex items-center gap-1.5 px-space-md py-1.5 rounded-full bg-surface-container-lowest text-primary hover:bg-secondary-fixed hover:text-on-secondary-fixed transition-colors font-label-sm text-label-sm font-bold shadow-sm self-start sm:self-auto" href="' . esc_url( wc_get_account_endpoint_url( 'edit-address' ) ) . '"><span class="material-symbols-outlined text-[16px]">arrow_back</span><span>Quay lại sổ địa chỉ</span></a>';
+		}
+		echo '<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">' . nexxi_kids_account_section_head( 'NEXXI Club', wp_strip_all_tags( $title ? $title : 'Tài khoản' ), $back_btn ) . '<div class="woocommerce nexxi-account">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		do_action( 'woocommerce_account_content' );
 		echo '</div></section>';
 	}
+	return ob_get_clean();
+}
+
+/** Stitch-styled overview for /tai-khoan/edit-address/ (Billing & Shipping cards). */
+function nexxi_kids_account_addresses_view( WP_User $user ) {
+	$uid = $user->ID;
+	$customer = new WC_Customer( $uid );
+	$cards = array(
+		'billing' => array(
+			'title'     => 'Địa chỉ thanh toán',
+			'subtitle'  => 'Thông tin người đặt & nhận hóa đơn',
+			'icon'      => 'receipt_long',
+			'badge'     => 'THANH TOÁN',
+			'badge_cls' => 'bg-primary text-on-primary',
+			'formatted' => wc_get_account_formatted_address( 'billing' ),
+			'name'      => trim( $customer->get_billing_first_name() . ' ' . $customer->get_billing_last_name() ),
+			'phone'     => $customer->get_billing_phone(),
+			'email'     => $customer->get_billing_email(),
+			'foot_icon' => 'verified',
+			'foot_text' => 'Tự động điền khi thanh toán đơn hàng',
+		),
+	);
+	if ( ! wc_ship_to_billing_address_only() && wc_shipping_enabled() ) {
+		$cards['shipping'] = array(
+			'title'     => 'Địa chỉ giao hàng',
+			'subtitle'  => 'Nơi shipper giao đồ xinh tận tay mẹ & bé',
+			'icon'      => 'local_shipping',
+			'badge'     => 'MẶC ĐỊNH GIAO HÀNG',
+			'badge_cls' => 'bg-secondary text-on-secondary',
+			'formatted' => wc_get_account_formatted_address( 'shipping' ),
+			'name'      => trim( $customer->get_shipping_first_name() . ' ' . $customer->get_shipping_last_name() ),
+			'phone'     => method_exists( $customer, 'get_shipping_phone' ) ? $customer->get_shipping_phone() : '',
+			'email'     => '',
+			'foot_icon' => 'home_pin',
+			'foot_text' => 'Ưu tiên dùng để tính phí vận chuyển',
+		);
+	}
+
+	ob_start(); ?>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'NEXXI Club • Sổ địa chỉ', 'Địa Chỉ Thanh Toán & Giao Hàng' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<p class="font-body-md text-body-md text-on-surface-variant mb-space-md">Các địa chỉ bên dưới sẽ được tự động điền sẵn ở bước Thanh toán để mẹ đặt đồ cho bé nhanh chóng hơn.</p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<?php foreach ( $cards as $type => $card ) :
+	$edit_url = wc_get_endpoint_url( 'edit-address', $type, wc_get_page_permalink( 'myaccount' ) );
+	$has_addr = ! empty( $card['formatted'] );
+	?>
+<div class="bg-surface-container-low p-space-md md:p-space-lg rounded-xl flex flex-col justify-between shadow-sm relative overflow-hidden border border-outline-variant/20 hover:border-secondary-fixed transition-colors">
+<div class="absolute top-0 right-0 <?php echo esc_attr( $card['badge_cls'] ); ?> text-[10px] font-bold px-3 py-1 rounded-bl-xl font-label-sm tracking-wider uppercase"><?php echo esc_html( $card['badge'] ); ?></div>
+<div>
+<div class="flex items-start gap-space-sm mb-space-sm pr-24">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $card['icon'] ); ?></span>
+</div>
+<div>
+<h4 class="font-title-md text-title-md text-primary font-bold leading-snug"><?php echo esc_html( $card['title'] ); ?></h4>
+<span class="font-body-sm text-body-sm text-outline"><?php echo esc_html( $card['subtitle'] ); ?></span>
+</div>
+</div>
+<?php if ( $has_addr ) : ?>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-md mb-space-md space-y-1.5">
+<?php if ( $card['name'] || $card['phone'] ) : ?>
+<p class="font-label-md text-label-md text-primary font-bold flex flex-wrap items-center gap-1.5">
+<?php if ( $card['name'] ) : ?><span><?php echo esc_html( $card['name'] ); ?></span><?php endif; ?>
+<?php if ( $card['name'] && $card['phone'] ) : ?><span class="text-outline">•</span><?php endif; ?>
+<?php if ( $card['phone'] ) : ?><span class="text-secondary"><?php echo esc_html( $card['phone'] ); ?></span><?php endif; ?>
+</p>
+<?php endif; ?>
+<div class="font-body-md text-body-md text-on-surface-variant leading-relaxed"><?php echo wp_kses_post( $card['formatted'] ); ?></div>
+<?php if ( $card['email'] ) : ?>
+<p class="font-body-sm text-body-sm text-outline pt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[15px]">mail</span><span><?php echo esc_html( $card['email'] ); ?></span></p>
+<?php endif; ?>
+</div>
+<?php else : ?>
+<div class="bg-surface-container-lowest/60 rounded-lg p-space-md mb-space-md flex items-center gap-space-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-outline text-[22px]">add_location_alt</span>
+<p class="font-body-sm text-body-sm m-0">Mẹ chưa thiết lập <?php echo esc_html( mb_strtolower( $card['title'] ) ); ?>. Hãy bấm nút bên dưới để lưu sẵn nhé!</p>
+</div>
+<?php endif; ?>
+</div>
+<div class="flex flex-wrap items-center justify-between gap-space-xs pt-space-sm bg-surface-container-lowest/70 -mx-space-md md:-mx-space-lg -mb-space-md md:-mb-space-lg px-space-md md:px-space-lg py-3 rounded-b-xl border-t border-outline-variant/15">
+<span class="text-[12px] font-body-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-secondary"><?php echo esc_html( $card['foot_icon'] ); ?></span>
+<span><?php echo esc_html( $card['foot_text'] ); ?></span>
+</span>
+<a class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full <?php echo $has_addr ? 'bg-surface-container-high text-primary hover:bg-primary hover:text-on-primary' : 'bg-secondary text-on-secondary hover:bg-secondary-container'; ?> transition-all font-label-sm text-label-sm font-bold shadow-sm whitespace-nowrap" href="<?php echo esc_url( $edit_url ); ?>">
+<span class="material-symbols-outlined text-[16px]"><?php echo $has_addr ? 'edit' : 'add'; ?></span>
+<span><?php echo $has_addr ? 'Chỉnh sửa' : 'Thêm địa chỉ'; ?></span>
+</a>
+</div>
+</div>
+<?php endforeach; ?>
+</div>
+</section>
+	<?php
 	return ob_get_clean();
 }
 
