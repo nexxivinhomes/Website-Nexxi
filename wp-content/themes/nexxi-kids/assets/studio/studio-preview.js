@@ -37,6 +37,20 @@
 		var key = el.getAttribute('data-nxp');
 		setting(key, function (v) { el.placeholder = value(key, v); });
 	});
+	setting('header-ticker__lines', function (v) {
+		var marquee = document.querySelector('[data-nxr="header-ticker"] .animate-marquee');
+		if (!marquee) { return; }
+		var lines = value('header-ticker__lines', v).split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+		if (!lines.length) { return; }
+		var count = Math.max(4, lines.length);
+		var spans = '';
+		for (var n = 0; n < count; n++) {
+			var div = document.createElement('div');
+			div.textContent = lines[n % lines.length];
+			spans += '<span class="inline-flex items-center gap-1.5 shrink-0">' + div.innerHTML + '</span>';
+		}
+		marquee.innerHTML = spans + spans;
+	});
 
 	/* ---------- overlay ---------- */
 	var css = document.createElement('style');
