@@ -66,11 +66,11 @@ function nexxi_kids_home_commitments() {
 }
 
 function nexxi_kids_home_new_arrivals() {
-	$products = nexxi_kids_query_products( array( 'limit' => 4, 'orderby' => 'date', 'order' => 'DESC' ) );
+	$products = nexxi_kids_query_products( array( 'limit' => 10, 'orderby' => 'date', 'order' => 'DESC' ) );
 	if ( ! $products ) { return ''; }
 	$cards = '';
 	foreach ( $products as $product ) { $cards .= nexxi_kids_card_new_arrival( $product ); }
-	return '<section class="w-full px-margin-mobile md:px-margin py-space-xl"' . nexxi_studio_region_attr( 'home-new' ) . '><div class="flex items-end justify-between gap-space-md mb-space-lg"><div><span class="font-label-sm text-label-sm text-secondary"' . nexxi_studio_attr( 'home-new__t1' ) . '>' . nexxi_studio_t( 'home-new__t1' ) . '</span><h2 class="font-headline-lg text-headline-lg text-primary mt-space-xs"' . nexxi_studio_attr( 'home-new__t2' ) . '>' . nexxi_studio_t( 'home-new__t2' ) . '</h2></div><a class="font-label-md text-label-md text-secondary hover:underline" href="' . esc_url( add_query_arg( 'orderby', 'date', nexxi_kids_shop_url() ) ) . '"' . nexxi_studio_attr( 'home-new__t3' ) . '>' . nexxi_studio_t( 'home-new__t3' ) . '</a></div><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">' . $cards . '</div></section>';
+	return '<section class="w-full px-margin-mobile md:px-margin py-space-xl"' . nexxi_studio_region_attr( 'home-new' ) . '><div class="flex flex-wrap items-end justify-between gap-space-md mb-space-lg"><div><span class="inline-flex items-center gap-1 px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm uppercase mb-1.5"' . nexxi_studio_attr( 'home-new__t1' ) . '>' . nexxi_studio_t( 'home-new__t1' ) . '</span><h2 class="font-headline-lg text-headline-lg text-primary"' . nexxi_studio_attr( 'home-new__t2' ) . '>' . nexxi_studio_t( 'home-new__t2' ) . '</h2></div><a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( add_query_arg( 'orderby', 'date', nexxi_kids_shop_url() ) ) . '"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:rotate-12">auto_awesome</span><span' . nexxi_studio_attr( 'home-new__t3' ) . '>' . nexxi_studio_t( 'home-new__t3' ) . '</span></a></div><div class="nexxi-home-new-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-space-md">' . $cards . '</div></section>';
 }
 
 /** Latest approved 4–5★ product reviews; Stitch sample quotes when the shop has none yet. */
