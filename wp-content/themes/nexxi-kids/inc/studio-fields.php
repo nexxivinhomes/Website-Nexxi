@@ -594,19 +594,11 @@ return array (
     'l' => 'Tiêu đề khu vực',
     'g' => '',
   ),
-  'footer-brand__t1' => 
-  array (
-    'r' => 'footer-brand',
-    't' => 'text',
-    'd' => 'NEXXI',
-    'l' => 'Nhãn',
-    'g' => '',
-  ),
   'footer-brand__t2' => 
   array (
     'r' => 'footer-brand',
     't' => 'text',
-    'd' => 'Thương hiệu thời trang cao cấp mang phong cách dễ thương, ngọt ngào và năng động cho bé yêu. Từng sợi vải organic đều được chọn lọc để nâng niu nụ cười của bé mỗi ngày.',
+    'd' => 'NEXXI – Phong cách khác, giá trị khác. Thương hiệu thời trang trẻ em nội địa Việt Nam mang cảm hứng Hàn Quốc dành cho bé trai và bé gái (12–45 kg). Chúng tôi hướng đến sự hài hòa giữa vẻ ngoài đáng yêu, chất liệu mềm mại thoải mái trong từng chuyển động và mức giá phù hợp với gia đình Việt.',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -846,7 +838,7 @@ return array (
   array (
     'r' => 'footer-bottom',
     't' => 'text',
-    'd' => '© 2025 NEXXI Kids Fashion Boutique. Tận tâm nâng niu từng bước khôn lớn của bé.',
+    'd' => '© 2025 NEXXI – Phong cách khác, giá trị khác. Một bộ trang phục đẹp để bé tự tin, một lựa chọn chu đáo để ba mẹ an tâm.',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -862,7 +854,7 @@ return array (
   array (
     'r' => 'footer-bottom',
     't' => 'text',
-    'd' => '100% Vải an toàn cho bé',
+    'd' => 'Chất liệu mềm mại, thoải mái vận động',
     'l' => 'Nhãn',
     'g' => '',
   ),
@@ -878,7 +870,7 @@ return array (
   array (
     'r' => 'footer-bottom',
     't' => 'text',
-    'd' => 'Đóng gói quà tặng xinh xắn',
+    'd' => 'Bán lẻ & bán sỉ toàn quốc',
     'l' => 'Nhãn',
     'g' => '',
   ),
