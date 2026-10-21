@@ -288,6 +288,7 @@ function nexxi_kids_pagination() {
 /** Flash Sale screen: live sale products, category chips, campaign stats. */
 function nexxi_kids_stitch_flash( $html ) {
 	global $wp_query;
+	$html = nexxi_dom_remove( $html, 'data-nxr="flash-steps"' );
 	$products = nexxi_kids_loop_products();
 	$cards = '';
 	foreach ( $products as $product ) { $cards .= nexxi_kids_card_flash_page( $product ); }

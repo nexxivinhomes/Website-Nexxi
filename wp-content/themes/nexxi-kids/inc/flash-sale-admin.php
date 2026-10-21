@@ -120,8 +120,8 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
 add_action( 'init', static function () {
-	if ( '2' !== get_option( 'nexxi_fs_cache_rev' ) ) {
-		update_option( 'nexxi_fs_cache_rev', '2', true );
+	if ( '3' !== get_option( 'nexxi_fs_cache_rev' ) ) {
+		update_option( 'nexxi_fs_cache_rev', '3', true );
 		nexxi_kids_flush_sale_cache();
 	}
 }, 20 );
