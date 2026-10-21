@@ -69,14 +69,17 @@ function nexxi_kids_attribute_terms( $slug ) {
 	return $terms;
 }
 
-/** Products per page: 9 (3 × 3 Stitch grid) on the shop, 12 (4 × 3) on Flash Sale. */
+/** Products per page: 25 (5 × 5 grid) on the shop, 12 (4 × 3) on Flash Sale. */
 function nexxi_kids_loop_per_page() {
-	return isset( $_GET['on_sale'] ) ? 12 : 9; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	return isset( $_GET['on_sale'] ) ? 12 : 25; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 }
-add_filter( 'loop_shop_per_page', 'nexxi_kids_loop_per_page', 20 );
+add_filter( 'loop_shop_per_page', 'nexxi_kids_loop_per_page', 999 );
 
-/** Legacy ?sort= links from the earlier build map to WooCommerce ?orderby=. */
+/** Legacy ?sort= links from the earlier build map to WooCommerce ?orderby=; also enforce 25 items per page on shop. */
 function nexxi_kids_legacy_sort( $query ) {
+	if ( empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$query->set( 'posts_per_page', 25 );
+	}
 	if ( empty( $_GET['sort'] ) || ! empty( $_GET['orderby'] ) ) { return; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$map = array( 'price_asc' => 'price', 'price_desc' => 'price-desc', 'popular' => 'popularity' );
 	$sort = sanitize_key( wp_unslash( $_GET['sort'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended

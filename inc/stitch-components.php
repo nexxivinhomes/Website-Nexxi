@@ -31,28 +31,28 @@ function nexxi_kids_card_shop( WC_Product $product ) {
 	$c = nexxi_kids_card_data( $product );
 	$meta = trim( $c['category'] . ( $c['material'] ? ' • ' . $c['material'] : '' ) );
 	ob_start(); ?>
-<article <?php echo nexxi_kids_card_attrs( $c ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> class="group bg-surface-container-lowest rounded-xl p-space-sm shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] hover:shadow-[0_16px_36px_-6px_rgba(253,106,73,0.15)] transition-all duration-300 flex flex-col justify-between">
+<article <?php echo nexxi_kids_card_attrs( $c ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> class="group bg-surface-container-lowest rounded-2xl p-space-sm shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] hover:shadow-[0_16px_36px_-6px_rgba(253,106,73,0.15)] transition-all duration-300 flex flex-col justify-between">
 <div>
-<div class="relative w-full aspect-[4/5] rounded-lg overflow-hidden bg-surface-container-low mb-space-sm">
-<a href="<?php echo esc_url( $c['url'] ); ?>"><img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="<?php echo esc_url( $c['image'] ); ?>" alt="<?php echo esc_attr( $c['name'] ); ?>" loading="lazy"></a>
+<div class="nexxi-shop-card-thumb relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low mb-space-sm">
+<a class="block w-full h-full" href="<?php echo esc_url( $c['url'] ); ?>"><img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src="<?php echo esc_url( $c['image'] ); ?>" alt="<?php echo esc_attr( $c['name'] ); ?>" loading="lazy"></a>
 <?php if ( $c['discount'] ) : ?><div class="absolute top-space-xs left-space-xs"><span class="bg-secondary-container text-on-secondary font-label-sm text-label-sm px-space-sm py-0.5 rounded-full shadow-sm rotate-[-3deg] inline-block font-bold">-<?php echo (int) $c['discount']; ?>% SALE</span></div>
 <?php elseif ( $c['isNew'] ) : ?><div class="absolute top-space-xs left-space-xs"><span class="bg-primary text-on-primary font-label-sm text-label-sm px-space-sm py-0.5 rounded-full shadow-sm inline-block font-bold">Mới về</span></div><?php endif; ?>
-<button class="absolute top-space-xs right-space-xs w-9 h-9 rounded-full bg-surface-container-lowest/90 backdrop-blur text-outline hover:text-secondary flex items-center justify-center shadow-sm hover:scale-110 transition-transform" <?php echo nexxi_kids_wishlist_attrs( $c['id'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="material-symbols-outlined text-[20px]">favorite</span></button>
+<button class="absolute top-space-xs right-space-xs w-8 h-8 rounded-full bg-surface-container-lowest/90 backdrop-blur text-outline hover:text-secondary flex items-center justify-center shadow-sm hover:scale-110 transition-transform" <?php echo nexxi_kids_wishlist_attrs( $c['id'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="material-symbols-outlined text-[18px]">favorite</span></button>
 </div>
-<div class="space-y-space-xs px-space-xs">
-<div class="flex items-center justify-between text-outline">
+<div class="space-y-1 px-1">
+<div class="flex items-center justify-between gap-1 text-outline">
 <span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary line-clamp-1"><?php echo esc_html( $meta ); ?></span>
-<?php if ( $c['reviews'] ) : ?><div class="flex items-center gap-1 font-label-sm text-label-sm text-tertiary-fixed-dim shrink-0"><?php echo nexxi_kids_star_icon( 16, 'text-tertiary-fixed-dim' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><span class="font-bold text-on-surface"><?php echo esc_html( number_format( $c['rating'], 1 ) ); ?></span><span class="text-outline font-body-sm">(<?php echo esc_html( nexxi_kids_compact_number( $c['sold'] ) ); ?> mua)</span></div><?php elseif ( $c['sold'] ) : ?><div class="flex items-center gap-1 font-label-sm text-label-sm shrink-0"><span class="text-outline font-body-sm">Đã bán <?php echo esc_html( nexxi_kids_compact_number( $c['sold'] ) ); ?></span></div><?php endif; ?>
+<?php if ( $c['reviews'] ) : ?><div class="flex items-center gap-0.5 font-label-sm text-label-sm text-tertiary-fixed-dim shrink-0"><?php echo nexxi_kids_star_icon( 14, 'text-tertiary-fixed-dim' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><span class="font-bold text-on-surface"><?php echo esc_html( number_format( $c['rating'], 1 ) ); ?></span></div><?php elseif ( $c['sold'] ) : ?><div class="flex items-center gap-1 font-label-sm text-label-sm shrink-0"><span class="text-outline font-body-sm">Đã bán <?php echo esc_html( nexxi_kids_compact_number( $c['sold'] ) ); ?></span></div><?php endif; ?>
 </div>
 <h3 class="font-title-md text-title-md text-primary font-bold group-hover:text-secondary transition-colors line-clamp-1"><a href="<?php echo esc_url( $c['url'] ); ?>"><?php echo esc_html( $c['name'] ); ?></a></h3>
-<div class="flex items-baseline gap-space-xs">
+<div class="flex items-baseline gap-space-xs flex-wrap">
 <span class="font-headline-sm text-headline-sm text-secondary font-bold"><?php echo esc_html( $c['price'] ); ?></span>
 <?php if ( $c['regular'] ) : ?><span class="font-body-sm text-body-sm text-outline line-through"><?php echo esc_html( $c['regular'] ); ?></span><?php endif; ?>
 </div>
-<?php if ( $c['sizes'] ) : ?><div class="pt-space-xs flex items-center gap-1"><span class="font-label-sm text-label-sm text-outline mr-1">Size:</span><?php echo nexxi_kids_card_sizes( $c, 'w-7 h-7 rounded-full bg-surface-container-high hover:bg-primary hover:text-on-primary font-label-sm text-label-sm transition-colors' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div><?php endif; ?>
+<?php if ( $c['sizes'] ) : ?><div class="pt-0.5 flex items-center gap-1 flex-wrap"><span class="font-label-sm text-label-sm text-outline">Size:</span><?php echo nexxi_kids_card_sizes( $c, 'w-6 h-6 rounded-full bg-surface-container-high hover:bg-primary hover:text-on-primary font-label-sm text-[10px] transition-colors flex items-center justify-center', 3 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div><?php endif; ?>
 </div>
 </div>
-<button class="mt-space-md w-full bg-secondary-fixed hover:bg-secondary-container hover:text-on-secondary text-secondary font-label-md text-label-md py-space-xs rounded-full flex items-center justify-center gap-space-xs transition-all shadow-sm active:scale-95" type="button" data-nexxi-add <?php disabled( ! $c['inStock'] ); ?>>
+<button class="mt-space-sm w-full bg-secondary-fixed hover:bg-secondary-container hover:text-on-secondary text-secondary font-label-md text-label-md py-space-xs rounded-full flex items-center justify-center gap-space-xs transition-all shadow-sm active:scale-95" type="button" data-nexxi-add <?php disabled( ! $c['inStock'] ); ?>>
 <span class="material-symbols-outlined text-[18px]">add_shopping_cart</span>
 <?php echo esc_html( $c['inStock'] ? 'Thêm Vào Giỏ' : 'Tạm hết hàng' ); ?>
 </button>
