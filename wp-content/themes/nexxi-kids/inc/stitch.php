@@ -256,7 +256,7 @@ function nexxi_kids_stitch_config( $screen ) {
 		'checkout'     => nexxi_kids_stitch_url( 'checkout.html' ),
 		'account'      => nexxi_kids_stitch_url( 'account.html' ),
 		'wishlistPage' => nexxi_kids_page_url( 'yeu-thich' ),
-		'saleEnd'      => wp_date( 'c', nexxi_kids_flash_end() ),
+		'saleEnd'      => nexxi_kids_flash_end() > time() ? wp_date( 'c', nexxi_kids_flash_end() ) : '',
 		'ajaxAdd'      => class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'add_to_cart' ) : '',
 		'restUrl'      => esc_url_raw( rest_url( 'nexxi/v1/' ) ),
 		'nonce'        => wp_create_nonce( 'wp_rest' ),

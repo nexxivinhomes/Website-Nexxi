@@ -321,8 +321,13 @@ function nexxi_kids_stitch_flash( $html ) {
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-claimed-percent', $percent . '% Suất Ưu Đãi' );
 	$html = nexxi_dom_set_attr( $html, 'nx:flash-claimed-bar', 'style', 'width: ' . $percent . '%' );
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-ticker', '<span class="inline-block w-2 h-2 rounded-full bg-secondary-container animate-ping"></span><span class="font-label-sm text-label-sm">' . count( $sale_products ) . ' mẫu ưu đãi đang mở bán</span>' );
-	$end = new DateTimeImmutable( '@' . nexxi_kids_flash_end() );
-	$html = nexxi_dom_set_inner( $html, 'nx:flash-slot', 'Kết thúc lúc ' . esc_html( $end->setTimezone( wp_timezone() )->format( 'H:i' ) ) );
+	$flash_ts = nexxi_kids_flash_end();
+	if ( $flash_ts > time() ) {
+		$end = new DateTimeImmutable( '@' . $flash_ts );
+		$html = nexxi_dom_set_inner( $html, 'nx:flash-slot', 'Kết thúc lúc ' . esc_html( $end->setTimezone( wp_timezone() )->format( 'H:i - d/m' ) ) );
+	} else {
+		$html = nexxi_dom_set_inner( $html, 'nx:flash-slot', 'Chưa mở khung giờ Flash Sale' );
+	}
 
 	// Load more → next page of deals, or hide when everything is shown.
 	$page = max( 1, (int) get_query_var( 'paged' ) );
