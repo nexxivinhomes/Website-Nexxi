@@ -179,7 +179,7 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 <div class="bg-surface-container-lowest px-space-md py-space-xs rounded-lg shadow-sm flex items-center gap-space-xs self-start sm:self-auto">
 <span class="material-symbols-outlined text-secondary text-[20px] animate-bounce">alarm</span>
 <div class="text-right"><p class="font-label-sm text-label-sm text-outline uppercase">Kết thúc sau</p>
-<div class="flex items-center gap-1 font-label-md text-label-md text-primary font-mono font-bold"><span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-hours">--</span>:<span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-minutes">--</span>:<span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-seconds">--</span></div></div>
+<div class="flex items-center gap-1 font-label-md text-label-md text-primary font-mono font-bold"><span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-hours">00</span>:<span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-minutes">00</span>:<span class="bg-surface-container px-1 py-0.5 rounded" id="pdp-seconds">00</span></div></div>
 </div>
 <?php endif; ?>
 </div>

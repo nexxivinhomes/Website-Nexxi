@@ -202,11 +202,14 @@
     if (!boxes.every(Boolean)) return;
     const end = Date.parse(config.saleEnd || '');
     const tick = () => {
-      if (!Number.isFinite(end)) { boxes.forEach(box => { box.textContent = '--'; }); return false; }
+      if (!Number.isFinite(end) || end <= Date.now()) {
+        boxes.forEach(box => { box.textContent = '00'; });
+        return false;
+      }
       let left = Math.max(0, Math.floor((end - Date.now()) / 1000));
       const parts = [Math.floor(left / 3600), Math.floor((left %= 3600) / 60), left % 60];
       parts.forEach((value, index) => { boxes[index].textContent = String(value).padStart(2, '0'); });
-      return true;
+      return left > 0;
     };
     if (tick()) setInterval(tick, 1000);
   };

@@ -65,14 +65,42 @@ function nexxi_kids_tel( $phone ) {
 }
 
 /**
- * Flash Sale end as a UNIX timestamp. Uses the Customizer value when it is in the
- * future, otherwise the end of the current day in the site timezone (daily deals).
+ * Flash Sale end as a UNIX timestamp.
+ * Returns a future timestamp ONLY when Flash Sale is enabled, there is at least
+ * one product on sale, and a future end time has been configured. Otherwise returns 0
+ * so the countdown clock stays at 00:00:00.
  */
 function nexxi_kids_flash_end() {
-	$configured = strtotime( (string) get_theme_mod( 'nexxi_kids_flash_sale_end', '' ) );
-	if ( $configured && $configured > time() ) { return $configured; }
-	$now = new DateTimeImmutable( 'now', wp_timezone() );
-	return $now->setTime( 23, 59, 59 )->getTimestamp();
+	if ( '0' === (string) get_option( 'nexxi_flash_sale_enabled', '1' ) ) {
+		return 0;
+	}
+	$sale_ids = function_exists( 'wc_get_product_ids_on_sale' ) ? nexxi_kids_sale_parent_ids( wc_get_product_ids_on_sale() ) : array();
+	if ( empty( $sale_ids ) ) {
+		return 0;
+	}
+	$raw = trim( (string) get_option( 'nexxi_flash_sale_end', '' ) );
+	if ( '' === $raw ) {
+		$raw = trim( (string) get_theme_mod( 'nexxi_kids_flash_sale_end', '' ) );
+	}
+	if ( '' !== $raw ) {
+		try {
+			$dt = new DateTimeImmutable( $raw, wp_timezone() );
+			$ts = $dt->getTimestamp();
+		} catch ( Exception $e ) {
+			$ts = strtotime( $raw );
+		}
+		return ( $ts && $ts > time() ) ? (int) $ts : 0;
+	}
+	// Check if any sale product has a scheduled WooCommerce sale end date in the future.
+	foreach ( $sale_ids as $id ) {
+		$p = wc_get_product( $id );
+		if ( ! $p ) { continue; }
+		$date_to = $p->get_date_on_sale_to();
+		if ( $date_to && $date_to->getTimestamp() > time() ) {
+			return (int) $date_to->getTimestamp();
+		}
+	}
+	return 0;
 }
 
 function nexxi_kids_money( $amount ) {
