@@ -101,6 +101,9 @@ function nexxi_kids_flush_sale_cache() {
 	if ( function_exists( 'wp_cache_flush' ) ) {
 		wp_cache_flush();
 	}
+	if ( class_exists( 'LiteSpeed_Cache_API' ) && method_exists( 'LiteSpeed_Cache_API', 'purge_all' ) ) {
+		LiteSpeed_Cache_API::purge_all();
+	}
 	do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 }
 
@@ -116,6 +119,12 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 }
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
+add_action( 'init', static function () {
+	if ( '2' !== get_option( 'nexxi_fs_cache_rev' ) ) {
+		update_option( 'nexxi_fs_cache_rev', '2', true );
+		nexxi_kids_flush_sale_cache();
+	}
+}, 20 );
 
 /** Handle POST actions from the Flash Sale Admin page. */
 function nexxi_kids_handle_flash_sale_admin_post() {
@@ -131,6 +140,7 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		update_option( 'nexxi_flash_sale_enabled', $enabled );
 		update_option( 'nexxi_flash_sale_end', $end_raw );
 		set_theme_mod( 'nexxi_kids_flash_sale_end', $end_raw );
+		nexxi_kids_flush_sale_cache();
 		add_settings_error( 'nexxi_fs', 'timer_saved', 'Đã lưu cài đặt bộ đếm giờ Flash Sale!', 'updated' );
 	} elseif ( 'single_discount' === $action ) {
 		$pid  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;

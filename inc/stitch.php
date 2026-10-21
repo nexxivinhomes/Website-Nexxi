@@ -248,6 +248,8 @@ function nexxi_kids_stitch_commerce_main( $content, $heading = '' ) {
 
 /** Data handed to stitch-interactions.js. */
 function nexxi_kids_stitch_config( $screen ) {
+	$flash_end = nexxi_kids_flash_end();
+	$sale_left = max( 0, $flash_end - time() );
 	$config = array(
 		'screen'       => $screen,
 		'home'         => home_url( '/' ),
@@ -256,7 +258,8 @@ function nexxi_kids_stitch_config( $screen ) {
 		'checkout'     => nexxi_kids_stitch_url( 'checkout.html' ),
 		'account'      => nexxi_kids_stitch_url( 'account.html' ),
 		'wishlistPage' => nexxi_kids_page_url( 'yeu-thich' ),
-		'saleEnd'      => nexxi_kids_flash_end() > time() ? wp_date( 'c', nexxi_kids_flash_end() ) : '',
+		'saleEnd'      => $sale_left > 0 ? wp_date( 'c', $flash_end ) : '',
+		'saleLeft'     => $sale_left,
 		'ajaxAdd'      => class_exists( 'WC_AJAX' ) ? WC_AJAX::get_endpoint( 'add_to_cart' ) : '',
 		'restUrl'      => esc_url_raw( rest_url( 'nexxi/v1/' ) ),
 		'nonce'        => wp_create_nonce( 'wp_rest' ),
@@ -269,6 +272,29 @@ function nexxi_kids_stitch_config( $screen ) {
 		if ( $product ) { $config['currentProduct'] = nexxi_kids_product_config( $product ); }
 	}
 	return $config;
+}
+
+/** Populate initial countdown digits in HTML so the clock shows accurate remaining time immediately. */
+function nexxi_kids_stitch_countdown_digits( $html ) {
+	$left = max( 0, nexxi_kids_flash_end() - time() );
+	$hh   = str_pad( (string) floor( $left / 3600 ), 2, '0', STR_PAD_LEFT );
+	$mm   = str_pad( (string) floor( ( $left % 3600 ) / 60 ), 2, '0', STR_PAD_LEFT );
+	$ss   = str_pad( (string) ( $left % 60 ), 2, '0', STR_PAD_LEFT );
+	$map  = array(
+		'fs-hours'    => $hh,
+		'fs-minutes'  => $mm,
+		'fs-seconds'  => $ss,
+		'hours-box'   => $hh,
+		'minutes-box' => $mm,
+		'seconds-box' => $ss,
+		'pdp-hours'   => $hh,
+		'pdp-minutes' => $mm,
+		'pdp-seconds' => $ss,
+	);
+	foreach ( $map as $id => $val ) {
+		$html = preg_replace( '~(<(?:span|div)\b[^>]*\bid="' . preg_quote( $id, '~' ) . '"[^>]*>)\s*\d+\s*(</(?:span|div)>)~', '${1}' . $val . '${2}', $html );
+	}
+	return $html;
 }
 
 function nexxi_kids_render_stitch( $screen ) {
@@ -337,6 +363,7 @@ function nexxi_kids_render_stitch( $screen ) {
 	$html = nexxi_kids_stitch_header( $html, $screen );
 	$html = nexxi_kids_stitch_footer( $html );
 	$html = nexxi_studio_apply_late( $html );
+	$html = nexxi_kids_stitch_countdown_digits( $html );
 
 	$asset_url = get_template_directory_uri() . '/assets/stitch';
 	$html = str_replace( '{{STITCH_ASSET}}', esc_url( $asset_url ), $html );
@@ -386,6 +413,6 @@ function nexxi_kids_render_stitch( $screen ) {
 	echo substr( $html, $head_end + 7, $body_end - $head_end - 7 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_footer();
 	$js = get_template_directory() . '/assets/stitch/stitch-interactions.js';
-	echo '<script>window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . ( is_readable( $js ) ? filemtime( $js ) : NEXXI_KIDS_VERSION ) ) . '"></script>';
+	echo '<script data-no-optimize="1" data-no-defer="1">window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . ( is_readable( $js ) ? filemtime( $js ) : NEXXI_KIDS_VERSION ) ) . '"></script>';
 	echo substr( $html, $body_end ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
