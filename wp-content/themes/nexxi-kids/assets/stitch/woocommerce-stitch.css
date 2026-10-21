@@ -130,12 +130,17 @@ body > header nav a span { white-space: nowrap !important; }
 .nexxi-account .woocommerce-button.view, .nexxi-account .button.view { background: #031444; }
 .nexxi-account .woocommerce-button.view:hover { background: #1b2a59; }
 .nexxi-account .button.cancel { background: #efeeea; color: #031444 !important; }
-.nexxi-account form .form-row { display: flex; flex-direction: column; gap: 4px; margin: 0 0 14px; padding: 0; }
-.nexxi-account form .form-row label { color: #031444; font-family: Quicksand, sans-serif; font-weight: 600; font-size: 13px; }
+.nexxi-account form > h3 { display: none; }
+.nexxi-account form .form-row,
+.woocommerce-page .nexxi-account form .form-row-first,
+.woocommerce-page .nexxi-account form .form-row-last,
+.woocommerce-page .nexxi-account form .form-row-wide { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px !important; padding: 0 !important; width: 100% !important; float: none !important; }
+.nexxi-account form .form-row label { color: #031444; font-family: Quicksand, sans-serif; font-weight: 600; font-size: 13px; line-height: 1.4; }
 .nexxi-account form .form-row .required { color: #ae3115; text-decoration: none; border: 0; }
-.nexxi-account input.input-text, .nexxi-account select, .nexxi-account textarea, .nexxi-account .select2-container .select2-selection--single { width: 100%; background: #f5f3ef; border: 1px solid transparent; border-radius: 999px; min-height: 44px; padding: 10px 16px; font-size: 14px; color: #1b1c1a; outline: none; transition: background .2s, box-shadow .2s; box-sizing: border-box; }
-.nexxi-account textarea { border-radius: 18px; }
-.nexxi-account input.input-text:focus, .nexxi-account select:focus, .nexxi-account textarea:focus { background: #fff; box-shadow: 0 0 0 2px #fd6a49; }
+.nexxi-account form .woocommerce-input-wrapper { display: block; width: 100%; }
+.nexxi-account input.input-text, .nexxi-account select, .nexxi-account textarea, .nexxi-account .select2-container .select2-selection--single { width: 100% !important; max-width: 100%; background: #f5f3ef !important; border: 1px solid #e4e2de !important; border-radius: 999px !important; min-height: 44px; padding: 10px 16px !important; font-size: 14px; color: #1b1c1a; outline: none; transition: background .2s, box-shadow .2s, border-color .2s; box-sizing: border-box; }
+.nexxi-account textarea { border-radius: 18px !important; }
+.nexxi-account input.input-text:focus, .nexxi-account select:focus, .nexxi-account textarea:focus { background: #fff !important; border-color: #fd6a49 !important; box-shadow: 0 0 0 2px rgba(253,106,73,.25) !important; }
 .nexxi-account .select2-container .select2-selection--single .select2-selection__rendered { line-height: 22px; padding: 0; }
 .nexxi-account .select2-container .select2-selection--single .select2-selection__arrow { top: 9px; right: 10px; }
 .nexxi-account span em, .nexxi-account .form-row em { color: #767680; font-size: 12px; font-style: normal; }

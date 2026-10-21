@@ -102,7 +102,8 @@ function nexxi_kids_account_content( WP_User $user, $endpoint ) {
 	echo '<div class="nexxi-account-notices">';
 	wc_print_notices();
 	echo '</div>';
-	$sub_address = ( 'edit-address' === $endpoint && ! empty( $wp->query_vars['edit-address'] ) ) ? sanitize_key( $wp->query_vars['edit-address'] ) : '';
+	$raw_sub = ( 'edit-address' === $endpoint && ! empty( $wp->query_vars['edit-address'] ) ) ? sanitize_title( wp_unslash( $wp->query_vars['edit-address'] ) ) : '';
+	$sub_address = ( '' !== $raw_sub && function_exists( 'wc_edit_address_i18n' ) ) ? wc_edit_address_i18n( $raw_sub, true ) : $raw_sub;
 	if ( ! $endpoint ) {
 		echo nexxi_kids_account_dashboard( $user ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	} elseif ( 'edit-address' === $endpoint && '' === $sub_address ) {
@@ -301,3 +302,111 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	<?php
 	return ob_get_clean();
 }
+
+/* ------------------------------------------------------------------ Billing & Shipping address field rules */
+
+// Phone field is always required across WooCommerce forms.
+add_filter( 'pre_option_woocommerce_checkout_phone_field', static function () {
+	return 'required';
+} );
+
+// Default country is always Vietnam (VN).
+add_filter( 'woocommerce_countries_base_country', static function () { return 'VN'; } );
+add_filter( 'default_checkout_billing_country', static function () { return 'VN'; } );
+add_filter( 'default_checkout_shipping_country', static function () { return 'VN'; } );
+add_filter( 'woocommerce_customer_get_billing_country', static function ( $value ) { return $value ? $value : 'VN'; } );
+add_filter( 'woocommerce_customer_get_shipping_country', static function ( $value ) { return $value ? $value : 'VN'; } );
+add_filter( 'woocommerce_my_account_edit_address_field_value', static function ( $value, $key ) {
+	if ( in_array( $key, array( 'billing_country', 'shipping_country' ), true ) && empty( $value ) ) {
+		return 'VN';
+	}
+	return $value;
+}, 10, 2 );
+
+// Remove postcode from default address fields and set default country to VN.
+add_filter( 'woocommerce_default_address_fields', static function ( $fields ) {
+	unset( $fields['postcode'] );
+	if ( isset( $fields['country'] ) ) {
+		$fields['country']['default'] = 'VN';
+	}
+	return $fields;
+}, 20 );
+
+// Keep postcode hidden/optional in WooCommerce's frontend country locale JS (wc-address-i18n).
+add_filter( 'woocommerce_get_country_locale', static function ( $locale ) {
+	foreach ( array_keys( $locale ) as $country ) {
+		$locale[ $country ]['postcode']['required'] = false;
+		$locale[ $country ]['postcode']['hidden']   = true;
+	}
+	$locale['VN']['postcode'] = array( 'required' => false, 'hidden' => true );
+	$locale['VN']['state']    = array( 'required' => false );
+	return $locale;
+}, 20 );
+
+// Billing fields: remove postcode, default country VN, phone required.
+add_filter( 'woocommerce_billing_fields', static function ( $fields ) {
+	unset( $fields['billing_postcode'] );
+	if ( isset( $fields['billing_country'] ) ) {
+		$fields['billing_country']['default'] = 'VN';
+	}
+	if ( isset( $fields['billing_phone'] ) ) {
+		$fields['billing_phone']['required'] = true;
+	}
+	return $fields;
+}, 20 );
+
+// Shipping fields: remove postcode, default country VN, ensure shipping_phone exists & is required.
+add_filter( 'woocommerce_shipping_fields', static function ( $fields ) {
+	unset( $fields['shipping_postcode'] );
+	if ( isset( $fields['shipping_country'] ) ) {
+		$fields['shipping_country']['default'] = 'VN';
+	}
+	if ( ! isset( $fields['shipping_phone'] ) ) {
+		$fields['shipping_phone'] = array(
+			'label'        => 'Số điện thoại',
+			'required'     => true,
+			'type'         => 'tel',
+			'class'        => array( 'form-row-wide' ),
+			'validate'     => array( 'phone' ),
+			'autocomplete' => 'tel',
+			'priority'     => 100,
+		);
+	} else {
+		$fields['shipping_phone']['required'] = true;
+	}
+	return $fields;
+}, 20 );
+
+// My Account → Edit Address (/tai-khoan/edit-address/{billing|shipping}): enforce no postcode, required phone, and default VN.
+add_filter( 'woocommerce_address_to_edit', static function ( $address, $load_address ) {
+	$load_address = in_array( $load_address, array( 'billing', 'shipping' ), true ) ? $load_address : 'billing';
+	unset( $address[ $load_address . '_postcode' ] );
+
+	$country_key = $load_address . '_country';
+	if ( isset( $address[ $country_key ] ) ) {
+		$address[ $country_key ]['default'] = 'VN';
+		if ( empty( $address[ $country_key ]['value'] ) ) {
+			$address[ $country_key ]['value'] = 'VN';
+		}
+	}
+
+	$phone_key = $load_address . '_phone';
+	if ( ! isset( $address[ $phone_key ] ) ) {
+		$uid = get_current_user_id();
+		$address[ $phone_key ] = array(
+			'label'        => 'Số điện thoại',
+			'required'     => true,
+			'type'         => 'tel',
+			'class'        => array( 'form-row-wide' ),
+			'validate'     => array( 'phone' ),
+			'autocomplete' => 'tel',
+			'priority'     => 100,
+			'value'        => $uid ? get_user_meta( $uid, $phone_key, true ) : '',
+		);
+	} else {
+		$address[ $phone_key ]['required'] = true;
+	}
+
+	return $address;
+}, 20, 2 );
+
