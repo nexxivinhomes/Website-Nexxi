@@ -165,6 +165,7 @@ function nexxi_studio_changed( $key ) {
 	$saved = nexxi_studio_saved();
 	if ( ! isset( $saved[ $key ] ) || ! is_scalar( $saved[ $key ] ) ) { return null; }
 	$value = trim( (string) $saved[ $key ] );
+	if ( 'footer-col-2__t6' === $key && 'Hotline: 1900 8888' === $value ) { return null; }
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;
 }
 

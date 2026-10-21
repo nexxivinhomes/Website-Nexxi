@@ -13,8 +13,7 @@ function nexxi_kids_stitch_account( $html ) {
 	$endpoint = WC()->query->get_current_endpoint();
 
 	$html = nexxi_dom_set_outer( $html, '<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-lg">', nexxi_kids_account_heading( $user, $endpoint ) );
-	$aside = nexxi_dom_get_inner( $html, '<aside class="lg:col-span-4' );
-	$html = nexxi_dom_set_inner( $html, '<aside class="lg:col-span-4', nexxi_kids_account_sidebar( $user ) . nexxi_kids_tail_from( (string) $aside, '<!-- Quick Assistance Box' ) );
+	$html = nexxi_dom_set_inner( $html, '<aside class="lg:col-span-4', nexxi_kids_account_sidebar( $user ) );
 	$html = nexxi_dom_set_inner( $html, '<main class="lg:col-span-8', nexxi_kids_account_content( $user, $endpoint ) );
 	return $html;
 }
@@ -92,6 +91,41 @@ function nexxi_kids_account_sidebar( WP_User $user ) {
 <?php echo $items; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 <div class="pt-space-xs mt-space-xs"><a class="w-full flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-error hover:bg-error-container/40 transition-colors text-left font-label-md text-label-md" href="<?php echo esc_url( wc_logout_url() ); ?>"><span class="material-symbols-outlined text-[20px]">logout</span><span>Đăng xuất tài khoản</span></a></div>
 </nav>
+<?php
+	$hotline = nexxi_kids_setting( 'nexxi_kids_hotline' );
+	$hours   = nexxi_kids_setting( 'nexxi_kids_hours' );
+	$chat    = nexxi_kids_setting( 'nexxi_kids_chat_url' );
+?>
+<!-- Quick Assistance Box -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col gap-space-xs">
+<div class="flex items-center justify-between gap-space-xs">
+	<div class="flex items-center gap-space-xs text-primary font-bold font-title-md text-title-md">
+		<span class="material-symbols-outlined text-secondary">support_agent</span>
+		<span>Chuyên viên tư vấn size</span>
+	</div>
+	<?php if ( $hours ) : ?>
+		<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-[11px] font-bold">
+			<span class="material-symbols-outlined text-[13px]">schedule</span>
+			<?php echo esc_html( $hours ); ?>
+		</span>
+	<?php endif; ?>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Mẹ băn khoăn về bảng size cho bé hoặc cần hỗ trợ đơn hàng? Đội ngũ NEXXI sẵn sàng tư vấn trong khung giờ <?php echo esc_html( $hours ? $hours : '8h - 17h' ); ?>.</p>
+<div class="flex flex-col gap-2 pt-1">
+	<?php if ( $hotline ) : ?>
+		<a class="inline-flex items-center justify-between px-space-md py-2 rounded-lg bg-surface-container-lowest hover:bg-secondary-fixed/50 text-primary font-label-md text-label-md font-bold transition-colors shadow-sm" href="<?php echo esc_url( nexxi_kids_tel( $hotline ) ); ?>">
+			<span class="inline-flex items-center gap-1.5"><span class="material-symbols-outlined text-secondary text-[18px]">call</span><span>Hotline: <?php echo esc_html( $hotline ); ?></span></span>
+			<span class="material-symbols-outlined text-[16px] text-secondary">arrow_forward</span>
+		</a>
+	<?php endif; ?>
+	<?php if ( $chat ) : ?>
+		<a class="inline-flex items-center justify-between px-space-md py-2 rounded-lg bg-secondary-container hover:bg-secondary text-on-secondary font-label-md text-label-md font-bold transition-colors shadow-sm" href="<?php echo esc_url( $chat ); ?>" target="_blank" rel="noopener">
+			<span class="inline-flex items-center gap-1.5"><span class="material-symbols-outlined text-[18px]">forum</span><span>Nhắn tin Zalo tư vấn</span></span>
+			<span class="material-symbols-outlined text-[16px]">open_in_new</span>
+		</a>
+	<?php endif; ?>
+</div>
+</div>
 	<?php
 	return ob_get_clean();
 }
