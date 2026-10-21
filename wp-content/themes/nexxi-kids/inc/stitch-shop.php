@@ -199,7 +199,7 @@ function nexxi_kids_sort_select( $class, array $labels ) {
 	$current = isset( $state['orderby'] ) ? $state['orderby'] : ( ! empty( $state['on_sale'] ) ? ( isset( $labels['sale'] ) ? 'sale' : 'popularity' ) : 'date' );
 	$out = '<select class="' . esc_attr( $class ) . '" data-nexxi-sort aria-label="Sắp xếp sản phẩm">';
 	foreach ( $labels as $value => $label ) {
-		$url = 'sale' === $value ? nexxi_kids_shop_link( array( 'on_sale' => '1', 'orderby' => null ) ) : nexxi_kids_shop_link( array( 'orderby' => $value ) );
+		$url = nexxi_kids_shop_link( array( 'orderby' => $value ) );
 		$out .= '<option value="' . esc_url( $url ) . '"' . selected( $value === $current, true, false ) . '>' . esc_html( $label ) . '</option>';
 	}
 	return $out . '</select>';
@@ -355,8 +355,8 @@ function nexxi_kids_stitch_flash( $html ) {
 	foreach ( $products as $product ) { $cards .= nexxi_kids_card_flash_page( $product ); }
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-grid', $cards ? $cards : nexxi_kids_empty_state( 'Khung giờ này đã hết deal', 'Mẹ quay lại khung giờ sau hoặc xem các mẫu mới nhé.', 'Xem tất cả sản phẩm', nexxi_kids_shop_url() ) );
 
-	// Category chips limited to categories that currently have sale products.
-	$sale_products = nexxi_kids_all_sale_parent_ids();
+	// Category chips limited to categories that currently have Flash Sale products.
+	$sale_products = nexxi_kids_flash_sale_parent_ids();
 	$current = function_exists( 'is_product_category' ) && is_product_category() ? get_queried_object_id() : 0;
 	$active = 'filter-btn active bg-primary text-on-primary px-space-md py-2 rounded-full transition-all shadow-sm flex items-center gap-1.5';
 	$idle = 'filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1';

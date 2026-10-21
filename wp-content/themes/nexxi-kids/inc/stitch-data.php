@@ -74,7 +74,7 @@ function nexxi_kids_flash_end() {
 	if ( '0' === (string) get_option( 'nexxi_flash_sale_enabled', '1' ) ) {
 		return 0;
 	}
-	$sale_ids = nexxi_kids_all_sale_parent_ids();
+	$sale_ids = nexxi_kids_flash_sale_parent_ids();
 	if ( empty( $sale_ids ) ) {
 		return 0;
 	}
@@ -316,9 +316,24 @@ function nexxi_kids_query_products( $args ) {
 }
 
 function nexxi_kids_sale_products( $limit = 4 ) {
-	$ids = nexxi_kids_all_sale_parent_ids();
+	$ids = nexxi_kids_flash_sale_parent_ids();
 	if ( ! $ids ) { return array(); }
 	return nexxi_kids_query_products( array( 'include' => $ids, 'limit' => $limit, 'orderby' => 'popularity' ) );
+}
+
+/**
+ * Resolve parent product IDs that are on sale AND belong to Flash Sale
+ * (excludes regular-only discounted products where _nexxi_is_flash_sale === '0').
+ */
+function nexxi_kids_flash_sale_parent_ids() {
+	$all = nexxi_kids_all_sale_parent_ids();
+	$out = array();
+	foreach ( $all as $id ) {
+		if ( '0' !== (string) get_post_meta( $id, '_nexxi_is_flash_sale', true ) ) {
+			$out[] = $id;
+		}
+	}
+	return $out;
 }
 
 /**
