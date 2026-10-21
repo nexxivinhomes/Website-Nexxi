@@ -197,7 +197,7 @@ function nexxi_studio_changed( $key ) {
 		'home-lookbook__t11'   => 'Khám Phá Dòng Bamboo',
 	);
 	if ( isset( $legacy_home_cats[ $key ] ) && $legacy_home_cats[ $key ] === $value ) { return null; }
-	if ( in_array( $key, array( 'home-categories__i1', 'home-categories__i4', 'home-lookbook__i2' ), true ) && ( false !== strpos( $value, 'stitch-030.jpg' ) || false !== strpos( $value, 'stitch-029.jpg' ) || false !== strpos( $value, 'stitch-002.jpg' ) ) ) { return null; }
+	if ( in_array( $key, array( 'home-categories__i1', 'home-categories__i4', 'home-lookbook__i1', 'home-lookbook__i2' ), true ) && ( false !== strpos( $value, 'stitch-030.jpg' ) || false !== strpos( $value, 'stitch-029.jpg' ) || false !== strpos( $value, 'stitch-001.jpg' ) || false !== strpos( $value, 'stitch-002.jpg' ) || false !== strpos( $value, 'stitch-071.jpg' ) ) ) { return null; }
 	if ( 'header-ticker__lines' === $key ) {
 		$norm = preg_replace( '~\R~u', "\n", $value );
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";

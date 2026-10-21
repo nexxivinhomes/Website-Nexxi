@@ -462,7 +462,7 @@ return array (
   array (
     'r' => 'home-lookbook',
     't' => 'image',
-    'd' => '{{STITCH_ASSET}}/images/stitch-001.jpg',
+    'd' => '{{STITCH_ASSET}}/images/lookbook-dam-vay.jpg',
     'l' => 'Ảnh',
     'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
@@ -526,7 +526,7 @@ return array (
   array (
     'r' => 'home-lookbook',
     't' => 'image',
-    'd' => '{{STITCH_ASSET}}/images/stitch-071.jpg',
+    'd' => '{{STITCH_ASSET}}/images/lookbook-set-bo.jpg',
     'l' => 'Ảnh',
     'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
