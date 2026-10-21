@@ -175,6 +175,11 @@ body > header nav a span { white-space: nowrap !important; }
 .nexxi-account-notices .woocommerce-error, .nexxi-account .woocommerce-error { border-left-color: #ba1a1a; }
 .nexxi-account .woocommerce-message::before, .nexxi-account .woocommerce-info::before, .nexxi-account .woocommerce-error::before, .nexxi-account-notices *::before { display: none; }
 .nexxi-account-notices:empty { display: none; }
+.nexxi-footer-logo,
+footer [data-nxr="footer-brand"] img {
+  mix-blend-mode: multiply;
+  background: transparent !important;
+}
 
 /* ---------- Fluid Viewport-Proportional Scaling (All Screen Sizes) ---------- */
 html {

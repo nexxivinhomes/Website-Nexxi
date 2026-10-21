@@ -82,7 +82,7 @@ function nexxi_studio_page_url( $page ) {
 function nexxi_studio_manual_fields() {
 	$f = array(
 		'header-ticker__lines' => array( 'r' => 'header-ticker', 't' => 'lines', 'd' => "🔥 Giảm giá sản phẩm 25%-40%-50%\n🚚 Miễn ship cho đơn từ 299k toàn quốc\n🛍️ Mua 2 sản phẩm giảm thêm 5%\n🎁 Mua 3 sản phẩm giảm thêm 7%\n💎 Mua 4 sản phẩm giảm thêm 10%\n🛡️ Hoàn tiền 100% nếu sản phẩm không giống với mô tả.\n🔄 Hỗ trợ 15 ngày đổi hàng\n✨ Hàng ngàn ưu đãi hấp dẫn hàng tháng", 'l' => 'Các thông báo (mỗi dòng một thông báo)', 'g' => '' ),
-		'header-brand__logo'   => array( 'r' => 'header-brand', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/logo.jpg', 'l' => 'Logo (dùng cho header và footer)', 'g' => '' ),
+		'header-brand__logo'   => array( 'r' => 'header-brand', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/logo-transparent.png', 'l' => 'Logo (dùng cho header và footer)', 'g' => '' ),
 		'header-brand__label'  => array( 'r' => 'header-brand', 't' => 'text', 'd' => 'Kids FASHION', 'l' => 'Nhãn nhỏ cạnh logo', 'g' => '' ),
 		'header-search__p'     => array( 'r' => 'header-search', 't' => 'placeholder', 'd' => 'Mẹ muốn tìm đồ xinh cho bé...', 'l' => 'Chữ gợi ý trong ô tìm kiếm', 'g' => '' ),
 		'home-commit__t1'      => array( 'r' => 'home-commit', 't' => 'text', 'd' => 'CAM KẾT TỪ NEXXI', 'l' => 'Nhãn nhỏ', 'g' => 'Tiêu đề' ),
@@ -166,6 +166,11 @@ function nexxi_studio_changed( $key ) {
 	if ( ! isset( $saved[ $key ] ) || ! is_scalar( $saved[ $key ] ) ) { return null; }
 	$value = trim( (string) $saved[ $key ] );
 	if ( 'footer-col-2__t6' === $key && 'Hotline: 1900 8888' === $value ) { return null; }
+	if ( 'header-brand__logo' === $key && false !== strpos( $value, '/assets/stitch/images/logo.jpg' ) ) { return null; }
+	if ( 'footer-brand__t2' === $key && 'Thương hiệu thời trang cao cấp mang phong cách dễ thương, ngọt ngào và năng động cho bé yêu. Từng sợi vải organic đều được chọn lọc để nâng niu nụ cười của bé mỗi ngày.' === $value ) { return null; }
+	if ( 'footer-bottom__t1' === $key && '© 2025 NEXXI Kids Fashion Boutique. Tận tâm nâng niu từng bước khôn lớn của bé.' === $value ) { return null; }
+	if ( 'footer-bottom__t3' === $key && '100% Vải an toàn cho bé' === $value ) { return null; }
+	if ( 'footer-bottom__t5' === $key && 'Đóng gói quà tặng xinh xắn' === $value ) { return null; }
 	if ( 'header-ticker__lines' === $key ) {
 		$norm = preg_replace( '~\R~u', "\n", $value );
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
@@ -398,7 +403,11 @@ function nexxi_studio_header( $html ) {
 	// Logo everywhere (header + footer).
 	$html = str_replace( '<img alt="logo.jpg"', '<img data-nxi="header-brand__logo" alt="logo.jpg"', $html );
 	$logo = nexxi_studio_changed( 'header-brand__logo' );
-	if ( $logo ) { $html = str_replace( '{{STITCH_ASSET}}/images/logo.jpg', esc_url( $logo ), $html ); }
+	if ( $logo ) {
+		$html = str_replace( array( '{{STITCH_ASSET}}/images/logo.jpg', '{{STITCH_ASSET}}/images/logo-transparent.png' ), esc_url( $logo ), $html );
+	} else {
+		$html = str_replace( '{{STITCH_ASSET}}/images/logo.jpg', '{{STITCH_ASSET}}/images/logo-transparent.png', $html );
+	}
 	return $html;
 }
 
