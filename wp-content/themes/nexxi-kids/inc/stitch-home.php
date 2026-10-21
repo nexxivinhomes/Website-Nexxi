@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Category slugs in the order of the four Stitch "Chọn đồ theo độ tuổi" cards. */
 function nexxi_kids_home_category_slugs() {
-	return apply_filters( 'nexxi_kids_home_category_slugs', array( 'bo-thun', 'dam', 'set-phoi', 'ao-thun' ) );
+	return apply_filters( 'nexxi_kids_home_category_slugs', array( 'set-bo', 'dam-vay', 'quan-xinh', 'ao-thoi-trang' ) );
 }
 
 function nexxi_kids_stitch_home( $html ) {
@@ -12,10 +12,10 @@ function nexxi_kids_stitch_home( $html ) {
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-shop', 'href', nexxi_kids_shop_url() );
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-account', 'href', wc_get_page_permalink( 'myaccount' ) );
 	foreach ( nexxi_kids_home_category_slugs() as $index => $slug ) {
-		$html = nexxi_dom_set_attr( $html, 'nx:home-cat-' . ( $index + 1 ), 'href', nexxi_kids_category_url( $slug ) );
+		$html = nexxi_dom_set_attr( $html, 'nx:home-cat-' . ( $index + 1 ), 'href', add_query_arg( 'cat_group', $slug, nexxi_kids_shop_url() ) );
 	}
-	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-1', 'href', nexxi_kids_shop_url() );
-	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'href', add_query_arg( 'filter_chat-lieu', 'soi-tre-bamboo', nexxi_kids_shop_url() ) );
+	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-1', 'href', add_query_arg( 'cat_group', 'dam-vay', nexxi_kids_shop_url() ) );
+	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'href', add_query_arg( 'cat_group', 'set-bo', nexxi_kids_shop_url() ) );
 
 	// Flash Sale rail.
 	$sale = nexxi_kids_sale_products( 4 );
