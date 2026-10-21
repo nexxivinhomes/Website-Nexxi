@@ -81,7 +81,7 @@ function nexxi_studio_page_url( $page ) {
 /** Hand-written fields (header + PHP-rendered home sections). */
 function nexxi_studio_manual_fields() {
 	$f = array(
-		'header-ticker__lines' => array( 'r' => 'header-ticker', 't' => 'lines', 'd' => "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé", 'l' => 'Các thông báo (mỗi dòng một thông báo)', 'g' => '' ),
+		'header-ticker__lines' => array( 'r' => 'header-ticker', 't' => 'lines', 'd' => "🔥 Giảm giá sản phẩm 25%-40%-50%\n🚚 Miễn ship cho đơn từ 299k toàn quốc\n🛍️ Mua 2 sản phẩm giảm thêm 5%\n🎁 Mua 3 sản phẩm giảm thêm 7%\n💎 Mua 4 sản phẩm giảm thêm 10%\n🛡️ Hoàn tiền 100% nếu sản phẩm không giống với mô tả.\n🔄 Hỗ trợ 15 ngày đổi hàng\n✨ Hàng ngàn ưu đãi hấp dẫn hàng tháng", 'l' => 'Các thông báo (mỗi dòng một thông báo)', 'g' => '' ),
 		'header-brand__logo'   => array( 'r' => 'header-brand', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/logo.jpg', 'l' => 'Logo (dùng cho header và footer)', 'g' => '' ),
 		'header-brand__label'  => array( 'r' => 'header-brand', 't' => 'text', 'd' => 'Kids FASHION', 'l' => 'Nhãn nhỏ cạnh logo', 'g' => '' ),
 		'header-search__p'     => array( 'r' => 'header-search', 't' => 'placeholder', 'd' => 'Mẹ muốn tìm đồ xinh cho bé...', 'l' => 'Chữ gợi ý trong ô tìm kiếm', 'g' => '' ),
@@ -166,6 +166,11 @@ function nexxi_studio_changed( $key ) {
 	if ( ! isset( $saved[ $key ] ) || ! is_scalar( $saved[ $key ] ) ) { return null; }
 	$value = trim( (string) $saved[ $key ] );
 	if ( 'footer-col-2__t6' === $key && 'Hotline: 1900 8888' === $value ) { return null; }
+	if ( 'header-ticker__lines' === $key ) {
+		$norm = preg_replace( '~\R~u', "\n", $value );
+		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
+		if ( $norm === $legacy_ticker ) { return null; }
+	}
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;
 }
 
@@ -341,11 +346,14 @@ function nexxi_studio_header( $html ) {
 	$ticker = nexxi_dom_locate( $header, '<div class="w-full bg-secondary-fixed' );
 	if ( $ticker ) {
 		$header = nexxi_dom_set_attr( $header, '<div class="w-full bg-secondary-fixed', 'data-nxr', 'header-ticker' );
-		$lines = null !== nexxi_studio_changed( 'header-ticker__lines' ) ? preg_split( '~\R~u', nexxi_studio_value( 'header-ticker__lines' ) ) : null;
+		$lines = preg_split( '~\R~u', nexxi_studio_value( 'header-ticker__lines' ) );
+		$lines = is_array( $lines ) ? array_values( array_filter( array_map( 'trim', $lines ) ) ) : array();
 		if ( $lines ) {
-			$lines = array_values( array_filter( array_map( 'trim', $lines ) ) );
 			$spans = '';
-			for ( $n = 0, $count = $lines ? max( 4, count( $lines ) ) : 0; $n < $count; $n++ ) { $spans .= '<span class="">' . esc_html( $lines[ $n % count( $lines ) ] ) . '</span>'; }
+			for ( $n = 0, $count = max( 4, count( $lines ) ); $n < $count; $n++ ) {
+				$spans .= '<span class="inline-flex items-center gap-1.5 shrink-0">' . esc_html( $lines[ $n % count( $lines ) ] ) . '</span>';
+			}
+			$header = nexxi_dom_set_attr( $header, 'animate-marquee', 'style', 'width:max-content;animation-duration:38s;' );
 			$header = nexxi_dom_set_inner( $header, 'animate-marquee', $spans . $spans );
 		}
 	}
