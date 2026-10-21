@@ -399,18 +399,17 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 			$amount = 0;
 		}
 
-		// Apply discount as Regular Product Sale (_nexxi_is_flash_sale = '0', NOT Flash Sale)
+		// Apply discount as Regular Product Sale (_nexxi_has_prod_sale = '1', NOT Flash Sale)
 		if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, (float) $reg_override, '0' ) ) {
-			$prod  = wc_get_product( $pid );
-			$range = $prod ? nexxi_kids_price_range( $prod ) : array( 'min' => 0, 'regular' => 0 );
-			$pct   = ( $range['regular'] > 0 && $range['min'] < $range['regular'] ) ? round( ( 1 - $range['min'] / $range['regular'] ) * 100 ) : 0;
+			$prod = wc_get_product( $pid );
+			$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
 			$report['updated'][] = array(
 				'id'      => $pid,
 				'sku'     => $raw_sku,
 				'name'    => $prod ? $prod->get_name() : '#' . $pid,
-				'regular' => $range['regular'],
-				'sale'    => $range['min'],
-				'pct'     => $pct,
+				'regular' => $prog['regular'],
+				'sale'    => $prog['sale'],
+				'pct'     => $prog['pct'],
 			);
 		}
 	}
@@ -462,14 +461,14 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 				if ( '' === $sku ) {
 					$sku = '#' . $pid;
 				}
-				$range   = nexxi_kids_price_range( $prod );
-				$on_sale = $prod->is_on_sale() && $range['regular'] > $range['min'];
-				$pct     = $on_sale && $range['regular'] > 0 ? round( ( 1 - $range['min'] / $range['regular'] ) * 100 ) : '';
-				$sale_v  = $on_sale ? round( $range['min'] ) : '';
+				$prog    = nexxi_kids_get_program_sale( $prod, 'regular' );
+				$on_sale = $prog['on_sale'];
+				$pct     = $on_sale ? $prog['pct'] : '';
+				$sale_v  = $on_sale ? round( $prog['sale'] ) : '';
 				fputcsv( $out, array(
 					$sku,
 					$prod->get_name(),
-					$range['regular'] > 0 ? round( $range['regular'] ) : '',
+					$prog['regular'] > 0 ? round( $prog['regular'] ) : '',
 					$pct,
 					$sale_v,
 				) );
@@ -613,9 +612,10 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 				nexxi_kids_apply_product_discount( $pid, 'percent', $pct_val, $reg_override, '0' );
 				$saved_count++;
 			} else {
-				// Neither sale price nor percent is > 0: clear discount if currently on sale or if saving single row or updating regular price
+				// Neither sale price nor percent is > 0: clear regular product discount if currently active or if saving single row or updating regular price
 				$prod = wc_get_product( $pid );
-				if ( ( $prod && $prod->is_on_sale() ) || $only_pid === $pid || $reg_override > 0 ) {
+				$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular' ) : array( 'on_sale' => false );
+				if ( $prog['on_sale'] || $only_pid === $pid || $reg_override > 0 ) {
 					nexxi_kids_apply_product_discount( $pid, 'clear', 0, $reg_override, '0' );
 					$saved_count++;
 				}
@@ -634,9 +634,7 @@ add_action( 'admin_init', 'nexxi_kids_handle_bulk_discount_admin_actions' );
 
 /** Render the Bulk Product Discount & SKU Upload Admin screen. */
 function nexxi_kids_bulk_discount_admin_page() {
-	$all_sale_ids   = nexxi_kids_all_sale_parent_ids();
-	$flash_sale_ids = nexxi_kids_flash_sale_parent_ids();
-	$regular_sale_ids = array_values( array_diff( $all_sale_ids, $flash_sale_ids ) );
+	$regular_sale_ids = nexxi_kids_regular_sale_parent_ids();
 
 	$last_report = get_transient( 'nexxi_bd_last_report_' . get_current_user_id() );
 	if ( false !== $last_report ) {
@@ -679,12 +677,8 @@ function nexxi_kids_bulk_discount_admin_page() {
 	}
 	if ( 'regular_sale' === $status ) {
 		$query_args['post__in'] = $regular_sale_ids ? $regular_sale_ids : array( 0 );
-	} elseif ( 'any_sale' === $status ) {
-		$query_args['post__in'] = $all_sale_ids ? $all_sale_ids : array( 0 );
-	} elseif ( 'flash_sale' === $status ) {
-		$query_args['post__in'] = $flash_sale_ids ? $flash_sale_ids : array( 0 );
-	} elseif ( 'no_sale' === $status && $all_sale_ids ) {
-		$query_args['post__not_in'] = $all_sale_ids;
+	} elseif ( 'no_sale' === $status && $regular_sale_ids ) {
+		$query_args['post__not_in'] = $regular_sale_ids;
 	}
 
 	$wp_q       = new WP_Query( $query_args );
@@ -827,11 +821,6 @@ function nexxi_kids_bulk_discount_admin_page() {
 						<span style="background:#e6f4ea;color:#0b6b2f;font-size:12px;padding:3px 10px;border-radius:999px;margin-left:6px;">
 							Đang giảm giá bán: <?php echo count( $regular_sale_ids ); ?> mẫu
 						</span>
-						<?php if ( count( $flash_sale_ids ) > 0 ) : ?>
-							<span style="background:#ffdad2;color:#ae3115;font-size:12px;padding:3px 10px;border-radius:999px;margin-left:4px;">
-								Đang ở Flash Sale: <?php echo count( $flash_sale_ids ); ?> mẫu
-							</span>
-						<?php endif; ?>
 					</h2>
 					<p style="margin:4px 0 0;color:#666;font-size:13px;">
 						Bạn có thể <b>tích chọn nhiều sản phẩm / chọn cả danh mục</b> để giảm giá hàng loạt, hoặc <b>nhập trực tiếp % giảm / giá bán giảm trên nhiều dòng cùng lúc</b> rồi bấm <b>Lưu Tất Cả Thay Đổi Trên Bảng</b>.
@@ -851,9 +840,8 @@ function nexxi_kids_bulk_discount_admin_page() {
 				</select>
 				<select name="sale_filter" style="min-height:34px;border-radius:8px;border:1px solid #d5d3ce;">
 					<option value="all" <?php selected( $status, 'all' ); ?>>Tất cả trạng thái</option>
-					<option value="regular_sale" <?php selected( $status, 'regular_sale' ); ?>>🏷️ Đang giảm giá bán (<?php echo count( $regular_sale_ids ); ?>)</option>
-					<option value="any_sale" <?php selected( $status, 'any_sale' ); ?>>Tất cả đang giảm giá (<?php echo count( $all_sale_ids ); ?>)</option>
-					<option value="no_sale" <?php selected( $status, 'no_sale' ); ?>>Chưa giảm giá</option>
+					<option value="regular_sale" <?php selected( $status, 'regular_sale' ); ?>>🏷️ Đang giảm giá bán SP (<?php echo count( $regular_sale_ids ); ?>)</option>
+					<option value="no_sale" <?php selected( $status, 'no_sale' ); ?>>Chưa giảm giá SP</option>
 				</select>
 				<select name="per_page" style="min-height:34px;border-radius:8px;border:1px solid #d5d3ce;">
 					<option value="25" <?php selected( $per_page, 25 ); ?>>25 mẫu / trang</option>
@@ -937,10 +925,9 @@ function nexxi_kids_bulk_discount_admin_page() {
 							if ( ! $prod ) { continue; }
 							$pid      = $prod->get_id();
 							$sku      = nexxi_kids_effective_sku( $prod );
-							$range    = nexxi_kids_price_range( $prod );
-							$on_sale  = $prod->is_on_sale() && $range['regular'] > $range['min'];
-							$pct      = $on_sale && $range['regular'] > 0 ? round( ( 1 - $range['min'] / $range['regular'] ) * 100 ) : 0;
-							$is_flash = $on_sale && in_array( $pid, $flash_sale_ids, true );
+							$prog     = nexxi_kids_get_program_sale( $prod, 'regular' );
+							$on_sale  = $prog['on_sale'];
+							$pct      = $prog['pct'];
 							$thumb    = wp_get_attachment_image_url( $prod->get_image_id(), 'thumbnail' );
 							$cat_term = nexxi_kids_product_category( $prod );
 							$children_count = $prod->is_type( 'variable' ) ? count( $prod->get_children() ) : 0;
@@ -970,7 +957,7 @@ function nexxi_kids_bulk_discount_admin_page() {
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo $range['regular'] > 0 ? (int) round( $range['regular'] ) : ''; ?>" min="0" step="1000" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo $prog['regular'] > 0 ? (int) round( $prog['regular'] ) : ''; ?>" min="0" step="1000" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
 								</td>
 								<td>
 									<div style="position:relative;display:flex;align-items:center;">
@@ -979,19 +966,15 @@ function nexxi_kids_bulk_discount_admin_page() {
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo $on_sale ? (int) round( $range['min'] ) : ''; ?>" min="0" step="1000" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo $on_sale ? (int) round( $prog['sale'] ) : ''; ?>" min="0" step="1000" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
 								</td>
 								<td>
 									<?php if ( $on_sale ) : ?>
 										<div style="font-weight:800;color:#ae3115;font-size:13px;">
-											<?php echo esc_html( nexxi_kids_money( $range['min'] ) ); ?>
+											<?php echo esc_html( nexxi_kids_money( $prog['sale'] ) ); ?>
 											<span style="background:#fd6a49;color:#fff;font-size:10.5px;padding:1px 6px;border-radius:999px;">-<?php echo (int) $pct; ?>%</span>
 										</div>
-										<?php if ( $is_flash ) : ?>
-											<span style="display:inline-block;font-size:11px;color:#b3261e;background:#ffdad6;padding:1px 6px;border-radius:4px;margin-top:2px;">⚡ Đang trong Flash Sale</span>
-										<?php else : ?>
-											<span style="display:inline-block;font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:1px 6px;border-radius:4px;margin-top:2px;">🏷️ Giảm giá bán SP</span>
-										<?php endif; ?>
+										<span style="display:inline-block;font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:1px 6px;border-radius:4px;margin-top:2px;">🏷️ Đang giảm giá bán SP</span>
 									<?php else : ?>
 										<span style="color:#767680;font-size:12.5px;">Giá gốc (Chưa giảm)</span>
 									<?php endif; ?>

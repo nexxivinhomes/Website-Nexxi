@@ -9,8 +9,9 @@ function nexxi_kids_current_product() {
 /** Product + variation data for stitch-interactions.js. */
 function nexxi_kids_product_config( WC_Product $product ) {
 	nexxi_kids_normalize_variable_sale( $product );
-	$range = nexxi_kids_price_range( $product );
-	$sizes = array();
+	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$prog     = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$sizes    = array();
 	foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
 		$n = Nexxi_Kids_Catalog::size_number( $term->slug );
 		$sizes[] = array( 'slug' => $term->slug, 'name' => $term->name, 'number' => $n, 'weight' => Nexxi_Kids_Catalog::size_weight( $n ) );
@@ -20,6 +21,12 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		$colors[] = array( 'slug' => $term->slug, 'name' => $term->name, 'hex' => Nexxi_Kids_Catalog::color_hex( $term ) );
 	}
 	$image = wp_get_attachment_image_url( $product->get_image_id(), 'full' );
+	$vars  = Nexxi_Kids_Catalog::variation_payload( $product );
+	foreach ( $vars as &$v ) {
+		$v['regular'] = (float) $prog['regular'];
+		$v['price']   = (float) $prog['sale'];
+	}
+	unset( $v );
 	return array(
 		'id'         => $product->get_id(),
 		'type'       => $product->get_type(),
@@ -28,9 +35,9 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		'image'      => $image ? $image : wc_placeholder_img_src( 'full' ),
 		'sizes'      => $product->is_type( 'variable' ) ? $sizes : array(),
 		'colors'     => $product->is_type( 'variable' ) ? $colors : array(),
-		'variations' => Nexxi_Kids_Catalog::variation_payload( $product ),
-		'price'      => (float) $range['min'],
-		'regular'    => (float) $range['regular'],
+		'variations' => $vars,
+		'price'      => (float) $prog['sale'],
+		'regular'    => (float) $prog['regular'],
 		'inStock'    => $product->is_in_stock(),
 		'max'        => $product->get_max_purchase_quantity(),
 		'attributes' => Nexxi_Kids_Catalog::variation_attributes( $product ),
@@ -98,7 +105,9 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 	$ids = array_values( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids() ) ) );
 	$main = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : wc_placeholder_img_src( 'full' );
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
-	$discount = nexxi_kids_discount_percent( $product );
+	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$prog = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$discount = $prog['pct'];
 	ob_start(); ?>
 <div class="nexxi-pdp-main-media relative w-full aspect-square bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
 <img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
@@ -139,9 +148,10 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 	$config = nexxi_kids_product_config( $product );
 	$cat = nexxi_kids_product_category( $product );
 	$left = Nexxi_Kids_Catalog::stock_left( $product );
-	$range = nexxi_kids_price_range( $product );
-	$discount = nexxi_kids_discount_percent( $product );
-	$on_sale = ( $discount > 0 || $product->is_on_sale() ) && $range['regular'] > $range['min'];
+	$pdp_prog = ( isset( $_GET['flash_sale'] ) && '1' === $_GET['flash_sale'] ) ? 'flash' : 'regular'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$prog = nexxi_kids_get_program_sale( $product, $pdp_prog );
+	$discount = $prog['pct'];
+	$on_sale = $prog['on_sale'];
 	$reviews = (int) $product->get_review_count();
 	$rating = (float) $product->get_average_rating();
 	$sold = (int) $product->get_total_sales();
@@ -152,7 +162,7 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 	} else {
 		$stock = 'Còn hàng – giao ngay';
 	}
-	$price = $range['min'] < $range['max'] ? 'Từ ' . nexxi_kids_money( $range['min'] ) : nexxi_kids_money( $range['min'] );
+	$price = nexxi_kids_money( $prog['sale'] );
 	$advisor_title = 'Nhập cân nặng &amp; chiều cao để mẹ an tâm vừa vặn';
 	ob_start(); ?>
 <div class="space-y-space-xs">
@@ -173,12 +183,12 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 <div>
 <div class="flex items-baseline gap-space-xs flex-wrap">
 <span class="font-display-lg text-display-lg text-secondary font-bold leading-none" data-nexxi-price><?php echo esc_html( $price ); ?></span>
-<span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $range['regular'] ) ); ?></span>
+<span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $prog['regular'] ) ); ?></span>
 <span class="bg-secondary-container text-on-secondary font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold ml-1<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
 <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Đã bao gồm VAT • Tặng kèm hộp quà xinh xắn</p>
 </div>
-<?php if ( $on_sale ) : ?>
+<?php if ( 'flash' === $pdp_prog && $on_sale && nexxi_kids_flash_end() > time() ) : ?>
 <div class="bg-surface-container-lowest px-space-md py-space-xs rounded-lg shadow-sm flex items-center gap-space-xs self-start sm:self-auto">
 <span class="material-symbols-outlined text-secondary text-[20px] animate-bounce">alarm</span>
 <div class="text-right"><p class="font-label-sm text-label-sm text-outline uppercase">Kết thúc sau</p>

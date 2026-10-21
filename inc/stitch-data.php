@@ -257,15 +257,80 @@ function nexxi_kids_discount_percent( WC_Product $product ) {
 }
 
 /**
+ * Get the active discount state of a product for a specific program:
+ *  - 'regular' : Chương trình Giảm Giá Bán Sản Phẩm (🏷️ Giảm Giá SP)
+ *  - 'flash'   : Chương trình Flash Sale (⚡ Flash Sale)
+ */
+function nexxi_kids_get_program_sale( WC_Product $product, $program = 'regular' ) {
+	$pid   = $product->get_id();
+	$range = nexxi_kids_price_range( $product );
+	$reg   = (float) $range['regular'];
+	if ( $reg <= 0 ) {
+		$reg = (float) $range['min'];
+	}
+
+	if ( 'flash' === $program ) {
+		$is_fs    = (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true );
+		$has_prod = '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true );
+		if ( '' === $is_fs && ! $has_prod && $range['regular'] > 0 && $range['min'] > 0 && $range['min'] < $range['regular'] ) {
+			$is_fs = '1';
+		}
+		if ( '1' === $is_fs ) {
+			$fs_price = (float) get_post_meta( $pid, '_nexxi_fs_sale_price', true );
+			if ( $fs_price <= 0 && ! $has_prod && $range['min'] > 0 && $range['min'] < $reg ) {
+				$fs_price = (float) $range['min'];
+			}
+			if ( $fs_price > 0 && $fs_price < $reg ) {
+				$pct = (int) round( ( 1 - $fs_price / $reg ) * 100 );
+				return array(
+					'on_sale' => true,
+					'regular' => $reg,
+					'sale'    => $fs_price,
+					'pct'     => $pct,
+				);
+			}
+		}
+		return array(
+			'on_sale' => false,
+			'regular' => $reg,
+			'sale'    => $reg,
+			'pct'     => 0,
+		);
+	}
+
+	// Default: 'regular' program (🏷️ Giảm Giá Bán Sản Phẩm)
+	if ( '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true ) ) {
+		$prod_price = (float) get_post_meta( $pid, '_nexxi_prod_sale_price', true );
+		if ( $prod_price > 0 && $prod_price < $reg ) {
+			$pct = (int) round( ( 1 - $prod_price / $reg ) * 100 );
+			return array(
+				'on_sale' => true,
+				'regular' => $reg,
+				'sale'    => $prod_price,
+				'pct'     => $pct,
+			);
+		}
+	}
+	return array(
+		'on_sale' => false,
+		'regular' => $reg,
+		'sale'    => $reg,
+		'pct'     => 0,
+	);
+}
+
+/**
  * View-model for product cards. All values are plain data; markup lives in
  * stitch-components.php so every card stays identical to the Stitch design.
  */
-function nexxi_kids_card_data( WC_Product $product ) {
+function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 	$catalog    = class_exists( 'Nexxi_Kids_Catalog' );
 	$category   = nexxi_kids_product_category( $product );
-	$range      = nexxi_kids_price_range( $product );
-	$discount   = nexxi_kids_discount_percent( $product );
-	$on_sale    = ( $discount > 0 || $product->is_on_sale() ) && $range['regular'] > $range['min'];
+	$prog       = nexxi_kids_get_program_sale( $product, 'flash' === $context ? 'flash' : 'regular' );
+	$on_sale    = $prog['on_sale'];
+	$discount   = $prog['pct'];
+	$sale_price = $prog['sale'];
+	$reg_price  = $prog['regular'];
 	$sizes      = array();
 	if ( $catalog ) {
 		foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
@@ -276,19 +341,20 @@ function nexxi_kids_card_data( WC_Product $product ) {
 	$sold       = (int) $product->get_total_sales();
 	$left       = $catalog ? Nexxi_Kids_Catalog::stock_left( $product ) : null;
 	$variations = $catalog ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
+	$url        = 'flash' === $context ? add_query_arg( 'flash_sale', '1', $product->get_permalink() ) : $product->get_permalink();
 	return array(
 		'id'           => $product->get_id(),
 		'type'         => $product->get_type(),
 		'name'         => $product->get_name(),
-		'url'          => $product->get_permalink(),
+		'url'          => $url,
 		'image'        => $image ? $image : wc_placeholder_img_src( 'large' ),
 		'category'     => $category ? $category->name : 'NEXXI Kids',
 		'categorySlug' => $category ? $category->slug : '',
 		'material'     => implode( ', ', array_slice( nexxi_kids_product_attr_names( $product, 'chat-lieu' ), 0, 1 ) ),
-		'price'        => $range['min'] < $range['max'] ? nexxi_kids_money( $range['min'] ) . ' – ' . nexxi_kids_money( $range['max'] ) : nexxi_kids_money( $range['min'] ),
-		'priceFrom'    => nexxi_kids_money( $range['min'] ),
-		'regular'      => $on_sale ? nexxi_kids_money( $range['regular'] ) : '',
-		'saving'       => $on_sale ? nexxi_kids_money( $range['regular'] - $range['min'] ) : '',
+		'price'        => nexxi_kids_money( $sale_price ),
+		'priceFrom'    => nexxi_kids_money( $sale_price ),
+		'regular'      => $on_sale ? nexxi_kids_money( $reg_price ) : '',
+		'saving'       => $on_sale ? nexxi_kids_money( $reg_price - $sale_price ) : '',
 		'discount'     => $discount,
 		'rating'       => (float) $product->get_average_rating(),
 		'reviews'      => (int) $product->get_review_count(),
@@ -322,14 +388,39 @@ function nexxi_kids_sale_products( $limit = 4 ) {
 }
 
 /**
- * Resolve parent product IDs that are on sale AND belong to Flash Sale
- * (excludes regular-only discounted products where _nexxi_is_flash_sale === '0').
+ * Resolve parent product IDs that belong to the Flash Sale program.
  */
 function nexxi_kids_flash_sale_parent_ids() {
 	$all = nexxi_kids_all_sale_parent_ids();
 	$out = array();
 	foreach ( $all as $id ) {
-		if ( '0' !== (string) get_post_meta( $id, '_nexxi_is_flash_sale', true ) ) {
+		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
+		if ( ! $prod ) { continue; }
+		$prog = nexxi_kids_get_program_sale( $prod, 'flash' );
+		if ( $prog['on_sale'] ) {
+			$out[] = $id;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Resolve parent product IDs that belong to the Regular Product Discount program (🏷️ Giảm Giá SP).
+ */
+function nexxi_kids_regular_sale_parent_ids() {
+	global $wpdb;
+	$meta_ids = $wpdb->get_col(
+		"SELECT p.ID FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_has_prod_sale'
+		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	$out = array();
+	foreach ( (array) $meta_ids as $id ) {
+		$id   = absint( $id );
+		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
+		if ( ! $prod ) { continue; }
+		$prog = nexxi_kids_get_program_sale( $prod, 'regular' );
+		if ( $prog['on_sale'] ) {
 			$out[] = $id;
 		}
 	}

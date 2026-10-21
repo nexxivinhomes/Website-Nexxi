@@ -61,7 +61,7 @@ function nexxi_kids_filter_sale_products( $query ) {
 		$ids = nexxi_kids_flash_sale_parent_ids();
 		$query->set( 'post__in', $ids ? $ids : array( 0 ) );
 	} elseif ( isset( $_GET['orderby'] ) && 'sale' === sanitize_key( wp_unslash( $_GET['orderby'] ) ) ) {
-		$ids = nexxi_kids_all_sale_parent_ids();
+		$ids = nexxi_kids_regular_sale_parent_ids();
 		$query->set( 'post__in', $ids ? $ids : array( 0 ) );
 	}
 }
