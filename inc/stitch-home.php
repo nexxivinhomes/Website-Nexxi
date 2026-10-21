@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Category slugs in the order of the four Stitch "Chọn đồ theo độ tuổi" cards. */
 function nexxi_kids_home_category_slugs() {
-	return apply_filters( 'nexxi_kids_home_category_slugs', array( 'so-sinh', 'be-gai', 'be-trai', 'do-mac-nha' ) );
+	return apply_filters( 'nexxi_kids_home_category_slugs', array( 'bo-thun', 'dam', 'set-phoi', 'ao-thun' ) );
 }
 
 function nexxi_kids_stitch_home( $html ) {

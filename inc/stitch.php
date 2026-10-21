@@ -168,9 +168,10 @@ function nexxi_kids_stitch_footer( $html ) {
 	$chat    = nexxi_kids_setting( 'nexxi_kids_chat_url' );
 	$orders = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'orders' ) : nexxi_kids_stitch_url( 'account.html' );
 	$rules = array(
-		array( 'bé gái', nexxi_kids_category_url( 'be-gai' ) ),
-		array( 'bé trai', nexxi_kids_category_url( 'be-trai' ) ),
-		array( 'sơ sinh', nexxi_kids_category_url( 'so-sinh' ) ),
+		array( 'bé gái', nexxi_kids_category_url( 'dam' ) ),
+		array( 'bé trai', nexxi_kids_category_url( 'ao-thun' ) ),
+		array( 'set phối', nexxi_kids_category_url( 'set-phoi' ) ),
+		array( 'sơ sinh', nexxi_kids_category_url( 'set-phoi' ) ),
 		array( 'flash sale', nexxi_kids_flash_url() ),
 		array( 'size', home_url( '/#size-guide' ) ),
 		array( 'đổi trả', nexxi_kids_page_url( 'doi-tra' ) ),

@@ -222,7 +222,7 @@ return array (
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Lối Nhỏ Vui Nhộn Cho Mẹ & Bé',
+    'd' => 'Gợi Ý Tủ Đồ NEXXI (12 – 45kg)',
     'l' => 'Nhãn',
     'g' => '',
   ),
@@ -238,7 +238,7 @@ return array (
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Phân loại dễ dàng, từng bộ đồ được may đo vừa vặn với từng giai đoạn phát triển đầu đời của con',
+    'd' => 'Thiết kế cảm hứng Hàn Quốc dành cho bé trai và bé gái từ 12–45kg (Size 3–14), phom dáng vừa vặn theo từng giai đoạn khôn lớn của con',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -247,40 +247,40 @@ return array (
     'r' => 'home-categories',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “0 - 12 Tháng Bé Sơ Sinh Xinh Body suit,…”',
-    'g' => 'Card 1: Baby 0-12M',
+    'l' => 'Link khi bấm: “2 - 4 Tuổi • 12 - 16kg Bé Mẫu Giáo Đáng Yêu…”',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__i1' => 
   array (
     'r' => 'home-categories',
     't' => 'image',
-    'd' => '{{STITCH_ASSET}}/images/stitch-030.jpg',
+    'd' => '{{STITCH_ASSET}}/images/stitch-009.jpg',
     'l' => 'Ảnh',
-    'g' => 'Card 1: Baby 0-12M',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__t5' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => '0 - 12 Tháng',
+    'd' => '2 - 4 Tuổi • 12 - 16kg',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Card 1: Baby 0-12M',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__t6' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Bé Sơ Sinh Xinh',
+    'd' => 'Bé Mẫu Giáo Đáng Yêu',
     'l' => 'Tiêu đề mục',
-    'g' => 'Card 1: Baby 0-12M',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__t7' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Body suit, bao tay yếm mềm mại kháng khuẩn bảo vệ làn da non nớt.',
+    'd' => 'Size 3 – 4: Bộ thun co giãn 4 chiều, áo thun mềm mịn dễ mặc cho bé đi lớp và vui chơi cả ngày.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Card 1: Baby 0-12M',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__t8' => 
   array (
@@ -288,15 +288,15 @@ return array (
     't' => 'text',
     'd' => 'Khám phá ngay',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Card 1: Baby 0-12M',
+    'g' => 'Card 1: 2-4 Tuổi (12-16kg)',
   ),
   'home-categories__l2' => 
   array (
     'r' => 'home-categories',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “1 - 8 Tuổi Bé Gái Ngọt Ngào Váy xòe côn…”',
-    'g' => 'Card 2: Little Girl 1-8Y',
+    'l' => 'Link khi bấm: “4 - 6 Tuổi • 16 - 22kg Bé Gái Ngọt Ngào…”',
+    'g' => 'Card 2: 4-6 Tuổi (16-22kg)',
   ),
   'home-categories__i2' => 
   array (
@@ -304,15 +304,15 @@ return array (
     't' => 'image',
     'd' => '{{STITCH_ASSET}}/images/stitch-041.jpg',
     'l' => 'Ảnh',
-    'g' => 'Card 2: Little Girl 1-8Y',
+    'g' => 'Card 2: 4-6 Tuổi (16-22kg)',
   ),
   'home-categories__t9' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => '1 - 8 Tuổi',
+    'd' => '4 - 6 Tuổi • 16 - 22kg',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Card 2: Little Girl 1-8Y',
+    'g' => 'Card 2: 4-6 Tuổi (16-22kg)',
   ),
   'home-categories__t10' => 
   array (
@@ -320,23 +320,23 @@ return array (
     't' => 'text',
     'd' => 'Bé Gái Ngọt Ngào',
     'l' => 'Tiêu đề mục',
-    'g' => 'Card 2: Little Girl 1-8Y',
+    'g' => 'Card 2: 4-6 Tuổi (16-22kg)',
   ),
   'home-categories__t11' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Váy xòe công chúa, yếm hoa vintage nhẹ tênh cho bé tha hồ chạy nhảy.',
+    'd' => 'Size 5 – 7: Đầm kiểu, chân váy xếp ly, set váy Hàn Quốc xinh xắn cho bé dạo phố và dự tiệc.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Card 2: Little Girl 1-8Y',
+    'g' => 'Card 2: 4-6 Tuổi (16-22kg)',
   ),
   'home-categories__l3' => 
   array (
     'r' => 'home-categories',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “1 - 8 Tuổi Bé Trai Năng Động Set yếm ka…”',
-    'g' => 'Card 3: Little Boy 1-8Y',
+    'l' => 'Link khi bấm: “6 - 9 Tuổi • 22 - 33kg Bé Năng Động Cá Tính…”',
+    'g' => 'Card 3: 6-9 Tuổi (22-33kg)',
   ),
   'home-categories__i3' => 
   array (
@@ -344,63 +344,71 @@ return array (
     't' => 'image',
     'd' => '{{STITCH_ASSET}}/images/stitch-017.jpg',
     'l' => 'Ảnh',
-    'g' => 'Card 3: Little Boy 1-8Y',
+    'g' => 'Card 3: 6-9 Tuổi (22-33kg)',
+  ),
+  'home-categories__t17' => 
+  array (
+    'r' => 'home-categories',
+    't' => 'text',
+    'd' => '6 - 9 Tuổi • 22 - 33kg',
+    'l' => 'Chữ trên nút / liên kết',
+    'g' => 'Card 3: 6-9 Tuổi (22-33kg)',
   ),
   'home-categories__t12' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Bé Trai Năng Động',
+    'd' => 'Bé Năng Động Cá Tính',
     'l' => 'Tiêu đề mục',
-    'g' => 'Card 3: Little Boy 1-8Y',
+    'g' => 'Card 3: 6-9 Tuổi (22-33kg)',
   ),
   'home-categories__t13' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Set yếm kaki, sơ mi đũi xước thoáng mát đồng hành cùng từng cuộc phiêu lưu.',
+    'd' => 'Size 8 – 11: Set phối năng động, áo thun cổ bẻ, sơ mi và quần lửng kaki túi hộp chuẩn gu Hàn.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Card 3: Little Boy 1-8Y',
+    'g' => 'Card 3: 6-9 Tuổi (22-33kg)',
   ),
   'home-categories__l4' => 
   array (
     'r' => 'home-categories',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Mọi Lứa Tuổi Đồ Ngủ & Pijama Mát Chất s…”',
-    'g' => 'Card 4: Sleepwear & Homewear',
+    'l' => 'Link khi bấm: “9 - 12+ Tuổi • 33 - 45kg Bé Lớn Phong Cách…”',
+    'g' => 'Card 4: 9-12+ Tuổi (33-45kg)',
   ),
   'home-categories__i4' => 
   array (
     'r' => 'home-categories',
     't' => 'image',
-    'd' => '{{STITCH_ASSET}}/images/stitch-029.jpg',
+    'd' => '{{STITCH_ASSET}}/images/stitch-011.jpg',
     'l' => 'Ảnh',
-    'g' => 'Card 4: Sleepwear & Homewear',
+    'g' => 'Card 4: 9-12+ Tuổi (33-45kg)',
   ),
   'home-categories__t14' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Mọi Lứa Tuổi',
+    'd' => '9 - 12+ Tuổi • 33 - 45kg',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Card 4: Sleepwear & Homewear',
+    'g' => 'Card 4: 9-12+ Tuổi (33-45kg)',
   ),
   'home-categories__t15' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Đồ Ngủ & Pijama Mát',
+    'd' => 'Bé Lớn Phong Cách',
     'l' => 'Tiêu đề mục',
-    'g' => 'Card 4: Sleepwear & Homewear',
+    'g' => 'Card 4: 9-12+ Tuổi (33-45kg)',
   ),
   'home-categories__t16' => 
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Chất sợi tre lạnh điều hòa thân nhiệt, nâng niu bé trọn giấc ngủ sâu ngọt lành.',
+    'd' => 'Size 12 – 14: Áo kiểu thời trang, quần dài ống rộng, chân váy kaki và áo khoác tự tin tỏa sáng.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Card 4: Sleepwear & Homewear',
+    'g' => 'Card 4: 9-12+ Tuổi (33-45kg)',
   ),
   'home-flash__t1' => 
   array (

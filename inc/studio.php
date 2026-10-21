@@ -171,6 +171,23 @@ function nexxi_studio_changed( $key ) {
 	if ( 'footer-bottom__t1' === $key && '© 2025 NEXXI Kids Fashion Boutique. Tận tâm nâng niu từng bước khôn lớn của bé.' === $value ) { return null; }
 	if ( 'footer-bottom__t3' === $key && '100% Vải an toàn cho bé' === $value ) { return null; }
 	if ( 'footer-bottom__t5' === $key && 'Đóng gói quà tặng xinh xắn' === $value ) { return null; }
+	if ( 'footer-col-1__t4' === $key && 'Đồ sơ sinh Organic' === $value ) { return null; }
+	$legacy_home_cats = array(
+		'home-categories__t2'  => 'Lối Nhỏ Vui Nhộn Cho Mẹ & Bé',
+		'home-categories__t4'  => 'Phân loại dễ dàng, từng bộ đồ được may đo vừa vặn với từng giai đoạn phát triển đầu đời của con',
+		'home-categories__t5'  => '0 - 12 Tháng',
+		'home-categories__t6'  => 'Bé Sơ Sinh Xinh',
+		'home-categories__t7'  => 'Body suit, bao tay yếm mềm mại kháng khuẩn bảo vệ làn da non nớt.',
+		'home-categories__t9'  => '1 - 8 Tuổi',
+		'home-categories__t11' => 'Váy xòe công chúa, yếm hoa vintage nhẹ tênh cho bé tha hồ chạy nhảy.',
+		'home-categories__t12' => 'Bé Trai Năng Động',
+		'home-categories__t13' => 'Set yếm kaki, sơ mi đũi xước thoáng mát đồng hành cùng từng cuộc phiêu lưu.',
+		'home-categories__t14' => 'Mọi Lứa Tuổi',
+		'home-categories__t15' => 'Đồ Ngủ & Pijama Mát',
+		'home-categories__t16' => 'Chất sợi tre lạnh điều hòa thân nhiệt, nâng niu bé trọn giấc ngủ sâu ngọt lành.',
+	);
+	if ( isset( $legacy_home_cats[ $key ] ) && $legacy_home_cats[ $key ] === $value ) { return null; }
+	if ( in_array( $key, array( 'home-categories__i1', 'home-categories__i4' ), true ) && ( false !== strpos( $value, 'stitch-030.jpg' ) || false !== strpos( $value, 'stitch-029.jpg' ) ) ) { return null; }
 	if ( 'header-ticker__lines' === $key ) {
 		$norm = preg_replace( '~\R~u', "\n", $value );
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
