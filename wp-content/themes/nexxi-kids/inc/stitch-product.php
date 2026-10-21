@@ -98,7 +98,7 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
 	$discount = Nexxi_Kids_Catalog::discount_percent( $product );
 	ob_start(); ?>
-<div class="relative w-full aspect-square max-h-[min(78vh,640px)] bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
+<div class="nexxi-pdp-main-media relative w-full aspect-square bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
 <img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
 <div class="absolute top-space-md left-space-md flex flex-col gap-space-xs items-start pointer-events-none">
 <?php if ( $materials ) : ?><span class="bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5 transform -rotate-2"><span class="material-symbols-outlined text-secondary text-[16px]">eco</span><?php echo esc_html( implode( ' · ', $materials ) ); ?></span><?php endif; ?>

@@ -338,6 +338,30 @@ function nexxi_kids_render_stitch( $screen ) {
 	$html = str_replace( '{{STITCH_ASSET}}', esc_url( $asset_url ), $html );
 	$html = str_replace( 'https://cdn.tailwindcss.com', esc_url( $asset_url . '/tailwind-play.js' ), $html );
 	$html = str_replace( array( '14 - 17kg', '14-17kg' ), array( '14 - 16kg', '14-16kg' ), $html );
+	// Convert Tailwind config fontSize definitions from fixed px to fluid rem so all responsive variants scale with viewport.
+	$html = preg_replace_callback( '~(<script id="tailwind-config">)(.*?)(</script>)~s', static function ( $m ) {
+		$px_to_rem = array(
+			'"48px"' => '"2.75rem"',
+			'"56px"' => '"3.2rem"',
+			'"42px"' => '"2.625rem"',
+			'"40px"' => '"2.35rem"',
+			'"34px"' => '"2.125rem"',
+			'"32px"' => '"1.875rem"',
+			'"28px"' => '"1.65rem"',
+			'"26px"' => '"1.55rem"',
+			'"24px"' => '"1.45rem"',
+			'"22px"' => '"1.375rem"',
+			'"20px"' => '"1.2rem"',
+			'"18px"' => '"1.0625rem"',
+			'"16px"' => '"1rem"',
+			'"15px"' => '"0.9375rem"',
+			'"14px"' => '"0.875rem"',
+			'"13px"' => '"0.8125rem"',
+			'"12px"' => '"0.75rem"',
+			'"11px"' => '"0.6875rem"',
+		);
+		return $m[1] . strtr( $m[2], $px_to_rem ) . $m[3];
+	}, $html, 1 );
 	// Any remaining static Stitch links point to the matching WordPress routes.
 	foreach ( array( 'index.html', 'shop.html', 'product.html', 'flash-sale.html', 'cart.html', 'checkout.html', 'account.html', 'login.html', 'members.html' ) as $route ) {
 		$html = str_replace( array( 'href="' . $route . '#', 'href="' . $route . '"' ), array( 'href="' . esc_url( nexxi_kids_stitch_url( $route ) ) . '#', 'href="' . esc_url( nexxi_kids_stitch_url( $route ) ) . '"' ), $html );
@@ -354,7 +378,7 @@ function nexxi_kids_render_stitch( $screen ) {
 	echo substr( $html, 0, $head_end ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_head();
 	$stitch_css = $asset_url . '/woocommerce-stitch.css?ver=' . filemtime( get_template_directory() . '/assets/stitch/woocommerce-stitch.css' );
-	echo nexxi_studio_stylesheet_tag( $stitch_css, get_template_directory() . '/assets/stitch/woocommerce-stitch.css' ) . '<style id="nexxi-shared-header-style">@keyframes marqueeCute{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}.animate-marquee{display:flex;width:max-content;animation:marqueeCute 38s linear infinite}.animate-marquee:hover{animation-play-state:paused}header[data-nexxi-shared-header="1"]+main{padding-top:7rem!important}@media (min-width:1024px){body>header>div:nth-child(2)>div{flex-wrap:nowrap!important;gap:8px!important}body>header nav{display:flex!important;flex-wrap:nowrap!important;white-space:nowrap!important;min-width:0!important;gap:0!important;padding:4px!important}body>header nav>a{display:inline-flex!important;align-items:center!important;flex:0 0 auto!important;white-space:nowrap!important;line-height:16px!important;padding:8px 9px!important}body>header nav>a span{white-space:nowrap!important}body>header [class*="md:flex"]{flex:0 1 200px!important;width:200px!important;min-width:150px!important}body>header .flex.items-center.gap-space-sm{gap:8px!important;flex-wrap:nowrap!important}body>header .w-10{width:36px!important;height:36px!important;flex:0 0 36px!important}}@media (min-width:1024px) and (max-width:1279px){body>header>div:nth-child(2)>div{padding-left:16px!important;padding-right:16px!important;gap:4px!important}body>header>div:nth-child(2)>div>div:first-child{gap:6px!important}body>header nav>a{font-size:11px!important;padding:7px 6px!important}body>header nav{padding:3px!important}body>header [class*="md:flex"]{width:150px!important;min-width:120px!important}body>header .w-10{width:32px!important;height:32px!important;flex-basis:32px!important}}</style></head>';
+	echo nexxi_studio_stylesheet_tag( $stitch_css, get_template_directory() . '/assets/stitch/woocommerce-stitch.css' ) . '<style id="nexxi-shared-header-style">@keyframes marqueeCute{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}.animate-marquee{display:flex;width:max-content;animation:marqueeCute 38s linear infinite}.animate-marquee:hover{animation-play-state:paused}header[data-nexxi-shared-header="1"]+main{padding-top:6.5rem!important}@media (min-width:1024px){body>header>div:nth-child(2)>div{height:4.5rem!important;flex-wrap:nowrap!important;gap:0.5rem!important}body>header nav{display:flex!important;flex-wrap:nowrap!important;white-space:nowrap!important;min-width:0!important;gap:0!important;padding:0.25rem!important}body>header nav>a{display:inline-flex!important;align-items:center!important;flex:0 0 auto!important;white-space:nowrap!important;line-height:1.1rem!important;padding:0.45rem 0.6rem!important}body>header nav>a span{white-space:nowrap!important}body>header [class*="md:flex"]{flex:0 1 13rem!important;width:13rem!important;min-width:9.5rem!important}body>header .flex.items-center.gap-space-sm{gap:0.5rem!important;flex-wrap:nowrap!important}body>header .w-10{width:2.25rem!important;height:2.25rem!important;flex:0 0 2.25rem!important}}</style></head>';
 	echo substr( $html, $head_end + 7, $body_end - $head_end - 7 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_footer();
 	$js = get_template_directory() . '/assets/stitch/stitch-interactions.js';

@@ -176,18 +176,79 @@ body > header nav a span { white-space: nowrap !important; }
 .nexxi-account .woocommerce-message::before, .nexxi-account .woocommerce-info::before, .nexxi-account .woocommerce-error::before, .nexxi-account-notices *::before { display: none; }
 .nexxi-account-notices:empty { display: none; }
 
+/* ---------- Fluid Viewport-Proportional Scaling (All Screen Sizes) ---------- */
+html {
+  font-size: clamp(13px, 3.6vw, 15px);
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  html {
+    font-size: clamp(13.5px, 1.8vw, 15.5px);
+  }
+}
+@media (min-width: 1024px) {
+  html {
+    /* Scales proportionally with BOTH viewport width and height so laptops (1280–1536px / 125–150% DPI) keep the exact same visual balance as 1920x1080 monitors */
+    font-size: clamp(11.5px, min(0.84vw, 1.62vh), 16px);
+  }
+}
+
+/* Convert fixed-px Tailwind typography & container classes to fluid rem */
+.text-display-lg { font-size: 2.75rem !important; line-height: 3.2rem !important; }
+.text-display-lg-mobile { font-size: 2.125rem !important; line-height: 2.625rem !important; }
+.text-headline-lg { font-size: 1.875rem !important; line-height: 2.35rem !important; }
+.text-headline-lg-mobile { font-size: 1.55rem !important; line-height: 2rem !important; }
+.text-headline-md { font-size: 1.45rem !important; line-height: 1.95rem !important; }
+.text-headline-sm { font-size: 1.2rem !important; line-height: 1.65rem !important; }
+.text-title-md { font-size: 1.0625rem !important; line-height: 1.45rem !important; }
+.text-body-lg { font-size: 1rem !important; line-height: 1.6rem !important; }
+.text-label-lg { font-size: 0.9375rem !important; line-height: 1.25rem !important; }
+.text-body-md { font-size: 0.875rem !important; line-height: 1.375rem !important; }
+.text-label-md { font-size: 0.8125rem !important; line-height: 1.15rem !important; }
+.text-body-sm { font-size: 0.75rem !important; line-height: 1.125rem !important; }
+.text-label-sm { font-size: 0.6875rem !important; line-height: 0.9rem !important; }
+
+.max-w-\[1280px\] { max-width: 78rem !important; }
+.max-w-\[1440px\] { max-width: 88rem !important; }
+
+/* Product Detail Page: keep gallery & info panel balanced in viewport */
+[data-nx="pdp-gallery"] {
+  width: 100%;
+  max-width: 34rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.nexxi-pdp-main-media {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+[data-nx="pdp-panel"] {
+  gap: 1.1rem !important;
+  padding: 1.5rem 1.75rem !important;
+}
+[data-nx="pdp-panel"] [data-nexxi-price] {
+  font-size: 2.25rem !important;
+  line-height: 1.15 !important;
+}
+[data-nx="pdp-panel"] .size-pill {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+[data-nx="pdp-panel"] [data-nexxi-pdp-add] {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+[data-nx="pdp-panel"] [data-nexxi-pdp-buy] {
+  padding-top: 0.85rem !important;
+  padding-bottom: 0.85rem !important;
+}
+
 /* ---------- Product Thumbnail 5-Item Horizontal Carousel ---------- */
 .nexxi-thumb-carousel {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  --nx-thumb-gap: 10px;
-}
-@media (min-width: 640px) {
-  .nexxi-thumb-carousel {
-    --nx-thumb-gap: 12px;
-  }
+  --nx-thumb-gap: 0.65rem;
 }
 .nexxi-thumb-track {
   display: flex;
@@ -199,7 +260,7 @@ body > header nav a span { white-space: nowrap !important; }
   scroll-behavior: smooth;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding: 4px 2px;
+  padding: 0.25rem 0.125rem;
   box-sizing: border-box;
 }
 .nexxi-thumb-track::-webkit-scrollbar {
@@ -216,8 +277,8 @@ body > header nav a span { white-space: nowrap !important; }
   top: 50%;
   transform: translateY(-50%);
   z-index: 15;
-  width: 36px;
-  height: 36px;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.95);
   color: #031444;
@@ -239,8 +300,9 @@ body > header nav a span { white-space: nowrap !important; }
   transform: translateY(-50%) scale(0.94);
 }
 .nexxi-thumb-arrow--prev {
-  left: -10px;
+  left: -0.6rem;
 }
 .nexxi-thumb-arrow--next {
-  right: -10px;
+  right: -0.6rem;
 }
+
