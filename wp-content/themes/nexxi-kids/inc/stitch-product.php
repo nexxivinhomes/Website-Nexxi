@@ -8,6 +8,8 @@ function nexxi_kids_current_product() {
 
 /** Product + variation data for stitch-interactions.js. */
 function nexxi_kids_product_config( WC_Product $product ) {
+	nexxi_kids_normalize_variable_sale( $product );
+	$range = nexxi_kids_price_range( $product );
 	$sizes = array();
 	foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
 		$n = Nexxi_Kids_Catalog::size_number( $term->slug );
@@ -27,8 +29,8 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		'sizes'      => $product->is_type( 'variable' ) ? $sizes : array(),
 		'colors'     => $product->is_type( 'variable' ) ? $colors : array(),
 		'variations' => Nexxi_Kids_Catalog::variation_payload( $product ),
-		'price'      => (float) wc_get_price_to_display( $product ),
-		'regular'    => (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) ),
+		'price'      => (float) $range['min'],
+		'regular'    => (float) $range['regular'],
 		'inStock'    => $product->is_in_stock(),
 		'max'        => $product->get_max_purchase_quantity(),
 		'attributes' => Nexxi_Kids_Catalog::variation_attributes( $product ),
@@ -96,13 +98,13 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 	$ids = array_values( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids() ) ) );
 	$main = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : wc_placeholder_img_src( 'full' );
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
-	$discount = Nexxi_Kids_Catalog::discount_percent( $product );
+	$discount = nexxi_kids_discount_percent( $product );
 	ob_start(); ?>
 <div class="nexxi-pdp-main-media relative w-full aspect-square bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
 <img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
 <div class="absolute top-space-md left-space-md flex flex-col gap-space-xs items-start pointer-events-none">
 <?php if ( $materials ) : ?><span class="bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5 transform -rotate-2"><span class="material-symbols-outlined text-secondary text-[16px]">eco</span><?php echo esc_html( implode( ' · ', $materials ) ); ?></span><?php endif; ?>
-<?php if ( $discount ) : ?><span class="bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5 transform rotate-1"><span class="material-symbols-outlined text-secondary text-[16px]">sell</span>Ưu đãi đến -<?php echo (int) $discount; ?>%</span><?php endif; ?>
+<span class="bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3 inline-block<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-gallery-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
 <div class="absolute top-space-md right-space-md flex flex-col gap-space-xs">
 <button class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-secondary hover:bg-secondary hover:text-on-secondary transition-all flex items-center justify-center shadow-md" <?php echo nexxi_kids_wishlist_attrs( $product->get_id() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="material-symbols-outlined text-[20px]">favorite_border</span></button>
@@ -138,7 +140,8 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 	$cat = nexxi_kids_product_category( $product );
 	$left = Nexxi_Kids_Catalog::stock_left( $product );
 	$range = nexxi_kids_price_range( $product );
-	$discount = Nexxi_Kids_Catalog::discount_percent( $product );
+	$discount = nexxi_kids_discount_percent( $product );
+	$on_sale = ( $discount > 0 || $product->is_on_sale() ) && $range['regular'] > $range['min'];
 	$reviews = (int) $product->get_review_count();
 	$rating = (float) $product->get_average_rating();
 	$sold = (int) $product->get_total_sales();
@@ -170,12 +173,12 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 <div>
 <div class="flex items-baseline gap-space-xs flex-wrap">
 <span class="font-display-lg text-display-lg text-secondary font-bold leading-none" data-nexxi-price><?php echo esc_html( $price ); ?></span>
-<span class="font-body-md text-body-md text-outline line-through<?php echo $product->is_on_sale() && $range['regular'] > $range['min'] ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $range['regular'] ) ); ?></span>
+<span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $range['regular'] ) ); ?></span>
 <span class="bg-secondary-container text-on-secondary font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold ml-1<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
 <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Đã bao gồm VAT • Tặng kèm hộp quà xinh xắn</p>
 </div>
-<?php if ( $product->is_on_sale() ) : ?>
+<?php if ( $on_sale ) : ?>
 <div class="bg-surface-container-lowest px-space-md py-space-xs rounded-lg shadow-sm flex items-center gap-space-xs self-start sm:self-auto">
 <span class="material-symbols-outlined text-secondary text-[20px] animate-bounce">alarm</span>
 <div class="text-right"><p class="font-label-sm text-label-sm text-outline uppercase">Kết thúc sau</p>
@@ -364,8 +367,8 @@ function nexxi_kids_review_form( WC_Product $product ) {
 
 function nexxi_kids_pdp_related( WC_Product $product ) {
 	$ids = array_merge( $product->get_upsell_ids(), $product->get_cross_sell_ids() );
-	if ( count( $ids ) < 3 ) { $ids = array_merge( $ids, wc_get_related_products( $product->get_id(), 6, $ids ) ); }
-	$ids = array_slice( array_unique( array_map( 'absint', $ids ) ), 0, 3 );
+	if ( count( $ids ) < 4 ) { $ids = array_merge( $ids, wc_get_related_products( $product->get_id(), 8, $ids ) ); }
+	$ids = array_slice( array_unique( array_map( 'absint', $ids ) ), 0, 4 );
 	$cards = '';
 	foreach ( $ids as $id ) {
 		$item = wc_get_product( $id );
@@ -374,5 +377,5 @@ function nexxi_kids_pdp_related( WC_Product $product ) {
 	if ( ! $cards ) { return ''; }
 	$cat = nexxi_kids_product_category( $product );
 	$more = $cat ? get_term_link( $cat ) : nexxi_kids_shop_url();
-	return '<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-space-xs"><div><span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest font-bold">Gợi Ý Từ Stylist NEXXI</span><h2 class="font-headline-lg text-headline-lg text-primary tracking-tight">Mẹ Thường Phối Cùng (Mix &amp; Match Xinh Yêu)</h2><p class="font-body-md text-body-md text-on-surface-variant">Những mẫu đồng điệu giúp mẹ dễ dàng phối set xinh cho con dạo phố.</p></div><a class="bg-surface-container-lowest hover:bg-surface-container text-primary px-space-md py-space-xs rounded-full font-label-md text-label-md transition-all flex items-center gap-1 shadow-sm self-start sm:self-auto" href="' . esc_url( is_wp_error( $more ) ? nexxi_kids_shop_url() : $more ) . '">Xem Thêm Mẫu Cùng Loại <span class="material-symbols-outlined text-[18px]">arrow_forward</span></a></div><div class="grid grid-cols-1 sm:grid-cols-3 gap-space-md">' . $cards . '</div>';
+	return '<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-space-xs"><div><span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest font-bold">Gợi Ý Từ Stylist NEXXI</span><h2 class="font-headline-lg text-headline-lg text-primary tracking-tight">Mẹ Thường Phối Cùng (Mix &amp; Match Xinh Yêu)</h2><p class="font-body-md text-body-md text-on-surface-variant">Những mẫu đồng điệu giúp mẹ dễ dàng phối set xinh cho con dạo phố.</p></div><a class="bg-surface-container-lowest hover:bg-surface-container text-primary px-space-md py-space-xs rounded-full font-label-md text-label-md transition-all flex items-center gap-1 shadow-sm self-start sm:self-auto" href="' . esc_url( is_wp_error( $more ) ? nexxi_kids_shop_url() : $more ) . '">Xem Thêm Mẫu Cùng Loại <span class="material-symbols-outlined text-[18px]">arrow_forward</span></a></div><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">' . $cards . '</div>';
 }

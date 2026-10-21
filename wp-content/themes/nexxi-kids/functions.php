@@ -58,7 +58,7 @@ add_filter( 'woocommerce_add_to_cart_fragments', 'nexxi_kids_cart_fragments' );
 
 function nexxi_kids_filter_sale_products( $query ) {
 	if ( isset( $_GET['on_sale'] ) && '1' === sanitize_text_field( wp_unslash( $_GET['on_sale'] ) ) ) {
-		$ids = nexxi_kids_sale_parent_ids( wc_get_product_ids_on_sale() );
+		$ids = nexxi_kids_all_sale_parent_ids();
 		$query->set( 'post__in', $ids ? $ids : array( 0 ) );
 	}
 }
@@ -66,20 +66,7 @@ add_action( 'woocommerce_product_query', 'nexxi_kids_filter_sale_products' );
 
 function nexxi_kids_product_card( $product ) {
 	if ( ! $product instanceof WC_Product ) { return; }
-	$product_id = $product->get_id(); ?>
-	<article <?php wc_product_class( 'product-card', $product ); ?>>
-		<a class="product-card__media" href="<?php echo esc_url( $product->get_permalink() ); ?>">
-			<?php if ( $product->is_on_sale() ) : ?><span class="product-card__badge"><?php esc_html_e( 'Đang giảm', 'nexxi-kids' ); ?></span><?php endif; ?>
-			<?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail', array( 'loading' => 'lazy' ) ) ); ?>
-		</a>
-		<div class="product-card__body">
-			<?php $terms = get_the_terms( $product_id, 'product_cat' ); if ( $terms && ! is_wp_error( $terms ) ) : ?><p class="product-card__eyebrow"><?php echo esc_html( $terms[0]->name ); ?></p><?php endif; ?>
-			<h3 class="product-card__title"><a href="<?php echo esc_url( $product->get_permalink() ); ?>"><?php echo esc_html( $product->get_name() ); ?></a></h3>
-			<div class="product-card__price"><?php echo wp_kses_post( $product->get_price_html() ); ?></div>
-			<?php if ( $product->is_purchasable() && $product->is_in_stock() ) : ?><a class="button button--quick" href="<?php echo esc_url( $product->add_to_cart_url() ); ?>" data-quantity="1" data-product_id="<?php echo esc_attr( $product_id ); ?>" rel="nofollow"><?php echo esc_html( $product->add_to_cart_text() ); ?></a><?php endif; ?>
-		</div>
-	</article>
-	<?php
+	echo nexxi_kids_card_unified( $product ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 }
 
 function nexxi_kids_product_section( $args = array() ) {

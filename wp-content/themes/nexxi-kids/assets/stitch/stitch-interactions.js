@@ -434,8 +434,18 @@
     const priceEl = $('[data-nexxi-price]');
     const regularEl = $('[data-nexxi-regular]');
     const discountEl = $('[data-nexxi-discount]');
+    const galleryDiscountEl = $('[data-nexxi-gallery-discount]');
     const stockEl = $('[data-nexxi-stock]');
-    const defaults = {price: priceEl?.textContent, regular: regularEl?.textContent, regularHidden: regularEl?.classList.contains('hidden'), discount: discountEl?.textContent, discountHidden: discountEl?.classList.contains('hidden'), stock: stockEl?.textContent};
+    const defaults = {
+      price: priceEl?.textContent,
+      regular: regularEl?.textContent,
+      regularHidden: regularEl?.classList.contains('hidden'),
+      discount: discountEl?.textContent,
+      discountHidden: discountEl?.classList.contains('hidden'),
+      galleryDiscount: galleryDiscountEl?.textContent,
+      galleryDiscountHidden: galleryDiscountEl?.classList.contains('hidden'),
+      stock: stockEl?.textContent
+    };
     const maxQty = () => { const v = current(); const max = Number(v ? v.max : product.max); return max > 0 ? max : 99; };
     const paintVariation = () => {
       const v = current();
@@ -443,13 +453,16 @@
         if (priceEl) priceEl.textContent = defaults.price;
         if (regularEl) { regularEl.textContent = defaults.regular; regularEl.classList.toggle('hidden', defaults.regularHidden); }
         if (discountEl) { discountEl.textContent = defaults.discount; discountEl.classList.toggle('hidden', defaults.discountHidden); }
+        if (galleryDiscountEl) { galleryDiscountEl.textContent = defaults.galleryDiscount; galleryDiscountEl.classList.toggle('hidden', defaults.galleryDiscountHidden); }
         if (stockEl) stockEl.textContent = defaults.stock;
         return;
       }
       const onSale = v.regular > v.price;
+      const pctText = '-' + Math.round((1 - v.price / v.regular) * 100) + '%';
       if (priceEl) priceEl.textContent = money(v.price);
       if (regularEl) { regularEl.textContent = money(v.regular); regularEl.classList.toggle('hidden', !onSale); }
-      if (discountEl) { discountEl.textContent = '-' + Math.round((1 - v.price / v.regular) * 100) + '%'; discountEl.classList.toggle('hidden', !onSale); }
+      if (discountEl) { discountEl.textContent = pctText; discountEl.classList.toggle('hidden', !onSale); }
+      if (galleryDiscountEl) { galleryDiscountEl.textContent = pctText; galleryDiscountEl.classList.toggle('hidden', !onSale); }
       if (stockEl) stockEl.textContent = !v.inStock ? 'Tạm hết hàng' : (v.stock !== null && v.stock <= 10 ? `Chỉ còn ${v.stock} chiếc` : 'Còn hàng – giao ngay');
       state.qty = Math.min(state.qty, maxQty());
       paintQty();

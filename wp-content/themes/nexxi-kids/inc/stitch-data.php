@@ -74,7 +74,7 @@ function nexxi_kids_flash_end() {
 	if ( '0' === (string) get_option( 'nexxi_flash_sale_enabled', '1' ) ) {
 		return 0;
 	}
-	$sale_ids = function_exists( 'wc_get_product_ids_on_sale' ) ? nexxi_kids_sale_parent_ids( wc_get_product_ids_on_sale() ) : array();
+	$sale_ids = nexxi_kids_all_sale_parent_ids();
 	if ( empty( $sale_ids ) ) {
 		return 0;
 	}
@@ -125,17 +125,135 @@ function nexxi_kids_product_attr_names( WC_Product $product, $slug ) {
 	return wp_list_pluck( Nexxi_Kids_Catalog::product_terms( $product, $slug ), 'name' );
 }
 
-/** Lowest / highest display prices (regular prices for strike-through). */
+/**
+ * Ensure all variations of a variable product share the sale price when the shop
+ * owner has set a sale price on one/some variations (e.g. via WooCommerce's
+ * paginated variation editor). Runs with a per-request static guard.
+ */
+function nexxi_kids_normalize_variable_sale( WC_Product $product ) {
+	static $checked = array();
+	$pid = $product->get_id();
+	if ( isset( $checked[ $pid ] ) || ! $product->is_type( 'variable' ) ) {
+		return;
+	}
+	$checked[ $pid ] = true;
+
+	$children = $product->get_children();
+	if ( empty( $children ) ) {
+		return;
+	}
+
+	$sale_by_reg = array();
+	$missing     = array();
+	foreach ( $children as $child_id ) {
+		$reg  = (float) get_post_meta( $child_id, '_regular_price', true );
+		$sale = get_post_meta( $child_id, '_sale_price', true );
+		if ( $reg <= 0 ) {
+			continue;
+		}
+		$reg_key = (string) $reg;
+		if ( '' !== $sale && (float) $sale > 0 && (float) $sale < $reg ) {
+			$s = (float) $sale;
+			if ( ! isset( $sale_by_reg[ $reg_key ] ) || $s < $sale_by_reg[ $reg_key ] ) {
+				$sale_by_reg[ $reg_key ] = $s;
+			}
+		} else {
+			$missing[ $child_id ] = $reg_key;
+		}
+	}
+
+	if ( empty( $sale_by_reg ) || empty( $missing ) ) {
+		return;
+	}
+
+	$updated = false;
+	foreach ( $missing as $child_id => $reg_key ) {
+		if ( ! isset( $sale_by_reg[ $reg_key ] ) ) {
+			continue;
+		}
+		$target_sale = (string) $sale_by_reg[ $reg_key ];
+		update_post_meta( $child_id, '_sale_price', $target_sale );
+		update_post_meta( $child_id, '_price', $target_sale );
+		if ( function_exists( 'wc_get_product' ) ) {
+			$var_obj = wc_get_product( $child_id );
+			if ( $var_obj ) {
+				$var_obj->set_sale_price( $target_sale );
+				$var_obj->set_price( $target_sale );
+				$var_obj->save();
+			}
+		}
+		$updated = true;
+	}
+
+	if ( $updated ) {
+		if ( class_exists( 'WC_Product_Variable' ) ) {
+			WC_Product_Variable::sync( $pid );
+		}
+		if ( function_exists( 'wc_delete_product_transients' ) ) {
+			wc_delete_product_transients( $pid );
+		}
+		delete_transient( 'wc_products_onsale' );
+	}
+}
+
+/** Lowest / highest display prices (regular prices for strike-through), read live from variations. */
 function nexxi_kids_price_range( WC_Product $product ) {
 	if ( $product->is_type( 'variable' ) ) {
-		$prices = $product->get_variation_prices( true );
-		$min = $prices['price'] ? (float) min( $prices['price'] ) : 0;
-		$max = $prices['price'] ? (float) max( $prices['price'] ) : 0;
-		$regular = $prices['regular_price'] ? (float) min( $prices['regular_price'] ) : 0;
+		nexxi_kids_normalize_variable_sale( $product );
+		$variations = class_exists( 'Nexxi_Kids_Catalog' ) ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
+		if ( $variations ) {
+			$min     = null;
+			$max     = null;
+			$regular = 0.0;
+			foreach ( $variations as $row ) {
+				$p = (float) $row['price'];
+				$r = (float) $row['regular'];
+				if ( $p <= 0 ) {
+					continue;
+				}
+				if ( null === $min || $p < $min ) {
+					$min     = $p;
+					$regular = $r > 0 ? $r : $p;
+				} elseif ( $p === $min && $r > $regular ) {
+					$regular = $r;
+				}
+				if ( null === $max || $p > $max ) {
+					$max = $p;
+				}
+			}
+			if ( null !== $min ) {
+				return array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
+			}
+		}
+		$prices  = $product->get_variation_prices( true );
+		$min     = $prices['price'] ? (float) min( $prices['price'] ) : 0.0;
+		$max     = $prices['price'] ? (float) max( $prices['price'] ) : 0.0;
+		$regular = $prices['regular_price'] ? (float) max( $prices['regular_price'] ) : 0.0;
 		return array( 'min' => $min, 'max' => $max, 'regular' => $regular );
 	}
-	$price = (float) wc_get_price_to_display( $product );
-	return array( 'min' => $price, 'max' => $price, 'regular' => (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) ) );
+	$price   = (float) wc_get_price_to_display( $product );
+	$regular = (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) );
+	return array( 'min' => $price, 'max' => $price, 'regular' => $regular );
+}
+
+/** Largest discount percentage across the product (0 when not on sale). */
+function nexxi_kids_discount_percent( WC_Product $product ) {
+	$range = nexxi_kids_price_range( $product );
+	$best  = 0;
+	if ( $range['regular'] > 0 && $range['min'] > 0 && $range['min'] < $range['regular'] ) {
+		$best = (int) round( ( 1 - $range['min'] / $range['regular'] ) * 100 );
+	}
+	if ( class_exists( 'Nexxi_Kids_Catalog' ) ) {
+		$best = max( $best, (int) Nexxi_Kids_Catalog::discount_percent( $product ) );
+		if ( $product->is_type( 'variable' ) ) {
+			foreach ( Nexxi_Kids_Catalog::variation_payload( $product ) as $row ) {
+				if ( $row['regular'] > 0 && $row['price'] > 0 && $row['price'] < $row['regular'] ) {
+					$best = max( $best, (int) round( ( 1 - $row['price'] / $row['regular'] ) * 100 ) );
+				}
+			}
+		}
+	}
+	return $best;
 }
 
 /**
@@ -143,42 +261,44 @@ function nexxi_kids_price_range( WC_Product $product ) {
  * stitch-components.php so every card stays identical to the Stitch design.
  */
 function nexxi_kids_card_data( WC_Product $product ) {
-	$catalog = class_exists( 'Nexxi_Kids_Catalog' );
-	$category = nexxi_kids_product_category( $product );
-	$range = nexxi_kids_price_range( $product );
-	$sizes = array();
+	$catalog    = class_exists( 'Nexxi_Kids_Catalog' );
+	$category   = nexxi_kids_product_category( $product );
+	$range      = nexxi_kids_price_range( $product );
+	$discount   = nexxi_kids_discount_percent( $product );
+	$on_sale    = ( $discount > 0 || $product->is_on_sale() ) && $range['regular'] > $range['min'];
+	$sizes      = array();
 	if ( $catalog ) {
 		foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
 			$sizes[] = array( 'slug' => $term->slug, 'label' => Nexxi_Kids_Catalog::size_number( $term->slug ) . 'Y', 'name' => $term->name );
 		}
 	}
-	$image = wp_get_attachment_image_url( $product->get_image_id(), 'large' );
-	$sold = (int) $product->get_total_sales();
-	$left = $catalog ? Nexxi_Kids_Catalog::stock_left( $product ) : null;
+	$image      = wp_get_attachment_image_url( $product->get_image_id(), 'large' );
+	$sold       = (int) $product->get_total_sales();
+	$left       = $catalog ? Nexxi_Kids_Catalog::stock_left( $product ) : null;
 	$variations = $catalog ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
 	return array(
-		'id'         => $product->get_id(),
-		'type'       => $product->get_type(),
-		'name'       => $product->get_name(),
-		'url'        => $product->get_permalink(),
-		'image'      => $image ? $image : wc_placeholder_img_src( 'large' ),
-		'category'   => $category ? $category->name : 'NEXXI Kids',
+		'id'           => $product->get_id(),
+		'type'         => $product->get_type(),
+		'name'         => $product->get_name(),
+		'url'          => $product->get_permalink(),
+		'image'        => $image ? $image : wc_placeholder_img_src( 'large' ),
+		'category'     => $category ? $category->name : 'NEXXI Kids',
 		'categorySlug' => $category ? $category->slug : '',
-		'material'   => implode( ', ', array_slice( nexxi_kids_product_attr_names( $product, 'chat-lieu' ), 0, 1 ) ),
-		'price'      => $range['min'] < $range['max'] ? nexxi_kids_money( $range['min'] ) . ' – ' . nexxi_kids_money( $range['max'] ) : nexxi_kids_money( $range['min'] ),
-		'priceFrom'  => nexxi_kids_money( $range['min'] ),
-		'regular'    => $product->is_on_sale() && $range['regular'] > $range['min'] ? nexxi_kids_money( $range['regular'] ) : '',
-		'saving'     => $product->is_on_sale() && $range['regular'] > $range['min'] ? nexxi_kids_money( $range['regular'] - $range['min'] ) : '',
-		'discount'   => $catalog ? Nexxi_Kids_Catalog::discount_percent( $product ) : 0,
-		'rating'     => (float) $product->get_average_rating(),
-		'reviews'    => (int) $product->get_review_count(),
-		'sold'       => $sold,
-		'left'       => $left,
-		'soldPercent'=> null !== $left && ( $sold + $left ) > 0 ? (int) round( $sold / ( $sold + $left ) * 100 ) : 0,
-		'inStock'    => $product->is_in_stock(),
-		'sizes'      => $sizes,
-		'variations' => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'], 'any' => ! empty( $row['any'] ) ); }, $variations ),
-		'isNew'      => $product->get_date_created() ? ( time() - (int) $product->get_date_created()->getTimestamp() ) < 30 * DAY_IN_SECONDS : false,
+		'material'     => implode( ', ', array_slice( nexxi_kids_product_attr_names( $product, 'chat-lieu' ), 0, 1 ) ),
+		'price'        => $range['min'] < $range['max'] ? nexxi_kids_money( $range['min'] ) . ' – ' . nexxi_kids_money( $range['max'] ) : nexxi_kids_money( $range['min'] ),
+		'priceFrom'    => nexxi_kids_money( $range['min'] ),
+		'regular'      => $on_sale ? nexxi_kids_money( $range['regular'] ) : '',
+		'saving'       => $on_sale ? nexxi_kids_money( $range['regular'] - $range['min'] ) : '',
+		'discount'     => $discount,
+		'rating'       => (float) $product->get_average_rating(),
+		'reviews'      => (int) $product->get_review_count(),
+		'sold'         => $sold,
+		'left'         => $left,
+		'soldPercent'  => null !== $left && ( $sold + $left ) > 0 ? (int) round( $sold / ( $sold + $left ) * 100 ) : 0,
+		'inStock'      => $product->is_in_stock(),
+		'sizes'        => $sizes,
+		'variations'   => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'], 'any' => ! empty( $row['any'] ) ); }, $variations ),
+		'isNew'        => $product->get_date_created() ? ( time() - (int) $product->get_date_created()->getTimestamp() ) < 30 * DAY_IN_SECONDS : false,
 	);
 }
 
@@ -196,13 +316,46 @@ function nexxi_kids_query_products( $args ) {
 }
 
 function nexxi_kids_sale_products( $limit = 4 ) {
-	$ids = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
-	$ids = nexxi_kids_sale_parent_ids( $ids );
+	$ids = nexxi_kids_all_sale_parent_ids();
 	if ( ! $ids ) { return array(); }
 	return nexxi_kids_query_products( array( 'include' => $ids, 'limit' => $limit, 'orderby' => 'popularity' ) );
 }
 
-/** Keep only parent product IDs (wc_get_product_ids_on_sale also returns variation IDs). */
+/**
+ * Resolve all parent product IDs that currently have an active sale price on
+ * either the product itself or any of its variations, even if WooCommerce's
+ * wc_products_onsale transient has not refreshed yet.
+ */
+function nexxi_kids_all_sale_parent_ids() {
+	global $wpdb;
+	$ids    = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
+	$direct = $wpdb->get_col(
+		"SELECT DISTINCT CASE WHEN p.post_parent > 0 THEN p.post_parent ELSE p.ID END
+		 FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sale_price'
+		 WHERE p.post_type IN ('product', 'product_variation')
+		   AND p.post_status = 'publish'
+		   AND pm.meta_value != ''
+		   AND CAST(pm.meta_value AS DECIMAL(12,2)) > 0"
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	return nexxi_kids_sale_parent_ids( array_merge( (array) $ids, (array) $direct ) );
+}
+
+/** Map product/variation IDs to unique published parent product IDs. */
 function nexxi_kids_sale_parent_ids( $ids ) {
-	return array_values( array_filter( array_map( 'absint', (array) $ids ), static function ( $id ) { return $id && 'product' === get_post_type( $id ); } ) );
+	$out = array();
+	foreach ( (array) $ids as $id ) {
+		$id = absint( $id );
+		if ( ! $id ) { continue; }
+		$type = get_post_type( $id );
+		if ( 'product' === $type ) {
+			$out[ $id ] = $id;
+		} elseif ( 'product_variation' === $type ) {
+			$parent = (int) wp_get_post_parent_id( $id );
+			if ( $parent && 'product' === get_post_type( $parent ) ) {
+				$out[ $parent ] = $parent;
+			}
+		}
+	}
+	return array_values( $out );
 }
