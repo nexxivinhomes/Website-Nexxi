@@ -464,55 +464,55 @@ return array (
     't' => 'image',
     'd' => '{{STITCH_ASSET}}/images/stitch-001.jpg',
     'l' => 'Ảnh',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t1' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Bộ Sưu Tập Mùa Thu',
+    'd' => 'Bộ Sưu Tập Đầm & Váy Xinh',
     'l' => 'Nhãn',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t2' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => '🍂',
+    'd' => '🌸',
     'l' => 'Emoji trang trí',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t3' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Mùa Thu Mơ Màng Cùng Con',
+    'd' => 'Đầm Xinh & Chân Váy Chuẩn Hàn',
     'l' => 'Tiêu đề mục',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t4' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Chất liệu đũi xước tơ tằm dệt thủ công mang hơi thở trong trẻo, thoáng khí tuyệt đối cho những buổi dã ngoại đầu đời.',
+    'd' => 'Thiết kế đầm kiểu, set váy lụa dập, chân váy xếp ly và quần váy ngọt ngào cho bé tự tin diện đi học, dạo phố hay dự tiệc cùng gia đình.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__l1' => 
   array (
     'r' => 'home-lookbook',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Xem Lookbook Mùa Này”',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'l' => 'Link khi bấm: “Khám Phá Đầm & Chân Váy”',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t5' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Xem Lookbook Mùa Này',
+    'd' => 'Khám Phá Đầm & Chân Váy',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__t6' => 
   array (
@@ -520,63 +520,63 @@ return array (
     't' => 'icon',
     'd' => 'arrow_right_alt',
     'l' => 'Biểu tượng',
-    'g' => 'Lookbook 1: Vải Đũi Xước Tự Nhiên',
+    'g' => 'Lookbook 1: Đầm & Chân Váy Chuẩn Hàn',
   ),
   'home-lookbook__i2' => 
   array (
     'r' => 'home-lookbook',
     't' => 'image',
-    'd' => '{{STITCH_ASSET}}/images/stitch-002.jpg',
+    'd' => '{{STITCH_ASSET}}/images/stitch-071.jpg',
     'l' => 'Ảnh',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__t7' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Bảo Vệ Làn Da Non',
+    'd' => 'Set Phối & Đồ Bộ Năng Động',
     'l' => 'Nhãn',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__t8' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => '🌿',
+    'd' => '✨',
     'l' => 'Emoji trang trí',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__t9' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Sợi Tre Bamboo Kháng Khuẩn',
+    'd' => 'Set Phối & Bộ Thun Co Giãn Thoải Mái',
     'l' => 'Tiêu đề mục',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__t10' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Khả năng tự kháng khuẩn tự nhiên đến 99,8%, khử mùi và làm mát tức thì. Lựa chọn tuyệt đối an toàn cho làn da mẫn cảm nhất.',
+    'd' => 'Phom dáng Hàn Quốc hiện đại kết hợp chất thun cotton mềm mịn, co giãn 4 chiều cùng quần kaki túi hộp khỏe khoắn cho bé thỏa sức vui chơi mỗi ngày.',
     'l' => 'Đoạn mô tả',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__l2' => 
   array (
     'r' => 'home-lookbook',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Khám Phá Dòng Bamboo”',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'l' => 'Link khi bấm: “Xem BST Set Phối & Bộ Đồ”',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-lookbook__t11' => 
   array (
     'r' => 'home-lookbook',
     't' => 'text',
-    'd' => 'Khám Phá Dòng Bamboo',
+    'd' => 'Xem BST Set Phối & Bộ Đồ',
     'l' => 'Chữ trên nút / liên kết',
-    'g' => 'Lookbook 2: Sợi Tre Kháng Khuẩn Tự Nhiên',
+    'g' => 'Lookbook 2: Set Phối & Bộ Đồ Năng Động',
   ),
   'home-bestsellers__t1' => 
   array (

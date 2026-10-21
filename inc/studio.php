@@ -185,9 +185,19 @@ function nexxi_studio_changed( $key ) {
 		'home-categories__t14' => 'Mọi Lứa Tuổi',
 		'home-categories__t15' => 'Đồ Ngủ & Pijama Mát',
 		'home-categories__t16' => 'Chất sợi tre lạnh điều hòa thân nhiệt, nâng niu bé trọn giấc ngủ sâu ngọt lành.',
+		'home-lookbook__t1'    => 'Bộ Sưu Tập Mùa Thu',
+		'home-lookbook__t2'    => '🍂',
+		'home-lookbook__t3'    => 'Mùa Thu Mơ Màng Cùng Con',
+		'home-lookbook__t4'    => 'Chất liệu đũi xước tơ tằm dệt thủ công mang hơi thở trong trẻo, thoáng khí tuyệt đối cho những buổi dã ngoại đầu đời.',
+		'home-lookbook__t5'    => 'Xem Lookbook Mùa Này',
+		'home-lookbook__t7'    => 'Bảo Vệ Làn Da Non',
+		'home-lookbook__t8'    => '🌿',
+		'home-lookbook__t9'    => 'Sợi Tre Bamboo Kháng Khuẩn',
+		'home-lookbook__t10'   => 'Khả năng tự kháng khuẩn tự nhiên đến 99,8%, khử mùi và làm mát tức thì. Lựa chọn tuyệt đối an toàn cho làn da mẫn cảm nhất.',
+		'home-lookbook__t11'   => 'Khám Phá Dòng Bamboo',
 	);
 	if ( isset( $legacy_home_cats[ $key ] ) && $legacy_home_cats[ $key ] === $value ) { return null; }
-	if ( in_array( $key, array( 'home-categories__i1', 'home-categories__i4' ), true ) && ( false !== strpos( $value, 'stitch-030.jpg' ) || false !== strpos( $value, 'stitch-029.jpg' ) ) ) { return null; }
+	if ( in_array( $key, array( 'home-categories__i1', 'home-categories__i4', 'home-lookbook__i2' ), true ) && ( false !== strpos( $value, 'stitch-030.jpg' ) || false !== strpos( $value, 'stitch-029.jpg' ) || false !== strpos( $value, 'stitch-002.jpg' ) ) ) { return null; }
 	if ( 'header-ticker__lines' === $key ) {
 		$norm = preg_replace( '~\R~u', "\n", $value );
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
