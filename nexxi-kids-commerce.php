@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: NEXXI Kids Commerce
- * Description: Size recommendations and NEXXI Kids service details for WooCommerce.
- * Version: 1.0.0
+ * Description: Size recommendations, Pancake POS SKU & Variation Image Manager, and NEXXI Kids service details for WooCommerce.
+ * Version: 1.1.0
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -119,10 +119,12 @@ final class Nexxi_Kids_Commerce {
 }
 
 require_once __DIR__ . '/includes/class-catalog.php';
+require_once __DIR__ . '/includes/class-pancake-sync.php';
 
 add_action( 'plugins_loaded', function() {
 	if ( class_exists( 'WooCommerce' ) ) {
 		new Nexxi_Kids_Commerce();
 		new Nexxi_Kids_Catalog();
+		Nexxi_Pancake_Sync_Manager::init();
 	}
 } );
