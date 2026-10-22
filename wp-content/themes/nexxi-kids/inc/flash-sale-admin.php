@@ -173,39 +173,118 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 }
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
-add_action( 'init', static function () {
-	if ( '10' !== get_option( 'nexxi_fs_cache_rev' ) ) {
-		update_option( 'nexxi_fs_cache_rev', '10', true );
-		// Sync stacked variation prices for any products that already have both programs active
-		$sale_ids = nexxi_kids_all_sale_parent_ids();
-		foreach ( $sale_ids as $sid ) {
-			$p = function_exists( 'wc_get_product' ) ? wc_get_product( $sid ) : null;
-			if ( ! $p ) { continue; }
-			$comb = nexxi_kids_get_program_sale( $p, 'combined' );
-			if ( ! empty( $comb['stacked'] ) && $comb['sale'] > 0 ) {
-				if ( $p->is_type( 'variable' ) ) {
-					foreach ( $p->get_children() as $cid ) {
-						$v = wc_get_product( $cid );
-						if ( $v ) {
-							$v->set_sale_price( (string) round( $comb['sale'] ) );
-							$v->set_price( (string) round( $comb['sale'] ) );
-							$v->save();
-						}
-					}
-					if ( class_exists( 'WC_Product_Variable' ) ) {
-						WC_Product_Variable::sync( $sid );
-					}
+/**
+ * Clear all Flash Sale discounts across every product, preserving Regular Product Discounts (🏷️ Giảm Giá SP).
+ */
+function nexxi_kids_clear_all_flash_sale_discounts() {
+	global $wpdb;
+	$fs_meta_ids = $wpdb->get_col(
+		"SELECT p.ID FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_is_flash_sale'
+		 WHERE p.post_type = 'product' AND pm.meta_value = '1'"
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	$parent_ids = function_exists( 'nexxi_kids_flash_sale_parent_ids' ) ? nexxi_kids_flash_sale_parent_ids( true ) : array();
+	$all_ids    = array_values( array_unique( array_filter( array_map( 'absint', array_merge( (array) $fs_meta_ids, (array) $parent_ids ) ) ) ) );
+
+	$cleared = 0;
+	foreach ( $all_ids as $pid ) {
+		if ( nexxi_kids_apply_product_discount( $pid, 'clear', 0, 0, '1' ) ) {
+			$cleared++;
+		}
+	}
+	return $cleared;
+}
+
+/**
+ * Re-sync WooCommerce variation _sale_price / _price for all discounted products
+ * (used when the Flash Sale timer starts or stops).
+ */
+function nexxi_kids_sync_all_flash_sale_products() {
+	$fs_ids   = function_exists( 'nexxi_kids_flash_sale_parent_ids' ) ? nexxi_kids_flash_sale_parent_ids( true ) : array();
+	$prod_ids = function_exists( 'nexxi_kids_regular_sale_parent_ids' ) ? nexxi_kids_regular_sale_parent_ids() : array();
+	$sale_ids = function_exists( 'nexxi_kids_all_sale_parent_ids' ) ? nexxi_kids_all_sale_parent_ids() : array();
+	$all_ids  = array_values( array_unique( array_filter( array_map( 'absint', array_merge( (array) $fs_ids, (array) $prod_ids, (array) $sale_ids ) ) ) ) );
+
+	foreach ( $all_ids as $sid ) {
+		$p = function_exists( 'wc_get_product' ) ? wc_get_product( $sid ) : null;
+		if ( ! $p ) { continue; }
+		$comb    = nexxi_kids_get_program_sale( $p, 'combined' );
+		$wc_sale = $comb['on_sale'] ? (float) $comb['sale'] : 0.0;
+		$reg     = (float) $comb['regular'];
+		if ( $p->is_type( 'variable' ) ) {
+			foreach ( $p->get_children() as $cid ) {
+				$v = wc_get_product( $cid );
+				if ( ! $v ) { continue; }
+				$v_reg = (float) $v->get_regular_price( 'edit' );
+				if ( $v_reg <= 0 ) { $v_reg = $reg; }
+				if ( $wc_sale > 0 && $v_reg > 0 && $wc_sale < $v_reg ) {
+					$v->set_sale_price( (string) round( $wc_sale ) );
+					$v->set_price( (string) round( $wc_sale ) );
 				} else {
-					$p->set_sale_price( (string) round( $comb['sale'] ) );
-					$p->set_price( (string) round( $comb['sale'] ) );
-					$p->save();
+					$v->set_sale_price( '' );
+					if ( $v_reg > 0 ) {
+						$v->set_price( (string) round( $v_reg ) );
+					}
 				}
-				wc_delete_product_transients( $sid );
+				$v->save();
 			}
+			if ( class_exists( 'WC_Product_Variable' ) ) {
+				WC_Product_Variable::sync( $sid );
+			}
+			$p->save();
+		} else {
+			if ( $wc_sale > 0 && $reg > 0 && $wc_sale < $reg ) {
+				$p->set_sale_price( (string) round( $wc_sale ) );
+				$p->set_price( (string) round( $wc_sale ) );
+			} else {
+				$p->set_sale_price( '' );
+				if ( $reg > 0 ) {
+					$p->set_price( (string) round( $reg ) );
+				}
+			}
+			$p->save();
+		}
+		wc_delete_product_transients( $sid );
+	}
+}
+
+/**
+ * Automatically expire and clean up Flash Sale when the countdown time ends.
+ * Runs on every request (both Frontend and WP Admin) before queries execute.
+ */
+function nexxi_kids_maybe_expire_flash_sale() {
+	if ( ! function_exists( 'nexxi_kids_flash_timer_state' ) ) {
+		return;
+	}
+	$timer = nexxi_kids_flash_timer_state();
+
+	// 1. If a configured Flash Sale end time has passed, automatically turn off & clear all Flash Sale discounts!
+	if ( $timer['is_expired'] ) {
+		$expired_label = wp_date( 'H:i - d/m/Y', $timer['ts'] );
+		update_option( 'nexxi_flash_sale_enabled', '0' );
+		update_option( 'nexxi_flash_sale_end', '' );
+		set_theme_mod( 'nexxi_kids_flash_sale_end', '' );
+		update_option( 'nexxi_flash_sale_last_expired', $expired_label );
+		nexxi_kids_clear_all_flash_sale_discounts();
+		nexxi_kids_flush_sale_cache();
+		return;
+	}
+
+	// 2. One-time cleanup migration (rev 11) in case timer is currently inactive but leftover Flash Sale products exist
+	if ( '11' !== get_option( 'nexxi_fs_cache_rev' ) ) {
+		update_option( 'nexxi_fs_cache_rev', '11', true );
+		if ( ! $timer['is_live'] ) {
+			update_option( 'nexxi_flash_sale_enabled', '0' );
+			update_option( 'nexxi_flash_sale_end', '' );
+			set_theme_mod( 'nexxi_kids_flash_sale_end', '' );
+			nexxi_kids_clear_all_flash_sale_discounts();
+		} else {
+			nexxi_kids_sync_all_flash_sale_products();
 		}
 		nexxi_kids_flush_sale_cache();
 	}
-}, 20 );
+}
+add_action( 'init', 'nexxi_kids_maybe_expire_flash_sale', 10 );
 
 /** Handle POST actions from the Flash Sale Admin page. */
 function nexxi_kids_handle_flash_sale_admin_post() {
@@ -217,19 +296,49 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 
 	if ( 'save_timer' === $action ) {
 		$enabled = ! empty( $_POST['nexxi_flash_sale_enabled'] ) ? '1' : '0';
-		$end_raw = isset( $_POST['nexxi_flash_sale_end'] ) ? sanitize_text_field( wp_unslash( $_POST['nexxi_flash_sale_end'] ) ) : '';
-		update_option( 'nexxi_flash_sale_enabled', $enabled );
-		update_option( 'nexxi_flash_sale_end', $end_raw );
-		set_theme_mod( 'nexxi_kids_flash_sale_end', $end_raw );
-		nexxi_kids_flush_sale_cache();
-		add_settings_error( 'nexxi_fs', 'timer_saved', 'Đã lưu cài đặt bộ đếm giờ Flash Sale!', 'updated' );
+		$end_raw = isset( $_POST['nexxi_flash_sale_end'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['nexxi_flash_sale_end'] ) ) ) : '';
+		$end_ts  = 0;
+		if ( '' !== $end_raw ) {
+			try {
+				$dt     = new DateTimeImmutable( $end_raw, wp_timezone() );
+				$end_ts = $dt->getTimestamp();
+			} catch ( Exception $e ) {
+				$end_ts = (int) strtotime( $end_raw );
+			}
+		}
+
+		// If timer is turned off, cleared to 00:00:00, or set to a past time -> turn off and clear all Flash Sale discounts!
+		if ( '0' === $enabled || '' === $end_raw || $end_ts <= time() ) {
+			update_option( 'nexxi_flash_sale_enabled', '0' );
+			update_option( 'nexxi_flash_sale_end', '' );
+			set_theme_mod( 'nexxi_kids_flash_sale_end', '' );
+			$cleared = nexxi_kids_clear_all_flash_sale_discounts();
+			nexxi_kids_flush_sale_cache();
+			add_settings_error(
+				'nexxi_fs',
+				'timer_stopped',
+				'Đã tắt đồng hồ Flash Sale và tự động gỡ khuyến mãi Flash Sale' . ( $cleared > 0 ? ' cho ' . $cleared . ' sản phẩm' : '' ) . ' (chỉ giữ lại Giảm Giá Sản Phẩm)!',
+				'updated'
+			);
+		} else {
+			update_option( 'nexxi_flash_sale_enabled', '1' );
+			update_option( 'nexxi_flash_sale_end', $end_raw );
+			set_theme_mod( 'nexxi_kids_flash_sale_end', $end_raw );
+			delete_option( 'nexxi_flash_sale_last_expired' );
+			nexxi_kids_sync_all_flash_sale_products();
+			nexxi_kids_flush_sale_cache();
+			add_settings_error( 'nexxi_fs', 'timer_saved', 'Đã bật & lưu thời gian kết thúc Flash Sale!', 'updated' );
+		}
 	} elseif ( 'single_discount' === $action ) {
 		$pid  = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
 		$mode = isset( $_POST['discount_mode'] ) ? sanitize_key( wp_unslash( $_POST['discount_mode'] ) ) : 'percent';
 		$val  = isset( $_POST['discount_value'] ) ? (float) preg_replace( '~[^\d.]~', '', wp_unslash( $_POST['discount_value'] ) ) : 0;
 		if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val, 0, '1' ) ) {
 			nexxi_kids_flush_sale_cache();
-			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá Flash Sale cho sản phẩm #' . $pid . '!', 'updated' );
+			$warn = ( 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() )
+				? ' ⚠️ Lưu ý: Đồng hồ Flash Sale ở Mục 1 đang tắt (00:00:00) — vui lòng cài Thời gian kết thúc ở Mục 1 để chương trình bắt đầu hiển thị ngoài Website!'
+				: '';
+			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá Flash Sale cho sản phẩm #' . $pid . '!' . $warn, 'updated' );
 		}
 	} elseif ( 'bulk_discount' === $action ) {
 		$pids = isset( $_POST['product_ids'] ) && is_array( $_POST['product_ids'] ) ? array_map( 'absint', wp_unslash( $_POST['product_ids'] ) ) : array();
@@ -243,7 +352,10 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		}
 		if ( $count > 0 ) {
 			nexxi_kids_flush_sale_cache();
-			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng Flash Sale cho ' . $count . ' sản phẩm!', 'updated' );
+			$warn = ( 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() )
+				? ' ⚠️ Lưu ý: Đồng hồ Flash Sale ở Mục 1 đang tắt (00:00:00) — vui lòng cài Thời gian kết thúc ở Mục 1 để chương trình bắt đầu hiển thị ngoài Website!'
+				: '';
+			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng Flash Sale cho ' . $count . ' sản phẩm!' . $warn, 'updated' );
 		} else {
 			add_settings_error( 'nexxi_fs', 'bulk_empty', 'Vui lòng tích chọn ít nhất 1 sản phẩm trong bảng bên dưới.', 'error' );
 		}
@@ -266,8 +378,9 @@ function nexxi_kids_flash_sale_admin_page() {
 		}
 	}
 
-	$sale_parent_ids = function_exists( 'nexxi_kids_flash_sale_parent_ids' ) ? nexxi_kids_flash_sale_parent_ids() : array();
+	$sale_parent_ids = function_exists( 'nexxi_kids_flash_sale_parent_ids' ) ? nexxi_kids_flash_sale_parent_ids( true ) : array();
 	$active_ts = nexxi_kids_flash_end();
+	$last_expired = (string) get_option( 'nexxi_flash_sale_last_expired', '' );
 
 	// Filters for product table
 	$search = isset( $_GET['s_prod'] ) ? sanitize_text_field( wp_unslash( $_GET['s_prod'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -330,7 +443,7 @@ function nexxi_kids_flash_sale_admin_page() {
 				<div>
 					<h2 style="margin:0;font-size:17px;font-weight:700;color:#031444;">1. Bộ Đếm Giờ Flash Sale (Trang Chủ &amp; Trang Flash Sale)</h2>
 					<p style="margin:4px 0 0;color:#666;font-size:13px;">
-						Khi <b>không có sản phẩm giảm giá</b> hoặc <b>chưa cài thời gian / đã hết giờ</b>, bộ đếm ngoài web tự động đứng ở <code>00 : 00 : 00</code>.
+						Khi <b>hết thời gian Flash Sale</b> (đồng hồ về <code>00 : 00 : 00</code>), hệ thống sẽ <b>tự động tắt &amp; xóa khuyến mãi Flash Sale</b> của các sản phẩm bên dưới và <b>chỉ giữ lại Giảm Giá Sản Phẩm thường</b>.
 					</p>
 				</div>
 				<div>
@@ -340,7 +453,7 @@ function nexxi_kids_flash_sale_admin_page() {
 						</span>
 					<?php else : ?>
 						<span style="display:inline-flex;align-items:center;gap:6px;background:#fff4f1;color:#ae3115;font-weight:700;font-size:12.5px;padding:6px 14px;border-radius:999px;border:1px solid #ffdad2;">
-							○ ĐỒNG HỒ ĐANG Ở 00:00:00 (<?php echo empty( $sale_parent_ids ) ? 'Chưa có sản phẩm nào giảm giá' : 'Chưa đặt giờ kết thúc hoặc đã hết giờ'; ?>)
+							○ ĐỒNG HỒ ĐANG Ở 00:00:00 (<?php echo $last_expired ? 'Đã tự động kết thúc phiên ' . esc_html( $last_expired ) : ( empty( $sale_parent_ids ) ? 'Chưa có sản phẩm nào giảm giá Flash Sale' : 'Chưa đặt giờ kết thúc hoặc đã hết giờ' ); ?>)
 						</span>
 					<?php endif; ?>
 				</div>
@@ -351,13 +464,13 @@ function nexxi_kids_flash_sale_admin_page() {
 				<input type="hidden" name="nexxi_fs_action" value="save_timer">
 
 				<label style="display:flex;align-items:center;gap:8px;font-weight:600;color:#031444;padding:8px 14px;background:#f5f3ef;border-radius:10px;cursor:pointer;">
-					<input type="checkbox" name="nexxi_flash_sale_enabled" value="1" <?php checked( $enabled ); ?>>
+					<input type="checkbox" id="nexxi-fs-enabled-cb" name="nexxi_flash_sale_enabled" value="1" <?php checked( $enabled ); ?>>
 					<span>Bật chạy đồng hồ Flash Sale</span>
 				</label>
 
 				<div>
 					<label style="display:block;font-size:12.5px;font-weight:700;color:#031444;margin-bottom:5px;">Thời gian kết thúc Flash Sale (Giờ Việt Nam):</label>
-					<input type="datetime-local" id="nexxi-fs-end-input" name="nexxi_flash_sale_end" value="<?php echo esc_attr( $end_input_val ); ?>" style="min-height:38px;padding:4px 12px;border-radius:8px;border:1px solid #c6c6d0;font-size:14px;font-weight:600;color:#031444;">
+					<input type="datetime-local" id="nexxi-fs-end-input" name="nexxi_flash_sale_end" value="<?php echo esc_attr( $end_input_val ); ?>" onchange="if(this.value){document.getElementById('nexxi-fs-enabled-cb').checked=true;}" style="min-height:38px;padding:4px 12px;border-radius:8px;border:1px solid #c6c6d0;font-size:14px;font-weight:600;color:#031444;">
 				</div>
 
 				<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
@@ -367,7 +480,7 @@ function nexxi_kids_flash_sale_admin_page() {
 					<button type="button" class="button" onclick="nexxiSetQuickEnd(12)">+12 Giờ</button>
 					<button type="button" class="button" onclick="nexxiSetQuickEnd(24)">+24 Giờ</button>
 					<button type="button" class="button" onclick="nexxiSetQuickEnd('eod')">Cuối ngày hôm nay (23:59)</button>
-					<button type="button" class="button" onclick="document.getElementById('nexxi-fs-end-input').value='';" style="color:#ae3115;">Về 00:00:00</button>
+					<button type="button" class="button" onclick="document.getElementById('nexxi-fs-end-input').value='';document.getElementById('nexxi-fs-enabled-cb').checked=false;" style="color:#ae3115;">Về 00:00:00 (Tắt Flash Sale)</button>
 				</div>
 
 				<button type="submit" class="button button-primary" style="min-height:38px;padding:0 20px;border-radius:8px;font-weight:700;background:#031444;border-color:#031444;">
@@ -491,6 +604,11 @@ function nexxi_kids_flash_sale_admin_page() {
 										<?php endif; ?>
 									<?php else : ?>
 										<span style="color:#767680;">Chưa bật Flash Sale</span>
+										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<div style="font-size:11px;color:#031444;background:#eef2ff;padding:2px 6px;border-radius:4px;margin-top:4px;font-weight:600;">
+												🏷️ Đang giữ Giảm Giá SP: <?php echo esc_html( nexxi_kids_money( $prog['other_sale'] ) ); ?> (-<?php echo (int) $prog['other_pct']; ?>%)
+											</div>
+										<?php endif; ?>
 									<?php endif; ?>
 								</td>
 								<td>
@@ -545,6 +663,8 @@ function nexxi_kids_flash_sale_admin_page() {
 		var pad = function(n) { return String(n).padStart(2, '0'); };
 		var formatted = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
 		document.getElementById('nexxi-fs-end-input').value = formatted;
+		var cb = document.getElementById('nexxi-fs-enabled-cb');
+		if (cb) cb.checked = true;
 	}
 	function nexxiQuickRowSale(pid, mode, val) {
 		document.getElementById('nx-single-pid').value = pid;
