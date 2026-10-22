@@ -202,12 +202,18 @@
   const saleEndMs = Number.isFinite(parsedEnd) && parsedEnd > Date.now()
     ? parsedEnd
     : (fallbackLeft > 0 ? Date.now() + fallbackLeft * 1000 : 0);
+  let expireReloadScheduled = false;
   const countdown = ids => {
     const boxes = ids.map(id => document.getElementById(id));
     if (!boxes.every(Boolean)) return;
+    const wasRunning = saleEndMs > Date.now();
     const tick = () => {
       if (!saleEndMs || saleEndMs <= Date.now()) {
         boxes.forEach(box => { box.textContent = '00'; });
+        if (wasRunning && !expireReloadScheduled) {
+          expireReloadScheduled = true;
+          setTimeout(() => location.reload(), 1200);
+        }
         return false;
       }
       let left = Math.max(0, Math.floor((saleEndMs - Date.now()) / 1000));

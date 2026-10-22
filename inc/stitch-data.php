@@ -65,42 +65,61 @@ function nexxi_kids_tel( $phone ) {
 }
 
 /**
- * Flash Sale end as a UNIX timestamp.
- * Returns a future timestamp ONLY when Flash Sale is enabled, there is at least
- * one product on sale, and a future end time has been configured. Otherwise returns 0
- * so the countdown clock stays at 00:00:00.
+ * Inspect the configured Flash Sale timer state.
+ *
+ * @return array{enabled:bool,raw:string,ts:int,is_live:bool,is_expired:bool}
  */
-function nexxi_kids_flash_end() {
-	if ( '0' === (string) get_option( 'nexxi_flash_sale_enabled', '1' ) ) {
-		return 0;
-	}
-	$sale_ids = nexxi_kids_flash_sale_parent_ids();
-	if ( empty( $sale_ids ) ) {
-		return 0;
-	}
-	$raw = trim( (string) get_option( 'nexxi_flash_sale_end', '' ) );
+function nexxi_kids_flash_timer_state() {
+	$enabled = '0' !== (string) get_option( 'nexxi_flash_sale_enabled', '1' );
+	$raw     = trim( (string) get_option( 'nexxi_flash_sale_end', '' ) );
 	if ( '' === $raw ) {
 		$raw = trim( (string) get_theme_mod( 'nexxi_kids_flash_sale_end', '' ) );
 	}
+	$ts = 0;
 	if ( '' !== $raw ) {
 		try {
 			$dt = new DateTimeImmutable( $raw, wp_timezone() );
 			$ts = $dt->getTimestamp();
 		} catch ( Exception $e ) {
-			$ts = strtotime( $raw );
-		}
-		return ( $ts && $ts > time() ) ? (int) $ts : 0;
-	}
-	// Check if any sale product has a scheduled WooCommerce sale end date in the future.
-	foreach ( $sale_ids as $id ) {
-		$p = wc_get_product( $id );
-		if ( ! $p ) { continue; }
-		$date_to = $p->get_date_on_sale_to();
-		if ( $date_to && $date_to->getTimestamp() > time() ) {
-			return (int) $date_to->getTimestamp();
+			$ts = (int) strtotime( $raw );
 		}
 	}
-	return 0;
+	$now        = time();
+	$is_live    = $enabled && $ts > $now;
+	$is_expired = ( '' !== $raw && $ts > 0 && $ts <= $now );
+	return array(
+		'enabled'    => $enabled,
+		'raw'        => $raw,
+		'ts'         => $ts,
+		'is_live'    => $is_live,
+		'is_expired' => $is_expired,
+	);
+}
+
+/**
+ * Whether the Flash Sale countdown timer is currently active and in the future.
+ */
+function nexxi_kids_is_flash_sale_live() {
+	$state = nexxi_kids_flash_timer_state();
+	return (bool) $state['is_live'];
+}
+
+/**
+ * Flash Sale end as a UNIX timestamp.
+ * Returns a future timestamp ONLY when Flash Sale is enabled, a future end time
+ * has been configured, and there is at least one product in the Flash Sale program.
+ * Otherwise returns 0 so the countdown clock stays at 00:00:00.
+ */
+function nexxi_kids_flash_end() {
+	$state = nexxi_kids_flash_timer_state();
+	if ( ! $state['is_live'] ) {
+		return 0;
+	}
+	$sale_ids = nexxi_kids_flash_sale_parent_ids( true );
+	if ( empty( $sale_ids ) ) {
+		return 0;
+	}
+	return (int) $state['ts'];
 }
 
 function nexxi_kids_money( $amount ) {
@@ -307,16 +326,17 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 
 	// Admin-specific isolated views
 	if ( 'regular_admin' === $program ) {
+		$fs_active_now = $has_flash && nexxi_kids_is_flash_sale_live();
 		return array(
 			'on_sale'       => $has_prod,
 			'regular'       => $reg,
 			'sale'          => $has_prod ? $prod_price : $reg,
 			'pct'           => $has_prod ? $prod_pct : 0,
-			'other_active'  => $has_flash,
+			'other_active'  => $fs_active_now,
 			'other_pct'     => $fs_pct,
 			'other_sale'    => $fs_price,
-			'combined_sale' => ( $has_prod && $has_flash ) ? max( 1000, $reg - ( $reg - $prod_price ) - ( $reg - $fs_price ) ) : ( $has_prod ? $prod_price : $reg ),
-			'combined_pct'  => ( $has_prod && $has_flash ) ? min( 95, $prod_pct + $fs_pct ) : $prod_pct,
+			'combined_sale' => ( $has_prod && $fs_active_now ) ? max( 1000, $reg - ( $reg - $prod_price ) - ( $reg - $fs_price ) ) : ( $has_prod ? $prod_price : $reg ),
+			'combined_pct'  => ( $has_prod && $fs_active_now ) ? min( 95, $prod_pct + $fs_pct ) : $prod_pct,
 		);
 	}
 	if ( 'flash_admin' === $program ) {
@@ -333,7 +353,14 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 		);
 	}
 
-	// Frontend display: cumulative / stacked when BOTH programs are active!
+	// Frontend display ('combined'): Flash Sale discount only applies when the Flash Sale timer is actively running!
+	if ( ! nexxi_kids_is_flash_sale_live() ) {
+		$has_flash = false;
+		$fs_price  = 0.0;
+		$fs_pct    = 0;
+	}
+
+	// Cumulative / stacked when BOTH programs are active!
 	if ( $has_prod && $has_flash ) {
 		$disc_prod     = max( 0, $reg - $prod_price );
 		$disc_fs       = max( 0, $reg - $fs_price );
@@ -444,11 +471,23 @@ function nexxi_kids_sale_products( $limit = 4 ) {
 
 /**
  * Resolve parent product IDs that belong to the Flash Sale program.
+ *
+ * @param bool $include_inactive_timer When false (default, used on Frontend), returns empty array if Flash Sale timer is not running.
  */
-function nexxi_kids_flash_sale_parent_ids() {
-	$all = nexxi_kids_all_sale_parent_ids();
+function nexxi_kids_flash_sale_parent_ids( $include_inactive_timer = false ) {
+	if ( ! $include_inactive_timer && ! nexxi_kids_is_flash_sale_live() ) {
+		return array();
+	}
+	global $wpdb;
+	$fs_meta_ids = $wpdb->get_col(
+		"SELECT p.ID FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_is_flash_sale'
+		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	$all = array_values( array_unique( array_map( 'absint', array_merge( (array) nexxi_kids_all_sale_parent_ids(), (array) $fs_meta_ids ) ) ) );
 	$out = array();
 	foreach ( $all as $id ) {
+		if ( ! $id ) { continue; }
 		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
 		if ( ! $prod ) { continue; }
 		$prog = nexxi_kids_get_program_sale( $prod, 'flash_admin' );
