@@ -354,7 +354,20 @@
     const state = {attrs: {}, qty: 1};
     const mainImg = $('#mainProductImg');
     const zoom = $('[data-nexxi-zoom]');
-    const showImage = src => { if (!src || !mainImg) return; mainImg.src = src; if (zoom) zoom.href = src; };
+    const showImage = src => {
+      if (!src || !mainImg) return;
+      mainImg.src = src;
+      if (zoom) zoom.href = src;
+      const matchedThumb = $$('[data-nexxi-thumb]').find(t => t.dataset.nexxiThumb === src);
+      if (matchedThumb) {
+        $$('[data-nexxi-thumb]').forEach(other => {
+          const on = other === matchedThumb;
+          other.classList.toggle('ring-2', on);
+          other.classList.toggle('ring-secondary-container', on);
+          other.classList.toggle('opacity-70', !on);
+        });
+      }
+    };
 
     $$('[data-nexxi-thumb]').forEach(thumb => thumb.addEventListener('click', () => {
       showImage(thumb.dataset.nexxiThumb);
@@ -458,7 +471,21 @@
     };
     const maxQty = () => { const v = current(); const max = Number(v ? v.max : product.max); return max > 0 ? max : 99; };
     const paintVariation = () => {
+      // Switch main product image if a selected classification/color button or variation has an image
+      let targetImg = '';
+      groups.forEach(g => {
+        const activeBtn = g.buttons.find(b => b.dataset.value === state.attrs[g.key] && b.dataset.image);
+        if (activeBtn && activeBtn.dataset.image) targetImg = activeBtn.dataset.image;
+      });
       const v = current();
+      if (!targetImg && v && v.image) {
+        targetImg = v.image;
+      } else if (!targetImg && Object.values(state.attrs).some(Boolean)) {
+        const imgVar = variations.find(x => x.image && fits(x, state.attrs));
+        if (imgVar && imgVar.image) targetImg = imgVar.image;
+      }
+      if (targetImg) showImage(targetImg);
+
       if (!v) {
         if (priceEl) priceEl.textContent = defaults.price;
         if (regularEl) { regularEl.textContent = defaults.regular; regularEl.classList.toggle('hidden', defaults.regularHidden); }
@@ -514,7 +541,16 @@
       form.method = 'post';
       form.action = buyNow ? config.checkout : (config.cart || product.url);
       const fields = {'add-to-cart': product.id, product_id: product.id, variation_id: v.id, quantity: state.qty};
-      groups.forEach(g => { const b = g.buttons.find(x => x.dataset.value === state.attrs[g.key]); if (b) fields['attribute_' + g.key] = b.dataset.raw || b.dataset.value; });
+      groups.forEach(g => {
+        const b = g.buttons.find(x => x.dataset.value === state.attrs[g.key]);
+        if (b) {
+          if (g.key === 'nexxi_color') {
+            fields['nexxi_color'] = b.dataset.name || b.dataset.raw || b.dataset.value;
+          } else {
+            fields['attribute_' + g.key] = b.dataset.raw || b.dataset.value;
+          }
+        }
+      });
       Object.entries(fields).forEach(([name, value]) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = String(value); form.appendChild(input); });
       document.body.appendChild(form);
       form.submit();
@@ -534,7 +570,7 @@
           return;
         }
         if (!v.inStock) { failedToast(); return; }
-        if (v.any) { postForm(v, buyNow); return; }
+        if (v.any || state.attrs.nexxi_color) { postForm(v, buyNow); return; }
         target = v.id;
       } else if (product.type !== 'simple') {
         return;
