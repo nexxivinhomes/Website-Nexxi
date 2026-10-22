@@ -157,6 +157,10 @@ final class Nexxi_Pancake_Sync_Manager {
 		update_option( self::SETTINGS_OPT, $settings );
 		$this->maybe_schedule_cron();
 
+		if ( ! empty( $settings['pancake_api_key'] ) && 0 !== strpos( $settings['pancake_api_key'], 'ck_' ) && 0 !== strpos( $settings['pancake_api_key'], 'cs_' ) ) {
+			self::fetch_and_cache_pancake_catalog( false );
+		}
+
 		wp_safe_redirect(
 			add_query_arg(
 				array(
@@ -315,10 +319,97 @@ final class Nexxi_Pancake_Sync_Manager {
 	}
 
 	/**
+	 * Merge any split product/variation stub entries that share the same parent SKU or leading code.
+	 */
+	public static function merge_catalog_entries_by_sku( array $catalog ) {
+		if ( empty( $catalog ) ) {
+			return array();
+		}
+		$merged      = array();
+		$sku_to_pid  = array();
+		$code_to_pid = array();
+
+		foreach ( $catalog as $pid => $p ) {
+			if ( ! is_array( $p ) ) {
+				continue;
+			}
+			$sku  = strtoupper( trim( (string) ( $p['sku'] ?? '' ) ) );
+			$code = strtoupper( trim( (string) ( $p['code'] ?? self::extract_leading_code( $p['name'] ?? '' ) ) ) );
+			$p['code'] = $code ? $code : ( $p['code'] ?? '' );
+
+			$target_pid = '';
+			if ( '' !== $sku && isset( $sku_to_pid[ $sku ] ) ) {
+				$target_pid = $sku_to_pid[ $sku ];
+			} elseif ( '' !== $code && isset( $code_to_pid[ $code ] ) ) {
+				$target_pid = $code_to_pid[ $code ];
+			}
+
+			if ( '' === $target_pid || ! isset( $merged[ $target_pid ] ) ) {
+				$merged[ $pid ] = $p;
+				if ( '' !== $sku ) {
+					$sku_to_pid[ $sku ] = $pid;
+				}
+				if ( '' !== $code ) {
+					$code_to_pid[ $code ] = $pid;
+				}
+				continue;
+			}
+
+			// Merge $p into $merged[$target_pid]
+			$m = &$merged[ $target_pid ];
+			if ( empty( $m['sku'] ) && ! empty( $p['sku'] ) ) {
+				$m['sku'] = $p['sku'];
+			}
+			if ( ! empty( $p['all_images'] ) && is_array( $p['all_images'] ) ) {
+				foreach ( $p['all_images'] as $u ) {
+					if ( $u && ! in_array( $u, $m['all_images'], true ) ) {
+						$m['all_images'][] = $u;
+					}
+				}
+			}
+			if ( empty( $m['product_image'] ) && ! empty( $m['all_images'][0] ) ) {
+				$m['product_image'] = $m['all_images'][0];
+			}
+			if ( ! empty( $p['class_images'] ) && is_array( $p['class_images'] ) ) {
+				foreach ( $p['class_images'] as $ck => $ci ) {
+					$norm_ck = self::normalize_class_key( $ci['raw'] ?? $ck );
+					if ( '' === $norm_ck ) {
+						continue;
+					}
+					$ci['key']   = $norm_ck;
+					$ci['label'] = self::pretty_class_label( $ci['raw'] ?? $ck );
+					if ( ! isset( $m['class_images'][ $norm_ck ] ) ) {
+						$m['class_images'][ $norm_ck ] = $ci;
+					}
+				}
+			}
+			if ( ! empty( $p['var_images'] ) && is_array( $p['var_images'] ) ) {
+				foreach ( $p['var_images'] as $vk => $vu ) {
+					$m['var_images'][ $vk ] = $vu;
+				}
+			}
+			if ( ! empty( $p['variations'] ) && is_array( $p['variations'] ) ) {
+				$m['variations'] = array_merge( $m['variations'], $p['variations'] );
+			}
+			$m['total_stock'] = (int) ( $m['total_stock'] ?? 0 ) + (int) ( $p['total_stock'] ?? 0 );
+			if ( ! empty( $p['min_price'] ) && ( empty( $m['min_price'] ) || $p['min_price'] < $m['min_price'] ) ) {
+				$m['min_price'] = $p['min_price'];
+			}
+			if ( ! empty( $p['max_price'] ) && $p['max_price'] > ( $m['max_price'] ?? 0 ) ) {
+				$m['max_price'] = $p['max_price'];
+			}
+			unset( $m );
+		}
+
+		return $merged;
+	}
+
+	/**
 	 * Save catalog cache to local JSON file (and compact copy to wp_options).
 	 */
 	public static function save_catalog_cache( array $products_by_id ) {
-		$file = self::get_cache_file_path();
+		$products_by_id = self::merge_catalog_entries_by_sku( $products_by_id );
+		$file           = self::get_cache_file_path();
 		if ( $file ) {
 			file_put_contents( $file, wp_json_encode( $products_by_id ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		}
@@ -327,22 +418,300 @@ final class Nexxi_Pancake_Sync_Manager {
 	}
 
 	/**
-	 * Fetch fresh Pancake products + variations from NEXXI Cloudflare D1 API (or direct Pancake API)
-	 * and build a compact, fast lookup index cached in wp-content/uploads & wp_options.
+	 * Helper: Extract all valid HTTP image URLs from a Pancake product or variation record.
+	 */
+	public static function extract_record_images( array $record ) {
+		$urls = array();
+		if ( ! empty( $record['image_url'] ) && is_string( $record['image_url'] ) ) {
+			$u = trim( $record['image_url'] );
+			if ( 0 === strpos( $u, 'http' ) ) {
+				$urls[] = $u;
+			}
+		}
+		if ( ! empty( $record['images'] ) ) {
+			$imgs = is_array( $record['images'] ) ? $record['images'] : json_decode( (string) $record['images'], true );
+			if ( is_array( $imgs ) ) {
+				foreach ( $imgs as $item ) {
+					$u = '';
+					if ( is_string( $item ) ) {
+						$u = trim( $item );
+					} elseif ( is_array( $item ) ) {
+						$u = trim( (string) ( $item['url'] ?? $item['image_url'] ?? $item['src'] ?? '' ) );
+					}
+					if ( $u && 0 === strpos( $u, 'http' ) && ! in_array( $u, $urls, true ) ) {
+						$urls[] = $u;
+					}
+				}
+			}
+		}
+		return $urls;
+	}
+
+	/**
+	 * Helper: Extract Color and Size from a Pancake variation's fields/attributes and SKU.
+	 */
+	public static function extract_variation_color_and_size( array $vrow, $vsku ) {
+		$attrs_json = array();
+		if ( ! empty( $vrow['fields'] ) ) {
+			$attrs_json = is_array( $vrow['fields'] ) ? $vrow['fields'] : json_decode( (string) $vrow['fields'], true );
+		} elseif ( ! empty( $vrow['attributes'] ) ) {
+			$attrs_json = is_array( $vrow['attributes'] ) ? $vrow['attributes'] : json_decode( (string) $vrow['attributes'], true );
+		}
+		if ( ! is_array( $attrs_json ) ) {
+			$attrs_json = array();
+		}
+
+		$color_val = '';
+		$size_val  = '';
+		$unclassified = array();
+
+		foreach ( $attrs_json as $a ) {
+			if ( ! is_array( $a ) ) {
+				continue;
+			}
+			$aname = strtolower( remove_accents( trim( (string) ( $a['name'] ?? $a['key'] ?? '' ) ) ) );
+			$aval  = trim( (string) ( $a['value'] ?? '' ) );
+			if ( '' === $aval ) {
+				continue;
+			}
+			if ( false !== strpos( $aname, 'mau' ) || false !== strpos( $aname, 'color' ) || false !== strpos( $aname, 'phan loai' ) || false !== strpos( $aname, 'kieu' ) ) {
+				$color_val = $aval;
+			} elseif ( false !== strpos( $aname, 'size' ) || false !== strpos( $aname, 'kich co' ) || 'co' === $aname ) {
+				$size_val = $aval;
+			} else {
+				$unclassified[] = $aval;
+			}
+		}
+
+		foreach ( $unclassified as $uval ) {
+			if ( preg_match( '/^\d{1,2}$/', $uval ) && '' === $size_val ) {
+				$size_val = $uval;
+			} elseif ( '' === $color_val && ! is_numeric( $uval ) ) {
+				$color_val = $uval;
+			}
+		}
+
+		if ( '' === $color_val && '' !== $vsku && false !== strpos( $vsku, '-' ) ) {
+			$parts = explode( '-', $vsku );
+			if ( count( $parts ) >= 3 ) {
+				$color_val = $parts[1];
+				if ( '' === $size_val ) {
+					$size_val = $parts[2];
+				}
+			}
+		}
+
+		return array(
+			'color' => $color_val,
+			'size'  => $size_val,
+		);
+	}
+
+	/**
+	 * Fetch fresh Pancake products + variations from Direct Pancake POS API (`pos.pages.fm`)
+	 * or NEXXI Cloudflare D1 API, and build a compact, fast lookup index cached in wp-content/uploads.
 	 *
-	 * @param bool $trigger_live_sync Whether to ask Cloudflare worker to pull fresh data from Pancake POS first.
+	 * @param bool $trigger_live_sync Whether to pull fresh data from Pancake POS first.
 	 * @return array|WP_Error
 	 */
 	public static function fetch_and_cache_pancake_catalog( $trigger_live_sync = false ) {
-		$settings = self::get_settings();
-		$cf_base  = rtrim( $settings['cf_api_url'], '/' );
+		$settings    = self::get_settings();
+		$cf_base     = rtrim( $settings['cf_api_url'], '/' );
+		$shop_id     = trim( (string) $settings['shop_id'] );
+		if ( '' === $shop_id ) {
+			$shop_id = self::DEFAULT_SHOP_ID;
+		}
+		$api_key     = trim( (string) $settings['pancake_api_key'] );
 		$req_headers = array(
 			'Accept'     => 'application/json',
 			'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 		);
 
+		$products_by_id = array();
+		$sku_to_pid     = array();
+		$code_to_pid    = array();
+
+		// =========================================================================
+		// PATH A: Direct Pancake POS API (`pos.pages.fm`) or Cloudflare Live Proxy
+		// Works 24/7 with ZERO Cloudflare D1 row reads and includes nested variations & images!
+		// =========================================================================
+		for ( $page = 1; $page <= 12; $page++ ) {
+			$direct_url = '';
+			if ( '' !== $api_key && 0 !== strpos( $api_key, 'ck_' ) ) {
+				$direct_url = sprintf(
+					'https://pos.pages.fm/api/v1/shops/%s/products?api_key=%s&page_number=%d&page_size=100',
+					rawurlencode( $shop_id ),
+					rawurlencode( $api_key ),
+					$page
+				);
+			} elseif ( $cf_base ) {
+				$direct_url = sprintf(
+					'%s/api/pancake-live-products?shop_id=%s&page=%d&page_size=100',
+					$cf_base,
+					rawurlencode( $shop_id ),
+					$page
+				);
+			}
+
+			if ( ! $direct_url ) {
+				break;
+			}
+
+			$resp = wp_remote_get(
+				$direct_url,
+				array(
+					'timeout'   => 25,
+					'sslverify' => false,
+					'headers'   => $req_headers,
+				)
+			);
+			if ( is_wp_error( $resp ) || 200 !== (int) wp_remote_retrieve_response_code( $resp ) ) {
+				break;
+			}
+
+			$body = json_decode( wp_remote_retrieve_body( $resp ), true );
+			$page_prods = array();
+			if ( isset( $body['data'] ) && is_array( $body['data'] ) ) {
+				$page_prods = $body['data'];
+			} elseif ( isset( $body['products'] ) && is_array( $body['products'] ) ) {
+				$page_prods = $body['products'];
+			}
+
+			if ( empty( $page_prods ) ) {
+				break;
+			}
+
+			foreach ( $page_prods as $raw_prod ) {
+				if ( ! is_array( $raw_prod ) ) {
+					continue;
+				}
+				$pid = trim( (string) ( $raw_prod['id'] ?? $raw_prod['pancake_product_id'] ?? '' ) );
+				if ( '' === $pid ) {
+					continue;
+				}
+				$nested_vars = isset( $raw_prod['variations'] ) && is_array( $raw_prod['variations'] ) ? $raw_prod['variations'] : array();
+				$custom_id   = trim( (string) ( $raw_prod['custom_id'] ?? '' ) );
+				if ( '' === $custom_id && ! empty( $nested_vars ) ) {
+					$first_vsku = trim( (string) ( $nested_vars[0]['display_id'] ?? $nested_vars[0]['sku'] ?? '' ) );
+					if ( false !== strpos( $first_vsku, '-' ) ) {
+						$custom_id = explode( '-', $first_vsku )[0];
+					}
+				}
+				$display_id = trim( (string) ( $raw_prod['display_id'] ?? $custom_id ) );
+				$parent_sku = $custom_id ? $custom_id : $display_id;
+				$name       = trim( (string) ( $raw_prod['name'] ?? '' ) );
+				$code       = self::extract_leading_code( $name );
+				$prod_imgs  = self::extract_record_images( $raw_prod );
+
+				$products_by_id[ $pid ] = array(
+					'id'            => $pid,
+					'sku'           => $parent_sku,
+					'display_id'    => $display_id,
+					'code'          => $code,
+					'name'          => $name,
+					'categories'    => array(),
+					'product_image' => ! empty( $prod_imgs[0] ) ? $prod_imgs[0] : '',
+					'all_images'    => $prod_imgs,
+					'class_images'  => array(),
+					'var_images'    => array(),
+					'variations'    => array(),
+					'total_stock'   => 0,
+					'min_price'     => 0,
+					'max_price'     => 0,
+				);
+
+				if ( $parent_sku ) {
+					$sku_to_pid[ strtoupper( $parent_sku ) ] = $pid;
+				}
+				if ( $code ) {
+					$code_to_pid[ strtoupper( $code ) ] = $pid;
+				}
+
+				$p_ref = &$products_by_id[ $pid ];
+				foreach ( $nested_vars as $rv ) {
+					if ( ! is_array( $rv ) ) {
+						continue;
+					}
+					$vsku  = trim( (string) ( $rv['display_id'] ?? $rv['sku'] ?? '' ) );
+					$vimgs = self::extract_record_images( $rv );
+					$vimg  = ! empty( $vimgs[0] ) ? $vimgs[0] : '';
+					$price = (float) ( $rv['retail_price'] ?? $rv['price'] ?? 0 );
+					$qty   = (int) ( $rv['remain_quantity'] ?? $rv['available_quantity'] ?? 0 );
+					if ( 0 === $qty && ! empty( $rv['variations_warehouses'] ) && is_array( $rv['variations_warehouses'] ) ) {
+						foreach ( $rv['variations_warehouses'] as $wh ) {
+							$qty += (int) ( $wh['remain_quantity'] ?? $wh['actual_remain_quantity'] ?? 0 );
+						}
+					}
+
+					$cs        = self::extract_variation_color_and_size( $rv, $vsku );
+					$color_val = $cs['color'];
+					$size_val  = $cs['size'];
+					$class_key = self::normalize_class_key( $color_val );
+
+					foreach ( $vimgs as $u ) {
+						if ( ! in_array( $u, $p_ref['all_images'], true ) ) {
+							$p_ref['all_images'][] = $u;
+						}
+					}
+					if ( $vimg ) {
+						if ( '' === $p_ref['product_image'] ) {
+							$p_ref['product_image'] = $vimg;
+						}
+						if ( '' !== $vsku ) {
+							$p_ref['var_images'][ strtoupper( $vsku ) ] = $vimg;
+						}
+						if ( '' !== $class_key ) {
+							if ( ! isset( $p_ref['class_images'][ $class_key ] ) ) {
+								$p_ref['class_images'][ $class_key ] = array(
+									'key'   => $class_key,
+									'raw'   => $color_val,
+									'label' => self::pretty_class_label( $color_val ),
+									'image' => $vimg,
+									'skus'  => array(),
+								);
+							}
+							if ( '' !== $vsku && count( $p_ref['class_images'][ $class_key ]['skus'] ) < 15 && ! in_array( $vsku, $p_ref['class_images'][ $class_key ]['skus'], true ) ) {
+								$p_ref['class_images'][ $class_key ]['skus'][] = $vsku;
+							}
+						}
+					}
+					if ( $qty > 0 ) {
+						$p_ref['total_stock'] += $qty;
+					}
+					if ( $price > 0 ) {
+						if ( 0 === (int) $p_ref['min_price'] || $price < $p_ref['min_price'] ) {
+							$p_ref['min_price'] = $price;
+						}
+						if ( $price > $p_ref['max_price'] ) {
+							$p_ref['max_price'] = $price;
+						}
+					}
+					$p_ref['variations'][] = array(
+						'sku'       => $vsku,
+						'color_raw' => $color_val,
+						'color_key' => $class_key,
+						'size'      => $size_val,
+						'price'     => $price,
+						'stock'     => max( 0, $qty ),
+					);
+				}
+				unset( $p_ref );
+			}
+
+			if ( count( $page_prods ) < 100 ) {
+				break;
+			}
+		}
+
+		if ( ! empty( $products_by_id ) ) {
+			self::save_catalog_cache( $products_by_id );
+			return $products_by_id;
+		}
+
+		// =========================================================================
+		// PATH B: Fallback to Cloudflare D1 `/api/table`
+		// =========================================================================
 		if ( $trigger_live_sync && $cf_base ) {
-			// Trigger Cloudflare incremental sync non-blocking so it never times out the PHP request
 			wp_remote_post(
 				$cf_base . '/api/pancake-sync',
 				array(
@@ -354,8 +723,6 @@ final class Nexxi_Pancake_Sync_Manager {
 				)
 			);
 		}
-
-		$products_by_id = array();
 
 		// 1. Fetch pancake_products from Cloudflare D1 mirror
 		$prod_resp = wp_remote_get(
@@ -393,7 +760,9 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 			$custom_id  = ! empty( $raw['custom_id'] ) ? trim( (string) $raw['custom_id'] ) : trim( (string) ( $row['display_id'] ?? '' ) );
 			$display_id = trim( (string) ( $row['display_id'] ?? $custom_id ) );
+			$parent_sku = $custom_id ? $custom_id : $display_id;
 			$name       = trim( (string) ( $row['name'] ?? '' ) );
+			$code       = self::extract_leading_code( $name );
 			$img_url    = ! empty( $row['image_url'] ) ? trim( (string) $row['image_url'] ) : '';
 			$cats       = array();
 			if ( ! empty( $row['category_names'] ) ) {
@@ -402,9 +771,9 @@ final class Nexxi_Pancake_Sync_Manager {
 
 			$products_by_id[ $pid ] = array(
 				'id'             => $pid,
-				'sku'            => $custom_id ? $custom_id : $display_id,
+				'sku'            => $parent_sku,
 				'display_id'     => $display_id,
-				'code'           => self::extract_leading_code( $name ),
+				'code'           => $code,
 				'name'           => $name,
 				'categories'     => is_array( $cats ) ? $cats : array(),
 				'product_image'  => $img_url,
@@ -416,6 +785,12 @@ final class Nexxi_Pancake_Sync_Manager {
 				'min_price'      => 0,
 				'max_price'      => 0,
 			);
+			if ( $parent_sku ) {
+				$sku_to_pid[ strtoupper( $parent_sku ) ] = $pid;
+			}
+			if ( $code ) {
+				$code_to_pid[ strtoupper( $code ) ] = $pid;
+			}
 		}
 
 		// 2. Fetch pancake_product_variations in pages of 5000
@@ -454,34 +829,37 @@ final class Nexxi_Pancake_Sync_Manager {
 				$vimg      = ! empty( $vrow['image_url'] ) ? trim( (string) $vrow['image_url'] ) : '';
 				$price     = (float) ( $vrow['retail_price'] ?? 0 );
 				$avail_qty = (int) ( $vrow['available_quantity'] ?? $vrow['total_quantity'] ?? 0 );
-				$attrs_json = array();
-				if ( ! empty( $vrow['attributes'] ) ) {
-					$attrs_json = is_array( $vrow['attributes'] ) ? $vrow['attributes'] : json_decode( (string) $vrow['attributes'], true );
-					if ( ! is_array( $attrs_json ) ) {
-						$attrs_json = array();
+
+				$vraw = array();
+				if ( ! empty( $vrow['raw_data'] ) ) {
+					$vraw = is_array( $vrow['raw_data'] ) ? $vrow['raw_data'] : json_decode( (string) $vrow['raw_data'], true );
+					if ( ! is_array( $vraw ) ) {
+						$vraw = array();
+					}
+				}
+				$parent_sku = ! empty( $vraw['product_custom_id'] ) ? trim( (string) $vraw['product_custom_id'] ) : '';
+				if ( '' === $parent_sku && false !== strpos( $vsku, '-' ) ) {
+					$parts      = explode( '-', $vsku );
+					$parent_sku = $parts[0];
+				}
+				$vname = trim( (string) ( $vrow['name'] ?? $vrow['display_name'] ?? $parent_sku ) );
+				$vcode = self::extract_leading_code( $vname );
+
+				// Resolve to existing parent product by SKU or Code so variations NEVER split into orphan stubs!
+				if ( ! isset( $products_by_id[ $pid ] ) ) {
+					if ( $parent_sku && isset( $sku_to_pid[ strtoupper( $parent_sku ) ] ) ) {
+						$pid = $sku_to_pid[ strtoupper( $parent_sku ) ];
+					} elseif ( $vcode && isset( $code_to_pid[ strtoupper( $vcode ) ] ) ) {
+						$pid = $code_to_pid[ strtoupper( $vcode ) ];
 					}
 				}
 
-				// If parent product wasn't in pancake_products table, create a stub entry from variation data
 				if ( ! isset( $products_by_id[ $pid ] ) ) {
-					$vraw = array();
-					if ( ! empty( $vrow['raw_data'] ) ) {
-						$vraw = is_array( $vrow['raw_data'] ) ? $vrow['raw_data'] : json_decode( (string) $vrow['raw_data'], true );
-						if ( ! is_array( $vraw ) ) {
-							$vraw = array();
-						}
-					}
-					$parent_sku = ! empty( $vraw['product_custom_id'] ) ? trim( (string) $vraw['product_custom_id'] ) : '';
-					if ( '' === $parent_sku && false !== strpos( $vsku, '-' ) ) {
-						$parts = explode( '-', $vsku );
-						$parent_sku = $parts[0];
-					}
-					$vname = trim( (string) ( $vrow['name'] ?? $vrow['display_name'] ?? $parent_sku ) );
 					$products_by_id[ $pid ] = array(
 						'id'            => $pid,
 						'sku'           => $parent_sku,
 						'display_id'    => $parent_sku,
-						'code'          => self::extract_leading_code( $vname ),
+						'code'          => $vcode,
 						'name'          => $vname,
 						'categories'    => array(),
 						'product_image' => '',
@@ -493,41 +871,22 @@ final class Nexxi_Pancake_Sync_Manager {
 						'min_price'     => 0,
 						'max_price'     => 0,
 					);
+					if ( $parent_sku ) {
+						$sku_to_pid[ strtoupper( $parent_sku ) ] = $pid;
+					}
+					if ( $vcode ) {
+						$code_to_pid[ strtoupper( $vcode ) ] = $pid;
+					}
 				}
 
 				$p_ref = &$products_by_id[ $pid ];
-				if ( '' === $p_ref['sku'] && false !== strpos( $vsku, '-' ) ) {
-					$parts        = explode( '-', $vsku );
-					$p_ref['sku'] = $parts[0];
+				if ( '' === $p_ref['sku'] && '' !== $parent_sku ) {
+					$p_ref['sku'] = $parent_sku;
 				}
 
-				// Extract Color / Classification attribute and Size attribute from Pancake variation
-				$color_val = '';
-				$size_val  = '';
-				foreach ( $attrs_json as $a ) {
-					$aname = strtolower( remove_accents( trim( (string) ( $a['name'] ?? '' ) ) ) );
-					$aval  = trim( (string) ( $a['value'] ?? '' ) );
-					if ( '' === $aval ) {
-						continue;
-					}
-					if ( false !== strpos( $aname, 'mau' ) || false !== strpos( $aname, 'color' ) || false !== strpos( $aname, 'phan loai' ) || false !== strpos( $aname, 'kieu' ) ) {
-						$color_val = $aval;
-					} elseif ( false !== strpos( $aname, 'size' ) || false !== strpos( $aname, 'kich co' ) || 'co' === $aname ) {
-						$size_val = $aval;
-					}
-				}
-
-				// Fallback: parse middle segment of SKU {PARENT}-{COLOR}-{SIZE}
-				if ( '' === $color_val && '' !== $vsku && false !== strpos( $vsku, '-' ) ) {
-					$parts = explode( '-', $vsku );
-					if ( count( $parts ) >= 3 ) {
-						$color_val = $parts[1];
-						if ( '' === $size_val ) {
-							$size_val = $parts[2];
-						}
-					}
-				}
-
+				$cs        = self::extract_variation_color_and_size( $vrow, $vsku );
+				$color_val = $cs['color'];
+				$size_val  = $cs['size'];
 				$class_key = self::normalize_class_key( $color_val );
 
 				if ( $vimg && 0 === strpos( $vimg, 'http' ) ) {
@@ -606,16 +965,28 @@ final class Nexxi_Pancake_Sync_Manager {
 				$raw = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 				$dec = $raw ? json_decode( $raw, true ) : null;
 				if ( is_array( $dec ) && ! empty( $dec ) ) {
-					return $dec;
+					return self::merge_catalog_entries_by_sku( $dec );
 				}
 			}
 			$cached = get_option( self::CACHE_OPTION, null );
 			if ( is_array( $cached ) && ! empty( $cached ) ) {
-				return $cached;
+				return self::merge_catalog_entries_by_sku( $cached );
 			}
 		}
 		$res = self::fetch_and_cache_pancake_catalog( false );
-		return is_wp_error( $res ) ? array() : $res;
+		if ( is_wp_error( $res ) || empty( $res ) ) {
+			// Fallback to existing file cache if live fetch failed
+			$file = self::get_cache_file_path();
+			if ( $file && is_readable( $file ) ) {
+				$raw = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+				$dec = $raw ? json_decode( $raw, true ) : null;
+				if ( is_array( $dec ) && ! empty( $dec ) ) {
+					return self::merge_catalog_entries_by_sku( $dec );
+				}
+			}
+			return array();
+		}
+		return $res;
 	}
 
 	/**
@@ -1815,6 +2186,14 @@ final class Nexxi_Pancake_Sync_Manager {
 			<?php if ( isset( $_GET['saved_msg'] ) ) : ?>
 				<div class="notice notice-success is-dismissible"><p><strong>Đã lưu cấu hình đồng bộ Pancake SKU &amp; Ảnh thành công!</strong></p></div>
 			<?php endif; ?>
+			<?php
+			$entered_key = isset( $settings['pancake_api_key'] ) ? trim( (string) $settings['pancake_api_key'] ) : '';
+			if ( '' !== $entered_key && ( 0 === strpos( $entered_key, 'ck_' ) || 0 === strpos( $entered_key, 'cs_' ) ) ) :
+				?>
+				<div class="notice notice-warning">
+					<p><strong>⚠️ Lưu ý về API Key:</strong> Mã bạn vừa nhập bắt đầu bằng <code>ck_</code> hoặc <code>cs_</code> (đây là mã <em>WooCommerce REST API</em> dùng để điền vào trang Pancake, không phải mã của Pancake POS). Để Website gọi trực tiếp sang Pancake POS lấy toàn bộ ảnh &amp; phân loại màu sắc mà không phụ thuộc giới hạn Cloud D1, hãy vào <strong>pos.pancake.vn &rarr; Cấu hình &rarr; Cấu hình chung &rarr; Thẻ API (API Key)</strong>, copy mã API Key của Pancake POS và dán vào ô <strong>Pancake POS API Key</strong> bên dưới.</p>
+				</div>
+			<?php endif; ?>
 
 			<!-- STATS ROW -->
 			<div class="nxp-stats">
@@ -1911,8 +2290,8 @@ final class Nexxi_Pancake_Sync_Manager {
 								<input type="text" name="shop_id" value="<?php echo esc_attr( $settings['shop_id'] ); ?>" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;">
 							</div>
 							<div>
-								<label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:4px;">Pancake API Key (Tùy chọn):</label>
-								<input type="password" name="pancake_api_key" value="<?php echo esc_attr( $settings['pancake_api_key'] ); ?>" placeholder="Đã kết nối qua NEXXI Cloud" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;">
+								<label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:4px;">Pancake POS API Key (Lấy tại Cấu hình &rarr; Thẻ API):</label>
+								<input type="password" name="pancake_api_key" value="<?php echo esc_attr( $settings['pancake_api_key'] ); ?>" placeholder="Dán API Key từ pos.pancake.vn (Cấu hình -> Thẻ API)" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;">
 							</div>
 						</div>
 						<div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;font-size:12.5px;display:flex;flex-direction:column;gap:6px;">
@@ -2202,94 +2581,213 @@ final class Nexxi_Pancake_Sync_Manager {
 					progTitle.textContent = '🎉 Hoàn tất! Đã xử lý ' + done + '/' + ids.length + ' sản phẩm.';
 				}
 
-				// Browser-side direct Pancake Cloud fetch fallback (if hosting firewall blocks server-side wp_remote_get)
+				// Browser-side direct Pancake Cloud / POS fetch fallback (if hosting firewall blocks server-side wp_remote_get)
 				const cfBaseUrl = <?php echo wp_json_encode( rtrim( $settings['cf_api_url'], '/' ) ); ?>;
-				async function syncViaBrowserFallback(btn) {
-					if (btn) btn.textContent = '⏳ Đang tải sản phẩm từ Pancake Cloud...';
-					const prodRes = await fetch(cfBaseUrl + '/api/table?table=pancake_products&offset=0&limit=5000').then(r => r.json());
-					const prodRows = prodRes.rows || prodRes.data || [];
-					const map = {};
-					prodRows.forEach(row => {
-						const pid = String(row.pancake_product_id || '');
-						if (!pid) return;
-						const raw = (typeof row.raw_data === 'string' ? JSON.parse(row.raw_data || '{}') : row.raw_data) || {};
-						const sku = String(raw.custom_id || row.display_id || '').trim();
-						const img = String(row.image_url || '').trim();
-						map[pid] = {
-							id: pid,
-							sku: sku,
-							display_id: String(row.display_id || sku).trim(),
-							code: '',
-							name: String(row.name || '').trim(),
-							categories: Array.isArray(row.category_names) ? row.category_names : [],
-							product_image: img,
-							all_images: img ? [img] : [],
-							class_images: {},
-							var_images: {},
-							variations: [],
-							total_stock: 0,
-							min_price: 0,
-							max_price: 0
-						};
-					});
+				const pancakeShopId = <?php echo wp_json_encode( trim( (string) $settings['shop_id'] ) ); ?>;
+				const pancakeApiKey = <?php echo wp_json_encode( trim( (string) $settings['pancake_api_key'] ) ); ?>;
 
-					for (let page = 0; page < 5; page++) {
-						const offset = page * 5000;
-						if (btn) btn.textContent = '⏳ Đang tải biến thể Pancake (' + offset + ')...';
-						const vRes = await fetch(cfBaseUrl + '/api/table?table=pancake_product_variations&offset=' + offset + '&limit=5000').then(r => r.json());
-						const vRows = vRes.rows || vRes.data || [];
-						if (!vRows.length) break;
-						vRows.forEach(vr => {
-							const pid = String(vr.pancake_product_id || '');
-							if (!pid) return;
-							const vsku = String(vr.sku || vr.display_id || '').trim();
-							const vimg = String(vr.image_url || '').trim();
-							const price = Number(vr.retail_price || 0);
-							const qty = Number(vr.available_quantity ?? vr.total_quantity ?? 0);
-							const attrs = Array.isArray(vr.attributes) ? vr.attributes : [];
-							if (!map[pid]) {
-								const parentSku = vsku.includes('-') ? vsku.split('-')[0] : '';
-								map[pid] = {
-									id: pid, sku: parentSku, display_id: parentSku, code: '',
-									name: String(vr.name || vr.display_name || parentSku).trim(),
-									categories: [], product_image: '', all_images: [], class_images: {}, var_images: {}, variations: [],
-									total_stock: 0, min_price: 0, max_price: 0
-								};
-							}
-							const p = map[pid];
-							if (!p.sku && vsku.includes('-')) p.sku = vsku.split('-')[0];
-							let colorVal = '';
-							let sizeVal = '';
-							attrs.forEach(a => {
-								const an = String(a.name || '').toLowerCase();
-								const av = String(a.value || '').trim();
-								if (!av) return;
-								if (an.includes('màu') || an.includes('mau') || an.includes('color') || an.includes('loại')) colorVal = av;
-								else if (an.includes('size') || an.includes('cỡ')) sizeVal = av;
+				function collectRecordImages(rec) {
+					const urls = [];
+					if (!rec || typeof rec !== 'object') return urls;
+					['image_url', 'image', 'avatar', 'thumbnail'].forEach(k => {
+						if (typeof rec[k] === 'string' && rec[k].trim().startsWith('http')) {
+							const u = rec[k].trim();
+							if (!urls.includes(u)) urls.push(u);
+						}
+					});
+					['images', 'image_urls', 'photos'].forEach(ak => {
+						if (Array.isArray(rec[ak])) {
+							rec[ak].forEach(it => {
+								const u = typeof it === 'string' ? it.trim() : (it && typeof it === 'object' ? String(it.url || it.image_url || it.path || '').trim() : '');
+								if (u.startsWith('http') && !urls.includes(u)) urls.push(u);
 							});
-							if (!colorVal && vsku.includes('-')) {
-								const pts = vsku.split('-');
-								if (pts.length >= 3) { colorVal = pts[1]; if (!sizeVal) sizeVal = pts[2]; }
-							}
-							const cKey = colorVal.toUpperCase();
-							if (vimg && vimg.startsWith('http')) {
-								if (!p.all_images.includes(vimg)) p.all_images.push(vimg);
-								if (!p.product_image) p.product_image = vimg;
-								if (vsku) p.var_images[vsku.toUpperCase()] = vimg;
-								if (cKey) {
-									if (!p.class_images[cKey]) p.class_images[cKey] = { key: cKey, raw: colorVal, label: colorVal, image: vimg, skus: [] };
-									if (vsku && p.class_images[cKey].skus.length < 10 && !p.class_images[cKey].skus.includes(vsku)) p.class_images[cKey].skus.push(vsku);
+						}
+					});
+					return urls;
+				}
+
+				async function syncViaBrowserFallback(btn) {
+					const map = {};
+					const hasDirectPosKey = pancakeApiKey && !pancakeApiKey.startsWith('ck_') && !pancakeApiKey.startsWith('cs_') && pancakeShopId;
+
+					// 1. Try direct Pancake POS API (0 D1 reads) if Pancake POS API Key is configured
+					if (hasDirectPosKey) {
+						for (let page = 1; page <= 25; page++) {
+							if (btn) btn.textContent = '⏳ Đang tải trực tiếp từ Pancake POS (Trang ' + page + ')...';
+							let items = [];
+							try {
+								const proxyUrl = cfBaseUrl + '/api/pancake-live-products?shop_id=' + encodeURIComponent(pancakeShopId) + '&api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + page + '&page_size=100';
+								const res = await fetch(proxyUrl).then(r => r.json());
+								items = Array.isArray(res.data) ? res.data : (Array.isArray(res.products) ? res.products : []);
+							} catch (e) {}
+							if (!items.length) break;
+							items.forEach(prod => {
+								const pid = String(prod.id || prod.pancake_product_id || '');
+								if (!pid) return;
+								const sku = String(prod.custom_id || prod.display_id || prod.sku || '').trim();
+								const pImgs = collectRecordImages(prod);
+								if (!map[pid]) {
+									map[pid] = {
+										id: pid,
+										sku: sku,
+										display_id: String(prod.display_id || sku).trim(),
+										code: '',
+										name: String(prod.name || '').trim(),
+										categories: Array.isArray(prod.categories) ? prod.categories.map(c => typeof c === 'string' ? c : (c?.name || '')).filter(Boolean) : [],
+										product_image: pImgs[0] || '',
+										all_images: [...pImgs],
+										class_images: {},
+										var_images: {},
+										variations: [],
+										total_stock: 0,
+										min_price: 0,
+										max_price: 0
+									};
 								}
-							}
-							if (qty > 0) p.total_stock += qty;
-							if (price > 0) {
-								if (!p.min_price || price < p.min_price) p.min_price = price;
-								if (price > p.max_price) p.max_price = price;
-							}
-							p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, price, stock: Math.max(0, qty) });
-						});
-						if (vRows.length < 5000) break;
+								const p = map[pid];
+								const vars = Array.isArray(prod.variations) ? prod.variations : [];
+								vars.forEach(vr => {
+									const vsku = String(vr.display_id || vr.sku || vr.custom_id || '').trim();
+									if (!p.sku && vsku.includes('-')) p.sku = vsku.split('-')[0];
+									const vImgs = collectRecordImages(vr);
+									const vimg = vImgs[0] || '';
+									const price = Number(vr.retail_price ?? vr.price ?? 0);
+									const qty = Number(vr.remain_quantity ?? vr.available_quantity ?? vr.total_quantity ?? 0);
+									const fields = Array.isArray(vr.fields) ? vr.fields : (Array.isArray(vr.attributes) ? vr.attributes : []);
+									let colorVal = '', sizeVal = '';
+									fields.forEach(a => {
+										const an = String(a.name || a.key || '').toLowerCase();
+										const av = String(a.value || a.val || '').trim();
+										if (!av) return;
+										if (an.includes('màu') || an.includes('mau') || an.includes('color') || an.includes('loại')) colorVal = av;
+										else if (an.includes('size') || an.includes('cỡ') || an.includes('kích')) sizeVal = av;
+									});
+									if (!colorVal && vsku.includes('-')) {
+										const pts = vsku.split('-');
+										if (pts.length >= 3) { colorVal = pts[1]; if (!sizeVal) sizeVal = pts[2]; }
+									}
+									const cKey = colorVal.toUpperCase();
+									vImgs.forEach(u => { if (!p.all_images.includes(u)) p.all_images.push(u); });
+									if (vimg && vimg.startsWith('http')) {
+										if (!p.product_image) p.product_image = vimg;
+										if (vsku) p.var_images[vsku.toUpperCase()] = vimg;
+										if (cKey) {
+											if (!p.class_images[cKey]) p.class_images[cKey] = { key: cKey, raw: colorVal, label: colorVal, image: vimg, skus: [] };
+											if (vsku && p.class_images[cKey].skus.length < 10 && !p.class_images[cKey].skus.includes(vsku)) p.class_images[cKey].skus.push(vsku);
+										}
+									}
+									if (qty > 0) p.total_stock += qty;
+									if (price > 0) {
+										if (!p.min_price || price < p.min_price) p.min_price = price;
+										if (price > p.max_price) p.max_price = price;
+									}
+									p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, price, stock: Math.max(0, qty) });
+								});
+							});
+							if (items.length < 100) break;
+						}
 					}
+
+					// 2. Fallback to Cloudflare D1 Mirror if map is still empty
+					if (Object.keys(map).length === 0) {
+						if (btn) btn.textContent = '⏳ Đang tải sản phẩm từ Pancake Cloud...';
+						const prodRes = await fetch(cfBaseUrl + '/api/table?table=pancake_products&offset=0&limit=5000').then(r => r.json()).catch(() => ({}));
+						const prodRows = prodRes.rows || prodRes.data || [];
+						prodRows.forEach(row => {
+							const pid = String(row.pancake_product_id || '');
+							if (!pid) return;
+							const raw = (typeof row.raw_data === 'string' ? JSON.parse(row.raw_data || '{}') : row.raw_data) || {};
+							const sku = String(raw.custom_id || row.display_id || '').trim();
+							const imgs = collectRecordImages(row).concat(collectRecordImages(raw));
+							const uniqueImgs = [...new Set(imgs)];
+							map[pid] = {
+								id: pid,
+								sku: sku,
+								display_id: String(row.display_id || sku).trim(),
+								code: '',
+								name: String(row.name || '').trim(),
+								categories: Array.isArray(row.category_names) ? row.category_names : [],
+								product_image: uniqueImgs[0] || '',
+								all_images: uniqueImgs,
+								class_images: {},
+								var_images: {},
+								variations: [],
+								total_stock: 0,
+								min_price: 0,
+								max_price: 0
+							};
+						});
+
+						for (let page = 0; page < 5; page++) {
+							const offset = page * 5000;
+							if (btn) btn.textContent = '⏳ Đang tải biến thể Pancake (' + offset + ')...';
+							const vRes = await fetch(cfBaseUrl + '/api/table?table=pancake_product_variations&offset=' + offset + '&limit=5000').then(r => r.json()).catch(() => ({}));
+							const vRows = vRes.rows || vRes.data || [];
+							if (!vRows.length) break;
+							vRows.forEach(vr => {
+								const pid = String(vr.pancake_product_id || '');
+								if (!pid) return;
+								const vsku = String(vr.sku || vr.display_id || '').trim();
+								const vraw = (typeof vr.raw_data === 'string' ? JSON.parse(vr.raw_data || '{}') : vr.raw_data) || {};
+								const vImgs = [...new Set(collectRecordImages(vr).concat(collectRecordImages(vraw)))];
+								const vimg = vImgs[0] || '';
+								const price = Number(vr.retail_price || 0);
+								const qty = Number(vr.available_quantity ?? vr.total_quantity ?? 0);
+								const attrs = Array.isArray(vr.attributes) ? vr.attributes : [];
+								if (!map[pid]) {
+									const parentSku = vsku.includes('-') ? vsku.split('-')[0] : '';
+									map[pid] = {
+										id: pid, sku: parentSku, display_id: parentSku, code: '',
+										name: String(vr.name || vr.display_name || parentSku).trim(),
+										categories: [], product_image: '', all_images: [], class_images: {}, var_images: {}, variations: [],
+										total_stock: 0, min_price: 0, max_price: 0
+									};
+								}
+								const p = map[pid];
+								if (!p.sku && vsku.includes('-')) p.sku = vsku.split('-')[0];
+								let colorVal = '';
+								let sizeVal = '';
+								attrs.forEach(a => {
+									const an = String(a.name || '').toLowerCase();
+									const av = String(a.value || '').trim();
+									if (!av) return;
+									if (an.includes('màu') || an.includes('mau') || an.includes('color') || an.includes('loại')) colorVal = av;
+									else if (an.includes('size') || an.includes('cỡ')) sizeVal = av;
+								});
+								if (!colorVal && vsku.includes('-')) {
+									const pts = vsku.split('-');
+									if (pts.length >= 3) { colorVal = pts[1]; if (!sizeVal) sizeVal = pts[2]; }
+								}
+								const cKey = colorVal.toUpperCase();
+								vImgs.forEach(u => { if (!p.all_images.includes(u)) p.all_images.push(u); });
+								if (vimg && vimg.startsWith('http')) {
+									if (!p.product_image) p.product_image = vimg;
+									if (vsku) p.var_images[vsku.toUpperCase()] = vimg;
+									if (cKey) {
+										if (!p.class_images[cKey]) p.class_images[cKey] = { key: cKey, raw: colorVal, label: colorVal, image: vimg, skus: [] };
+										if (vsku && p.class_images[cKey].skus.length < 10 && !p.class_images[cKey].skus.includes(vsku)) p.class_images[cKey].skus.push(vsku);
+									}
+								}
+								if (qty > 0) p.total_stock += qty;
+								if (price > 0) {
+									if (!p.min_price || price < p.min_price) p.min_price = price;
+									if (price > p.max_price) p.max_price = price;
+								}
+								p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, price, stock: Math.max(0, qty) });
+							});
+							if (vRows.length < 5000) break;
+						}
+					}
+
+					if (Object.keys(map).length === 0) {
+						return {
+							success: false,
+							data: {
+								message: 'Cloudflare D1 Mirror đã chạm giới hạn đọc miễn phí trong ngày và chưa có Pancake POS API Key. Vui lòng dán mã API Key từ pos.pancake.vn (Cấu hình -> Cấu hình chung -> Thẻ API) vào ô "Pancake POS API Key" rồi bấm Lưu Cấu Hình để kết nối trực tiếp Pancake POS (không giới hạn)!'
+							}
+						};
+					}
+
 					if (btn) btn.textContent = '⏳ Đang lưu dữ liệu Pancake vào Website...';
 					return postAjax('nexxi_pancake_push_browser_cache', { catalog_json: JSON.stringify(map) });
 				}
