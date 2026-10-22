@@ -397,8 +397,16 @@ function nexxi_kids_flash_sale_admin_page() {
 		'orderby'        => 'date',
 		'order'          => 'DESC',
 	);
+	$filter_post_in     = null;
+	$filter_post_not_in = array();
+
 	if ( '' !== $search ) {
-		$query_args['s'] = $search;
+		if ( function_exists( 'nexxi_kids_search_product_ids' ) ) {
+			$matched_ids    = nexxi_kids_search_product_ids( $search );
+			$filter_post_in = ! empty( $matched_ids ) ? $matched_ids : array( 0 );
+		} else {
+			$query_args['s'] = $search;
+		}
 	}
 	if ( '' !== $cat ) {
 		$query_args['tax_query'] = array(
@@ -410,9 +418,26 @@ function nexxi_kids_flash_sale_admin_page() {
 		);
 	}
 	if ( 'onsale' === $status ) {
-		$query_args['post__in'] = $sale_parent_ids ? $sale_parent_ids : array( 0 );
+		$sale_set       = $sale_parent_ids ? $sale_parent_ids : array( 0 );
+		$filter_post_in = ( null !== $filter_post_in ) ? array_values( array_intersect( $filter_post_in, $sale_set ) ) : $sale_set;
+		if ( empty( $filter_post_in ) ) {
+			$filter_post_in = array( 0 );
+		}
 	} elseif ( 'regular' === $status && $sale_parent_ids ) {
-		$query_args['post__not_in'] = $sale_parent_ids;
+		if ( null !== $filter_post_in ) {
+			$filter_post_in = array_values( array_diff( $filter_post_in, $sale_parent_ids ) );
+			if ( empty( $filter_post_in ) ) {
+				$filter_post_in = array( 0 );
+			}
+		} else {
+			$filter_post_not_in = $sale_parent_ids;
+		}
+	}
+
+	if ( null !== $filter_post_in ) {
+		$query_args['post__in'] = $filter_post_in;
+	} elseif ( ! empty( $filter_post_not_in ) ) {
+		$query_args['post__not_in'] = $filter_post_not_in;
 	}
 
 	$wp_q = new WP_Query( $query_args );
