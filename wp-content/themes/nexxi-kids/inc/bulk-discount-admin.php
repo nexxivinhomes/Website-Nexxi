@@ -54,88 +54,179 @@ function nexxi_kids_effective_sku( WC_Product $product ) {
 }
 
 /**
- * Resolve a parent product ID by SKU string.
- * Matches:
- *  1. Exact WooCommerce _sku (on parent product or variation -> resolves to parent).
- *  2. Case-insensitive _sku in postmeta.
- *  3. Leading product code in post_title (e.g., "2608.5" at start of product name).
- *  4. Numeric product ID if prefixed with "#" or matching a published product ID.
+ * Resolve ALL parent product IDs matching a SKU, SKU prefix, or leading product code
+ * (e.g. "2TBIHP01", "2607.8", or a group/batch prefix like "2607", "2601").
+ *
+ * @param string $raw_sku SKU or code prefix.
+ * @return int[] Array of unique parent product IDs.
  */
-function nexxi_kids_resolve_product_by_sku( $raw_sku ) {
+function nexxi_kids_resolve_products_by_sku( $raw_sku ) {
 	global $wpdb;
 	$sku = trim( (string) $raw_sku );
-	if ( '' === $sku ) { return 0; }
+	if ( '' === $sku ) {
+		return array();
+	}
 
-	// 1. Standard WooCommerce SKU lookup
-	if ( function_exists( 'wc_get_product_id_by_sku' ) ) {
-		$found_id = (int) wc_get_product_id_by_sku( $sku );
-		if ( $found_id > 0 ) {
-			if ( 'product_variation' === get_post_type( $found_id ) ) {
-				$parent = (int) wp_get_post_parent_id( $found_id );
-				if ( $parent > 0 ) { return $parent; }
-			}
-			if ( 'product' === get_post_type( $found_id ) ) {
-				return $found_id;
-			}
+	$matched = array();
+
+	// 1. Explicit #ID (e.g. "#249")
+	if ( preg_match( '~^#(\d+)$~', $sku, $m ) ) {
+		$maybe_id = (int) $m[1];
+		if ( 'product' === get_post_type( $maybe_id ) ) {
+			return array( $maybe_id );
 		}
 	}
 
-	// 2. Case-insensitive _sku lookup
-	$ci_id = (int) $wpdb->get_var(
+	// 2. Match WooCommerce _sku (exact or prefix match, case-insensitive) on product or variation
+	$like_prefix = $wpdb->esc_like( $sku ) . '%';
+	$sku_rows    = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT p.ID FROM {$wpdb->posts} p
+			"SELECT p.ID, p.post_type, p.post_parent
+			 FROM {$wpdb->posts} p
 			 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
 			 WHERE p.post_type IN ('product', 'product_variation')
 			   AND p.post_status IN ('publish', 'private', 'draft')
-			   AND LOWER(TRIM(pm.meta_value)) = LOWER(%s)
-			 LIMIT 1",
-			$sku
+			   AND (LOWER(TRIM(pm.meta_value)) = LOWER(%s) OR pm.meta_value LIKE %s)",
+			$sku,
+			$like_prefix
 		)
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	if ( $ci_id > 0 ) {
-		if ( 'product_variation' === get_post_type( $ci_id ) ) {
-			$parent = (int) wp_get_post_parent_id( $ci_id );
-			if ( $parent > 0 ) { return $parent; }
+	if ( $sku_rows ) {
+		foreach ( $sku_rows as $r ) {
+			$pid = ( 'product_variation' === $r->post_type ) ? (int) $r->post_parent : (int) $r->ID;
+			if ( $pid > 0 && 'product' === get_post_type( $pid ) ) {
+				$matched[ $pid ] = $pid;
+			}
 		}
-		return $ci_id;
 	}
 
-	// 3. Match leading code in product title (e.g., "2608.5Bộ thun...")
-	$like_prefix = $wpdb->esc_like( $sku ) . '%';
+	// 3. Match leading code or prefix in product title (e.g., "2607" matches all "2607.8...", "2607.4...", etc.)
 	$candidates = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT ID, post_title FROM {$wpdb->posts}
 			 WHERE post_type = 'product'
 			   AND post_status IN ('publish', 'private', 'draft')
 			   AND post_title LIKE %s
-			 LIMIT 10",
+			 ORDER BY ID DESC",
 			$like_prefix
 		)
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 	if ( $candidates ) {
 		foreach ( $candidates as $cand ) {
-			$code = nexxi_kids_extract_title_code( $cand->post_title );
-			if ( 0 === strcasecmp( $code, $sku ) || 0 === stripos( trim( $cand->post_title ), $sku ) ) {
-				$pid = (int) $cand->ID;
-				// Also save _sku if currently empty so future lookups are instant
-				if ( '' === (string) get_post_meta( $pid, '_sku', true ) ) {
-					update_post_meta( $pid, '_sku', $sku );
-				}
-				return $pid;
+			$title_trim = trim( (string) $cand->post_title );
+			$code       = nexxi_kids_extract_title_code( $title_trim );
+			if (
+				0 === strcasecmp( $code, $sku ) ||
+				0 === stripos( $code, $sku . '.' ) ||
+				0 === stripos( $code, $sku . '-' ) ||
+				0 === stripos( $title_trim, $sku )
+			) {
+				$pid             = (int) $cand->ID;
+				$matched[ $pid ] = $pid;
 			}
 		}
 	}
 
-	// 4. Match explicit #ID
-	if ( preg_match( '~^#?(\d+)$~', $sku, $m ) ) {
-		$maybe_id = (int) $m[1];
+	// 4. Fallback: numeric product ID if nothing else matched
+	if ( empty( $matched ) && preg_match( '~^\d+$~', $sku ) ) {
+		$maybe_id = (int) $sku;
 		if ( 'product' === get_post_type( $maybe_id ) ) {
-			return $maybe_id;
+			$matched[ $maybe_id ] = $maybe_id;
 		}
 	}
 
-	return 0;
+	return array_values( $matched );
 }
+
+/** Backwards-compatible helper returning the first matched parent product ID. */
+function nexxi_kids_resolve_product_by_sku( $raw_sku ) {
+	$ids = nexxi_kids_resolve_products_by_sku( $raw_sku );
+	return ! empty( $ids ) ? (int) $ids[0] : 0;
+}
+
+/**
+ * Search parent product IDs by keyword, code prefix (e.g. "2607"), SKU, or #ID.
+ *
+ * @param string $search_term Search string.
+ * @return int[] Matching parent product IDs.
+ */
+function nexxi_kids_search_product_ids( $search_term ) {
+	global $wpdb;
+	$term = trim( (string) $search_term );
+	if ( '' === $term ) {
+		return array();
+	}
+
+	$matched = array();
+
+	// 1. Check SKU / code prefix resolver first
+	foreach ( nexxi_kids_resolve_products_by_sku( $term ) as $pid ) {
+		$matched[ $pid ] = $pid;
+	}
+
+	// 2. Substring match in product post_title
+	$like_any   = '%' . $wpdb->esc_like( $term ) . '%';
+	$title_pids = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT ID FROM {$wpdb->posts}
+			 WHERE post_type = 'product'
+			   AND post_status IN ('publish', 'private', 'draft')
+			   AND post_title LIKE %s",
+			$like_any
+		)
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	foreach ( (array) $title_pids as $pid ) {
+		$pid = (int) $pid;
+		if ( $pid > 0 ) {
+			$matched[ $pid ] = $pid;
+		}
+	}
+
+	// 3. Substring match in _sku on product or variation
+	$sku_rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT p.ID, p.post_type, p.post_parent
+			 FROM {$wpdb->posts} p
+			 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
+			 WHERE p.post_type IN ('product', 'product_variation')
+			   AND p.post_status IN ('publish', 'private', 'draft')
+			   AND pm.meta_value LIKE %s",
+			$like_any
+		)
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	if ( $sku_rows ) {
+		foreach ( $sku_rows as $r ) {
+			$pid = ( 'product_variation' === $r->post_type ) ? (int) $r->post_parent : (int) $r->ID;
+			if ( $pid > 0 && 'product' === get_post_type( $pid ) ) {
+				$matched[ $pid ] = $pid;
+			}
+		}
+	}
+
+	return array_values( $matched );
+}
+
+/** One-time cleanup for any product whose _sku was accidentally set to a bare 4-digit prefix instead of its full title code. */
+add_action( 'init', static function () {
+	if ( '2' !== get_option( 'nexxi_bd_sku_fix_rev' ) ) {
+		update_option( 'nexxi_bd_sku_fix_rev', '2', true );
+		global $wpdb;
+		$rows = $wpdb->get_results(
+			"SELECT p.ID, p.post_title, pm.meta_value AS sku
+			 FROM {$wpdb->posts} p
+			 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sku'
+			 WHERE p.post_type = 'product' AND pm.meta_value REGEXP '^[0-9]{4}$'"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( $rows ) {
+			foreach ( $rows as $r ) {
+				$full_code = nexxi_kids_extract_title_code( $r->post_title );
+				if ( '' !== $full_code && $full_code !== $r->sku && 0 === strpos( $full_code, $r->sku . '.' ) ) {
+					update_post_meta( (int) $r->ID, '_sku', $full_code );
+				}
+			}
+		}
+	}
+}, 12 );
 
 /**
  * Parse an uploaded .xlsx file into a 2D array of rows using native ZipArchive + SimpleXML.
@@ -388,8 +479,8 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 			continue;
 		}
 
-		$pid = nexxi_kids_resolve_product_by_sku( $raw_sku );
-		if ( ! $pid ) {
+		$pids = nexxi_kids_resolve_products_by_sku( $raw_sku );
+		if ( empty( $pids ) ) {
 			$report['not_found'][] = $raw_sku;
 			continue;
 		}
@@ -399,18 +490,21 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 			$amount = 0;
 		}
 
-		// Apply discount as Regular Product Sale (_nexxi_has_prod_sale = '1', NOT Flash Sale)
-		if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, (float) $reg_override, '0' ) ) {
-			$prod = wc_get_product( $pid );
-			$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
-			$report['updated'][] = array(
-				'id'      => $pid,
-				'sku'     => $raw_sku,
-				'name'    => $prod ? $prod->get_name() : '#' . $pid,
-				'regular' => $prog['regular'],
-				'sale'    => $prog['sale'],
-				'pct'     => $prog['pct'],
-			);
+		// Apply discount as Regular Product Sale (_nexxi_has_prod_sale = '1', NOT Flash Sale) to ALL matched products
+		foreach ( $pids as $pid ) {
+			if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, (float) $reg_override, '0' ) ) {
+				$prod    = wc_get_product( $pid );
+				$prog    = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
+				$eff_sku = $prod ? nexxi_kids_effective_sku( $prod ) : $raw_sku;
+				$report['updated'][] = array(
+					'id'      => $pid,
+					'sku'     => $eff_sku && $eff_sku !== $raw_sku ? $raw_sku . ' → ' . $eff_sku : $raw_sku,
+					'name'    => $prod ? $prod->get_name() : '#' . $pid,
+					'regular' => $prog['regular'],
+					'sale'    => $prog['sale'],
+					'pct'     => $prog['pct'],
+				);
+			}
 		}
 	}
 
@@ -534,6 +628,11 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 
 		if ( 'selected' === $target_scope ) {
 			$pids = isset( $_POST['product_ids'] ) && is_array( $_POST['product_ids'] ) ? array_map( 'absint', wp_unslash( $_POST['product_ids'] ) ) : array();
+		} elseif ( 'filtered' === $target_scope ) {
+			$f_search = isset( $_POST['current_s_prod'] ) ? sanitize_text_field( wp_unslash( $_POST['current_s_prod'] ) ) : '';
+			if ( '' !== $f_search ) {
+				$pids = nexxi_kids_search_product_ids( $f_search );
+			}
 		} elseif ( 'category' === $target_scope ) {
 			$cat_slug = isset( $_POST['bulk_target_cat'] ) ? sanitize_title( wp_unslash( $_POST['bulk_target_cat'] ) ) : '';
 			if ( '' !== $cat_slug ) {
@@ -657,14 +756,12 @@ function nexxi_kids_bulk_discount_admin_page() {
 		'orderby'        => 'date',
 		'order'          => 'DESC',
 	);
+	$filter_post_in     = null;
+	$filter_post_not_in = array();
+
 	if ( '' !== $search ) {
-		// Check if search matches a SKU first
-		$sku_pid = nexxi_kids_resolve_product_by_sku( $search );
-		if ( $sku_pid > 0 ) {
-			$query_args['post__in'] = array( $sku_pid );
-		} else {
-			$query_args['s'] = $search;
-		}
+		$matched_ids    = nexxi_kids_search_product_ids( $search );
+		$filter_post_in = ! empty( $matched_ids ) ? $matched_ids : array( 0 );
 	}
 	if ( '' !== $cat ) {
 		$query_args['tax_query'] = array(
@@ -676,9 +773,26 @@ function nexxi_kids_bulk_discount_admin_page() {
 		);
 	}
 	if ( 'regular_sale' === $status ) {
-		$query_args['post__in'] = $regular_sale_ids ? $regular_sale_ids : array( 0 );
+		$sale_set       = $regular_sale_ids ? $regular_sale_ids : array( 0 );
+		$filter_post_in = ( null !== $filter_post_in ) ? array_values( array_intersect( $filter_post_in, $sale_set ) ) : $sale_set;
+		if ( empty( $filter_post_in ) ) {
+			$filter_post_in = array( 0 );
+		}
 	} elseif ( 'no_sale' === $status && $regular_sale_ids ) {
-		$query_args['post__not_in'] = $regular_sale_ids;
+		if ( null !== $filter_post_in ) {
+			$filter_post_in = array_values( array_diff( $filter_post_in, $regular_sale_ids ) );
+			if ( empty( $filter_post_in ) ) {
+				$filter_post_in = array( 0 );
+			}
+		} else {
+			$filter_post_not_in = $regular_sale_ids;
+		}
+	}
+
+	if ( null !== $filter_post_in ) {
+		$query_args['post__in'] = $filter_post_in;
+	} elseif ( ! empty( $filter_post_not_in ) ) {
+		$query_args['post__not_in'] = $filter_post_not_in;
 	}
 
 	$wp_q       = new WP_Query( $query_args );
@@ -860,12 +974,16 @@ function nexxi_kids_bulk_discount_admin_page() {
 				<?php wp_nonce_field( 'nexxi_bulk_discount_admin', 'nexxi_bd_nonce' ); ?>
 				<input type="hidden" name="nexxi_bd_action" id="nexxi-bd-action-field" value="save_table_rows">
 				<input type="hidden" name="single_save_pid" id="nexxi-bd-single-pid" value="0">
+				<input type="hidden" name="current_s_prod" value="<?php echo esc_attr( $search ); ?>">
 
 				<!-- Bulk Action Bar -->
 				<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;background:#eef4ff;border:1px solid #c8dafc;border-radius:12px;margin-bottom:14px;">
 					<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
 						<strong style="color:#031444;font-size:13px;">🏷️ Áp dụng hàng loạt:</strong>
 						<select name="bulk_scope" id="nexxi-bd-scope" onchange="document.getElementById('nexxi-bd-cat-select').style.display=(this.value==='category'?'inline-block':'none');" style="min-height:34px;border-radius:8px;border:1px solid #b5c7eb;font-weight:600;">
+							<?php if ( '' !== $search ) : ?>
+								<option value="filtered" selected>Cho tất cả <?php echo (int) $wp_q->found_posts; ?> sản phẩm khớp tìm kiếm "<?php echo esc_html( $search ); ?>"</option>
+							<?php endif; ?>
 							<option value="selected">Cho các sản phẩm đã tích chọn bên dưới</option>
 							<option value="category">Cho toàn bộ 1 Danh mục sản phẩm</option>
 							<option value="all_shop">Cho TẤT CẢ sản phẩm toàn cửa hàng</option>
