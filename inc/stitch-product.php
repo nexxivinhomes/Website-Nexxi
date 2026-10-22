@@ -21,11 +21,84 @@ function nexxi_kids_product_config( WC_Product $product ) {
 	}
 	$image = wp_get_attachment_image_url( $product->get_image_id(), 'full' );
 	$vars  = Nexxi_Kids_Catalog::variation_payload( $product );
+	$color_img_lookup = array();
 	foreach ( $vars as &$v ) {
 		$v['regular'] = (float) $prog['regular'];
 		$v['price']   = (float) $prog['sale'];
+		$vid_thumb    = (int) get_post_meta( $v['id'], '_thumbnail_id', true );
+		if ( $vid_thumb > 0 ) {
+			$full_url = wp_get_attachment_image_url( $vid_thumb, 'full' );
+			if ( $full_url ) {
+				$v['image'] = $full_url;
+			}
+		}
+		if ( ! empty( $v['color'] ) && ! empty( $v['image'] ) && ! isset( $color_img_lookup[ $v['color'] ] ) ) {
+			$color_img_lookup[ $v['color'] ] = $v['image'];
+		}
 	}
 	unset( $v );
+
+	$class_map = get_post_meta( $product->get_id(), '_nexxi_class_image_map', true );
+	if ( is_array( $class_map ) ) {
+		foreach ( $class_map as $ckey => $cinfo ) {
+			$c_url = '';
+			if ( ! empty( $cinfo['att_id'] ) ) {
+				$c_url = wp_get_attachment_image_url( (int) $cinfo['att_id'], 'full' );
+			}
+			if ( ! $c_url && ! empty( $cinfo['url'] ) ) {
+				$c_url = $cinfo['url'];
+			}
+			if ( $c_url ) {
+				$color_img_lookup[ $ckey ] = $c_url;
+			}
+		}
+	}
+
+	$attributes = Nexxi_Kids_Catalog::variation_attributes( $product );
+	$has_color_attr = false;
+	foreach ( $attributes as &$attr ) {
+		if ( 'color' === $attr['role'] ) {
+			$has_color_attr = true;
+			foreach ( $attr['options'] as &$opt ) {
+				$norm_k = class_exists( 'Nexxi_Pancake_Sync_Manager' ) ? Nexxi_Pancake_Sync_Manager::normalize_class_key( $opt['name'] ) : sanitize_title( remove_accents( $opt['name'] ) );
+				if ( isset( $color_img_lookup[ $opt['value'] ] ) ) {
+					$opt['image'] = $color_img_lookup[ $opt['value'] ];
+				} elseif ( isset( $color_img_lookup[ $norm_k ] ) ) {
+					$opt['image'] = $color_img_lookup[ $norm_k ];
+				}
+			}
+			unset( $opt );
+		}
+	}
+	unset( $attr );
+
+	if ( ! $has_color_attr && is_array( $class_map ) && count( $class_map ) >= 1 ) {
+		$pancake_color_opts = array();
+		foreach ( $class_map as $ckey => $cinfo ) {
+			$c_url = isset( $color_img_lookup[ $ckey ] ) ? $color_img_lookup[ $ckey ] : ( $cinfo['url'] ?? '' );
+			$lbl   = ! empty( $cinfo['label'] ) ? $cinfo['label'] : strtoupper( $ckey );
+			$pancake_color_opts[] = array(
+				'value'   => $ckey,
+				'name'    => $lbl,
+				'term_id' => 0,
+				'hex'     => class_exists( 'Nexxi_Kids_Catalog' ) ? Nexxi_Kids_Catalog::color_guess( $lbl ) : '#e4e2de',
+				'image'   => $c_url,
+			);
+		}
+		if ( ! empty( $pancake_color_opts ) ) {
+			array_unshift(
+				$attributes,
+				array(
+					'key'      => 'nexxi_color',
+					'label'    => 'Màu sắc',
+					'role'     => 'color',
+					'taxonomy' => false,
+					'options'  => $pancake_color_opts,
+				)
+			);
+		}
+	}
+
 	return array(
 		'id'         => $product->get_id(),
 		'type'       => $product->get_type(),
@@ -39,7 +112,7 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		'regular'    => (float) $prog['regular'],
 		'inStock'    => $product->is_in_stock(),
 		'max'        => $product->get_max_purchase_quantity(),
-		'attributes' => Nexxi_Kids_Catalog::variation_attributes( $product ),
+		'attributes' => $attributes,
 	);
 }
 
@@ -101,7 +174,24 @@ function nexxi_kids_pdp_meta( WC_Product $product ) {
 }
 
 function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
-	$ids = array_values( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids() ) ) );
+	$extra_ids = array();
+	if ( $product->is_type( 'variable' ) ) {
+		foreach ( $product->get_children() as $child_id ) {
+			$v_tid = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+			if ( $v_tid > 0 ) {
+				$extra_ids[] = $v_tid;
+			}
+		}
+	}
+	$class_map = get_post_meta( $product->get_id(), '_nexxi_class_image_map', true );
+	if ( is_array( $class_map ) ) {
+		foreach ( $class_map as $cinfo ) {
+			if ( ! empty( $cinfo['att_id'] ) ) {
+				$extra_ids[] = (int) $cinfo['att_id'];
+			}
+		}
+	}
+	$ids = array_values( array_unique( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids(), $extra_ids ) ) ) );
 	$main = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : wc_placeholder_img_src( 'full' );
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
 	$prog = nexxi_kids_get_program_sale( $product, 'combined' );
@@ -210,7 +300,8 @@ foreach ( $config['attributes'] as $attr ) :
 <?php if ( $numeric ) : ?><button class="text-secondary hover:underline flex items-center gap-0.5 font-label-sm text-label-sm shrink-0" type="button" data-nexxi-size-table-open><span class="material-symbols-outlined text-[16px]">straighten</span> Bảng Size</button><?php else : ?><span class="text-outline font-body-sm text-body-sm shrink-0"><?php echo count( $attr['options'] ); ?> lựa chọn</span><?php endif; ?></div>
 <div class="<?php echo $is_size ? 'grid grid-cols-3 sm:grid-cols-4 gap-space-xs' : 'flex items-center gap-space-sm flex-wrap'; ?>"<?php echo $is_size ? ' data-nexxi-size-grid' : ''; ?>>
 <?php foreach ( $attr['options'] as $option ) :
-	$common = 'type="button" aria-pressed="false" data-nexxi-attr="' . esc_attr( $attr['key'] ) . '" data-value="' . esc_attr( $option['value'] ) . '" data-raw="' . esc_attr( $attr['taxonomy'] ? $option['value'] : $option['name'] ) . '" data-name="' . esc_attr( $option['name'] ) . '"';
+	$opt_img = ! empty( $option['image'] ) ? ' data-image="' . esc_url( $option['image'] ) . '"' : '';
+	$common = 'type="button" aria-pressed="false" data-nexxi-attr="' . esc_attr( $attr['key'] ) . '" data-value="' . esc_attr( $option['value'] ) . '" data-raw="' . esc_attr( $attr['taxonomy'] ? $option['value'] : $option['name'] ) . '" data-name="' . esc_attr( $option['name'] ) . '"' . $opt_img;
 	if ( $is_color ) : ?>
 <button class="color-btn group relative flex items-center gap-2 px-space-md py-space-xs rounded-full bg-surface-container-low hover:bg-surface-container transition-all" <?php echo $common; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="w-4 h-4 rounded-full shadow-inner inline-block ring-1 ring-outline-variant" style="background:<?php echo esc_attr( $option['hex'] ); ?>"></span><span class="font-label-md text-label-md text-on-surface-variant group-hover:text-primary"><?php echo esc_html( $option['name'] ); ?></span></button>
 	<?php elseif ( $is_size ) :
