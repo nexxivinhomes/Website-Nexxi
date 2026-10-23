@@ -18,7 +18,7 @@ if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager' ) ) :
 
 final class Nexxi_Pancake_Sync_Manager {
 
-	const VERSION          = '1.3.0';
+	const VERSION          = '1.4.0';
 	const MENU_SLUG        = 'nexxi-pancake-sync';
 	const CACHE_OPTION     = 'nexxi_pancake_catalog_cache_v3';
 	const CACHE_TIME_OPT   = 'nexxi_pancake_catalog_cache_time';
@@ -50,14 +50,16 @@ final class Nexxi_Pancake_Sync_Manager {
 		add_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $this, 'ajax_apply_classifications' ) );
 		add_action( 'wp_ajax_nexxi_pancake_link_sku', array( $this, 'ajax_link_sku' ) );
 
-		// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake.
+		// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake + Cleanup Duplicates.
 		add_action( 'wp_ajax_nexxi_pancake_import_product', array( $this, 'ajax_import_product' ) );
 		add_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $this, 'ajax_delete_disconnect' ) );
+		add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
 
-		// Background WP-Cron schedule for automatic Pancake image scanning.
+		// Background WP-Cron schedule for automatic Pancake image scanning & one-time duplicate product cleanup.
 		add_filter( 'cron_schedules', array( $this, 'register_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_cron_auto_scan' ) );
 		add_action( 'init', array( $this, 'maybe_schedule_cron' ) );
+		add_action( 'init', array( $this, 'maybe_auto_cleanup_duplicates' ), 20 );
 	}
 
 	/**
@@ -2216,14 +2218,290 @@ final class Nexxi_Pancake_Sync_Manager {
 	}
 
 	/**
-	 * Find an existing parent WooCommerce product (`WC_Product`) for a Pancake product entry by SKU or Pancake ID.
+	 * Automatically detect and clean up any duplicate WooCommerce products on the Website
+	 * that share the same Pancake SKU, Parent SKU, Pancake Product ID, or exact Product Title.
+	 * Keeps the single most complete product (with thumbnail, variation images, SKU & variations)
+	 * and permanently deletes redundant duplicate copies.
+	 */
+	public static function cleanup_duplicate_wc_products() {
+		global $wpdb;
+		$GLOBALS['nexxi_bulk_syncing'] = true;
+
+		$rows = self::get_fast_wc_catalog_rows();
+		if ( count( $rows ) < 2 ) {
+			return array(
+				'deleted_products'   => 0,
+				'deleted_variations' => 0,
+				'kept_products'      => count( $rows ),
+				'details'            => array(),
+			);
+		}
+
+		// Score each product so we always keep the most complete one (has thumbnail > has variation images > has SKU > most variations > oldest ID)
+		$scored = array();
+		foreach ( $rows as $pid => $r ) {
+			$score = 0;
+			if ( (int) $r['thumb_id'] > 0 ) {
+				$score += 100000;
+			}
+			if ( (int) $r['var_with_img'] > 0 ) {
+				$score += (int) $r['var_with_img'] * 500;
+			}
+			if ( '' !== trim( (string) $r['sku'] ) ) {
+				$score += 20000;
+			}
+			if ( (int) $r['var_total'] > 0 ) {
+				$score += (int) $r['var_total'] * 100;
+			}
+			$r['_score']     = $score;
+			$scored[ $pid ] = $r;
+		}
+
+		// Group products by canonical key (SKU, Pancake ID, or Normalized Title)
+		$groups_by_key = array();
+		foreach ( $scored as $pid => $r ) {
+			$keys = array();
+
+			$sku = strtoupper( trim( (string) $r['sku'] ) );
+			if ( '' !== $sku ) {
+				$base_sku = false !== strpos( $sku, '-' ) ? explode( '-', $sku )[0] : $sku;
+				if ( '' !== $base_sku ) {
+					$keys[] = 'SKU:' . $base_sku;
+				}
+			}
+
+			$psku = strtoupper( trim( (string) $r['pancake_sku'] ) );
+			if ( '' !== $psku ) {
+				$base_psku = false !== strpos( $psku, '-' ) ? explode( '-', $psku )[0] : $psku;
+				if ( '' !== $base_psku ) {
+					$keys[] = 'SKU:' . $base_psku;
+				}
+			}
+
+			if ( empty( $keys ) && ! empty( $r['child_skus'] ) ) {
+				foreach ( $r['child_skus'] as $csku ) {
+					if ( false !== strpos( $csku, '-' ) ) {
+						$cpref = strtoupper( trim( explode( '-', $csku )[0] ) );
+						if ( '' !== $cpref ) {
+							$keys[] = 'SKU:' . $cpref;
+							break;
+						}
+					}
+				}
+			}
+
+			$pancake_id = trim( (string) $r['pancake_id'] );
+			if ( '' !== $pancake_id ) {
+				$keys[] = 'PID:' . $pancake_id;
+			}
+
+			$norm_title = mb_strtolower( trim( preg_replace( '/\s+/', ' ', (string) $r['name'] ) ) );
+			if ( '' !== $norm_title ) {
+				$keys[] = 'TITLE:' . $norm_title;
+			}
+
+			$keys = array_unique( $keys );
+			foreach ( $keys as $k ) {
+				if ( ! isset( $groups_by_key[ $k ] ) ) {
+					$groups_by_key[ $k ] = array();
+				}
+				$groups_by_key[ $k ][] = (int) $pid;
+			}
+		}
+
+		// Merge overlapping groups using adjacency / connected components
+		$adj = array();
+		foreach ( $groups_by_key as $pids ) {
+			if ( count( $pids ) < 2 ) {
+				continue;
+			}
+			$first = $pids[0];
+			for ( $i = 1, $n = count( $pids ); $i < $n; $i++ ) {
+				$u = $pids[ $i ];
+				$adj[ $first ][ $u ] = true;
+				$adj[ $u ][ $first ] = true;
+			}
+		}
+
+		$visited            = array();
+		$deleted_products   = 0;
+		$deleted_variations = 0;
+		$details            = array();
+
+		foreach ( array_keys( $adj ) as $start_pid ) {
+			if ( isset( $visited[ $start_pid ] ) ) {
+				continue;
+			}
+			// BFS to collect all duplicate product IDs in this component
+			$component = array();
+			$queue     = array( $start_pid );
+			$visited[ $start_pid ] = true;
+			while ( ! empty( $queue ) ) {
+				$curr        = array_shift( $queue );
+				$component[] = $curr;
+				if ( ! empty( $adj[ $curr ] ) ) {
+					foreach ( array_keys( $adj[ $curr ] ) as $nbr ) {
+						if ( ! isset( $visited[ $nbr ] ) ) {
+							$visited[ $nbr ] = true;
+							$queue[]         = $nbr;
+						}
+					}
+				}
+			}
+
+			if ( count( $component ) < 2 ) {
+				continue;
+			}
+
+			// Sort component so the highest-scored product (or lowest ID on tie) is first
+			usort(
+				$component,
+				function( $a, $b ) use ( $scored ) {
+					$sa = $scored[ $a ]['_score'] ?? 0;
+					$sb = $scored[ $b ]['_score'] ?? 0;
+					if ( $sa !== $sb ) {
+						return $sb <=> $sa;
+					}
+					return $a <=> $b;
+				}
+			);
+
+			$keeper_id  = $component[0];
+			$keeper_row = $scored[ $keeper_id ];
+			$duplicates = array_slice( $component, 1 );
+
+			// Transfer SKU / Pancake metadata / Thumbnail from duplicates to keeper if keeper was missing any
+			$best_sku        = $keeper_row['sku'];
+			$best_psku       = $keeper_row['pancake_sku'];
+			$best_pid        = $keeper_row['pancake_id'];
+			$best_thumb      = (int) $keeper_row['thumb_id'];
+
+			foreach ( $duplicates as $dup_id ) {
+				$drow = $scored[ $dup_id ];
+				if ( '' === $best_sku && '' !== $drow['sku'] ) {
+					$best_sku = $drow['sku'];
+				}
+				if ( '' === $best_psku && '' !== $drow['pancake_sku'] ) {
+					$best_psku = $drow['pancake_sku'];
+				}
+				if ( '' === $best_pid && '' !== $drow['pancake_id'] ) {
+					$best_pid = $drow['pancake_id'];
+				}
+				if ( $best_thumb <= 0 && (int) $drow['thumb_id'] > 0 ) {
+					$best_thumb = (int) $drow['thumb_id'];
+				}
+
+				// Delete all child variations of the duplicate product
+				$child_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT ID FROM {$wpdb->posts} WHERE post_parent = %d AND post_type = 'product_variation'",
+						$dup_id
+					)
+				); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				if ( ! empty( $child_ids ) ) {
+					foreach ( $child_ids as $cid ) {
+						wp_delete_post( (int) $cid, true );
+						$deleted_variations++;
+					}
+				}
+
+				if ( function_exists( 'wc_delete_product_transients' ) ) {
+					wc_delete_product_transients( $dup_id );
+				}
+				wp_delete_post( (int) $dup_id, true );
+				$deleted_products++;
+			}
+
+			// Ensure keeper has the SKU and thumbnail after duplicates are removed
+			if ( '' === $best_sku && '' !== $best_psku ) {
+				$best_sku = $best_psku;
+			}
+			if ( '' !== $best_sku ) {
+				update_post_meta( $keeper_id, '_sku', $best_sku );
+				update_post_meta( $keeper_id, '_nexxi_pancake_sku', $best_sku );
+			}
+			if ( '' !== $best_pid ) {
+				update_post_meta( $keeper_id, '_nexxi_pancake_product_id', $best_pid );
+			}
+			if ( (int) $keeper_row['thumb_id'] <= 0 && $best_thumb > 0 ) {
+				set_post_thumbnail( $keeper_id, $best_thumb );
+			}
+
+			$details[] = sprintf(
+				'Giữ lại SP #%d [%s] "%s" — Đã xóa %d bản trùng (#%s)',
+				$keeper_id,
+				$best_sku ?: 'SKU',
+				$keeper_row['name'],
+				count( $duplicates ),
+				implode( ', #', $duplicates )
+			);
+		}
+
+		if ( $deleted_products > 0 && function_exists( 'nexxi_kids_flush_sale_cache' ) ) {
+			nexxi_kids_flush_sale_cache();
+		}
+
+		return array(
+			'deleted_products'   => $deleted_products,
+			'deleted_variations' => $deleted_variations,
+			'details'            => $details,
+		);
+	}
+
+	/**
+	 * Run automatic one-time duplicate cleanup when v1.4.0 is deployed.
+	 */
+	public function maybe_auto_cleanup_duplicates() {
+		if ( '1' === (string) get_option( 'nexxi_pancake_dedup_v140', '0' ) ) {
+			return;
+		}
+		update_option( 'nexxi_pancake_dedup_v140', '1', true );
+		self::cleanup_duplicate_wc_products();
+	}
+
+	/**
+	 * AJAX endpoint: Clean up duplicate products on the Website on demand.
+	 */
+	public function ajax_cleanup_duplicates() {
+		check_ajax_referer( 'nexxi_pancake_ajax', 'nonce' );
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => 'Không có quyền thực hiện.' ) );
+		}
+		$res = self::cleanup_duplicate_wc_products();
+		wp_send_json_success( $res );
+	}
+
+	/**
+	 * Find an existing parent WooCommerce product (`WC_Product`) for a Pancake product entry by SKU, Pancake ID, Variation SKU prefix, or Title.
 	 */
 	public static function find_existing_wc_product_for_pancake( array $pancake_item ) {
 		global $wpdb;
-		$p_id  = trim( (string) ( $pancake_item['id'] ?? '' ) );
-		$p_sku = strtoupper( trim( (string) ( $pancake_item['sku'] ?? '' ) ) );
+		$p_id   = trim( (string) ( $pancake_item['id'] ?? '' ) );
+		$p_sku  = strtoupper( trim( (string) ( $pancake_item['sku'] ?? '' ) ) );
+		$p_name = trim( (string) ( $pancake_item['name'] ?? '' ) );
 
-		// 1. Check by exact parent SKU
+		// 1. Direct SQL check by _sku or _nexxi_pancake_sku in postmeta (100% reliable even before wc_product_meta_lookup updates)
+		if ( '' !== $p_sku ) {
+			$sku_id = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT p.ID FROM {$wpdb->posts} p
+					 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+					 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
+					   AND pm.meta_key IN ('_sku', '_nexxi_pancake_sku') AND UPPER(TRIM(pm.meta_value)) = %s
+					 ORDER BY p.ID ASC
+					 LIMIT 1",
+					$p_sku
+				)
+			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( $sku_id > 0 ) {
+				$prod = wc_get_product( $sku_id );
+				if ( $prod && 'trash' !== $prod->get_status() ) {
+					return $prod;
+				}
+			}
+		}
+
+		// 2. Check by wc_get_product_id_by_sku
 		if ( '' !== $p_sku && function_exists( 'wc_get_product_id_by_sku' ) ) {
 			$found_id = (int) wc_get_product_id_by_sku( $p_sku );
 			if ( $found_id > 0 ) {
@@ -2236,7 +2514,7 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 		}
 
-		// 2. Check by _nexxi_pancake_product_id or _nexxi_pancake_sku postmeta
+		// 3. Check by _nexxi_pancake_product_id postmeta
 		if ( '' !== $p_id ) {
 			$meta_id = (int) $wpdb->get_var(
 				$wpdb->prepare(
@@ -2244,37 +2522,21 @@ final class Nexxi_Pancake_Sync_Manager {
 					 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
 					 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
 					   AND pm.meta_key = '_nexxi_pancake_product_id' AND pm.meta_value = %s
+					 ORDER BY p.ID ASC
 					 LIMIT 1",
 					$p_id
 				)
 			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			if ( $meta_id > 0 ) {
 				$prod = wc_get_product( $meta_id );
-				if ( $prod ) {
+				if ( $prod && 'trash' !== $prod->get_status() ) {
 					return $prod;
 				}
 			}
 		}
 
+		// 4. Check if any variation on Website has a SKU starting with $p_sku . '-'
 		if ( '' !== $p_sku ) {
-			$meta_sku_id = (int) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT p.ID FROM {$wpdb->posts} p
-					 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-					 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
-					   AND pm.meta_key = '_nexxi_pancake_sku' AND UPPER(pm.meta_value) = %s
-					 LIMIT 1",
-					$p_sku
-				)
-			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			if ( $meta_sku_id > 0 ) {
-				$prod = wc_get_product( $meta_sku_id );
-				if ( $prod ) {
-					return $prod;
-				}
-			}
-
-			// 3. Check if any variation on Website has a SKU starting with $p_sku . '-'
 			$like_prefix = $wpdb->esc_like( $p_sku . '-' ) . '%';
 			$var_parent_id = (int) $wpdb->get_var(
 				$wpdb->prepare(
@@ -2282,12 +2544,33 @@ final class Nexxi_Pancake_Sync_Manager {
 					 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
 					 WHERE p.post_type = 'product_variation' AND p.post_parent > 0
 					   AND pm.meta_key = '_sku' AND UPPER(pm.meta_value) LIKE %s
+					 ORDER BY p.post_parent ASC
 					 LIMIT 1",
 					$like_prefix
 				)
 			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			if ( $var_parent_id > 0 ) {
 				$prod = wc_get_product( $var_parent_id );
+				if ( $prod && 'trash' !== $prod->get_status() ) {
+					return $prod;
+				}
+			}
+		}
+
+		// 5. Check by exact product title (prevents duplicate creation when a previous sync created the product without SKU)
+		if ( '' !== $p_name ) {
+			$title_id = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts}
+					 WHERE post_type = 'product' AND post_status IN ('publish','draft','private','pending')
+					   AND post_title = %s
+					 ORDER BY ID ASC
+					 LIMIT 1",
+					$p_name
+				)
+			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( $title_id > 0 ) {
+				$prod = wc_get_product( $title_id );
 				if ( $prod && 'trash' !== $prod->get_status() ) {
 					return $prod;
 				}
@@ -2301,16 +2584,20 @@ final class Nexxi_Pancake_Sync_Manager {
 	 * Tab 1 Engine: Create or update a WooCommerce product from a Pancake POS product entry (by SKU),
 	 * syncing product title, parent SKU, categories, MÀU & SIZE attributes, variations (`SKU phân loại`),
 	 * prices, stock quantities, and (optionally) 2-step product & classification images.
+	 *
+	 * By default (`skip_existing => true`), if a product with the same SKU already exists on the Website,
+	 * it is strictly SKIPPED to prevent duplicate syncing.
 	 */
 	public static function sync_or_create_wc_product_from_pancake( array $pancake_item, array $options = array() ) {
+		global $wpdb;
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		}
 		$GLOBALS['nexxi_bulk_syncing'] = true;
-		wp_defer_term_counting( true );
 
 		$defaults = array(
 			'post_status'     => 'publish',
+			'skip_existing'   => true,
 			'sync_variations' => true,
 			'sync_price'      => true,
 			'sync_stock'      => true,
@@ -2319,8 +2606,53 @@ final class Nexxi_Pancake_Sync_Manager {
 		);
 		$opts = wp_parse_args( $options, $defaults );
 
-		// Query live from Pancake POS by SKU only if variations or images are not already populated in cache
 		$lookup_sku = strtoupper( trim( (string) ( $pancake_item['sku'] ?? '' ) ) );
+		$pancake_id = trim( (string) ( $pancake_item['id'] ?? '' ) );
+		$lock_name  = 'nexxi_sku_lock_' . substr( md5( $lookup_sku ?: $pancake_id ), 0, 24 );
+
+		// Acquire atomic database lock for this SKU so concurrent requests can never create duplicate products
+		$wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 15)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		// Check if this SKU already exists on the Website BEFORE making any remote API calls
+		$existing_prod = self::find_existing_wc_product_for_pancake( $pancake_item );
+		if ( $existing_prod && ! empty( $opts['skip_existing'] ) ) {
+			$wc_id      = $existing_prod->get_id();
+			$parent_sku = $lookup_sku ?: (string) $existing_prod->get_sku();
+			$prod_name  = trim( (string) ( $pancake_item['name'] ?? $existing_prod->get_name() ) );
+
+			// Ensure SKU & Pancake link metadata are recorded on the existing product
+			if ( '' !== $lookup_sku && '' === trim( (string) $existing_prod->get_sku() ) ) {
+				update_post_meta( $wc_id, '_sku', $lookup_sku );
+			}
+			if ( '' !== $lookup_sku ) {
+				update_post_meta( $wc_id, '_nexxi_pancake_sku', $lookup_sku );
+			}
+			if ( '' !== $pancake_id ) {
+				update_post_meta( $wc_id, '_nexxi_pancake_product_id', $pancake_id );
+			}
+
+			$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+			$thumb_url = wp_get_attachment_image_url( get_post_thumbnail_id( $wc_id ), 'thumbnail' );
+			return array(
+				'wc_id'              => $wc_id,
+				'pancake_id'         => $pancake_id,
+				'pancake_sku'        => $parent_sku,
+				'name'               => $prod_name,
+				'created_new'        => false,
+				'skipped_duplicate'  => true,
+				'variations_synced'  => $existing_prod->is_type( 'variable' ) ? count( $existing_prod->get_children() ) : 0,
+				'downloaded_urls'    => 0,
+				'variations_img_set' => 0,
+				'edit_url'           => get_edit_post_link( $wc_id, 'raw' ),
+				'view_url'           => get_permalink( $wc_id ),
+				'thumb_url'          => $thumb_url ? $thumb_url : '',
+			);
+		}
+
+		wp_defer_term_counting( true );
+
+		// Query live from Pancake POS by SKU only if variations or images are not already populated in cache
 		if ( '' !== $lookup_sku && ( empty( $pancake_item['variations'] ) || empty( $pancake_item['all_images'] ) ) ) {
 			$live_item = self::query_pancake_product_by_sku( $lookup_sku, false );
 			if ( is_array( $live_item ) && ! empty( $live_item['id'] ) ) {
@@ -2338,8 +2670,10 @@ final class Nexxi_Pancake_Sync_Manager {
 		// Unmark from disconnected list since user explicitly chose to sync this product to Website
 		self::unmark_sku_disconnected( $parent_sku, $pancake_id );
 
-		$existing_prod = self::find_existing_wc_product_for_pancake( $pancake_item );
-		$created_new   = false;
+		if ( ! $existing_prod ) {
+			$existing_prod = self::find_existing_wc_product_for_pancake( $pancake_item );
+		}
+		$created_new = false;
 
 		$p_vars = ! empty( $pancake_item['variations'] ) && is_array( $pancake_item['variations'] ) ? $pancake_item['variations'] : array();
 		$has_var_attrs = false;
@@ -2614,6 +2948,8 @@ final class Nexxi_Pancake_Sync_Manager {
 			wc_delete_product_transients( $wc_id );
 		}
 
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
 		$thumb_url = wp_get_attachment_image_url( get_post_thumbnail_id( $wc_id ), 'thumbnail' );
 
 		return array(
@@ -2622,6 +2958,7 @@ final class Nexxi_Pancake_Sync_Manager {
 			'pancake_sku'        => $parent_sku,
 			'name'               => $prod_name,
 			'created_new'        => $created_new,
+			'skipped_duplicate'  => false,
 			'variations_synced'  => $variations_synced,
 			'downloaded_urls'    => (int) ( $img_res['downloaded_urls'] ?? 0 ),
 			'variations_img_set' => (int) ( $img_res['variations_img_set'] ?? 0 ),
@@ -2737,6 +3074,7 @@ final class Nexxi_Pancake_Sync_Manager {
 
 		$opts = array(
 			'post_status'     => isset( $_POST['post_status'] ) && 'draft' === $_POST['post_status'] ? 'draft' : 'publish',
+			'skip_existing'   => ! isset( $_POST['skip_existing'] ) || '1' === (string) $_POST['skip_existing'],
 			'sync_variations' => ! isset( $_POST['sync_variations'] ) || '1' === (string) $_POST['sync_variations'],
 			'sync_price'      => ! isset( $_POST['sync_price'] ) || '1' === (string) $_POST['sync_price'],
 			'sync_stock'      => ! isset( $_POST['sync_stock'] ) || '1' === (string) $_POST['sync_stock'],
@@ -3058,6 +3396,9 @@ final class Nexxi_Pancake_Sync_Manager {
 		$catalog    = self::get_pancake_catalog( false );
 		$cache_time = (int) get_option( self::CACHE_TIME_OPT, 0 );
 		$maps       = self::build_lookup_maps( $catalog );
+
+		// Automatically clean up any duplicate products on the Website (same SKU or exact title)
+		$dedup_report = self::cleanup_duplicate_wc_products();
 
 		// Fast SQL load of all WooCommerce products, SKUs, thumbnails & variations (0 WC_Product object overhead)
 		$wc_products = self::get_fast_wc_catalog_rows();
@@ -4419,6 +4760,7 @@ final class Nexxi_Pancake_Sync_Manager {
 
 			<!-- SYNC OPTIONS BAR -->
 			<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:14px;background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;font-size:13px;">
+				<label style="background:#dcfce7;padding:4px 10px;border-radius:6px;border:1px solid #86efac;color:#14532d;font-weight:700;"><input type="checkbox" id="nxpProdOptSkipExisting" checked> ⏭️ Bỏ qua SP trùng mã SKU đã có trên Website</label>
 				<label><input type="checkbox" id="nxpProdOptVars" checked> Đồng bộ <strong>Biến thể Màu/Size &amp; SKU phân loại</strong></label>
 				<label><input type="checkbox" id="nxpProdOptPrice" checked> Đồng bộ <strong>Giá bán</strong></label>
 				<label><input type="checkbox" id="nxpProdOptStock" checked> Đồng bộ <strong>Tồn kho Pancake</strong></label>
@@ -4443,6 +4785,9 @@ final class Nexxi_Pancake_Sync_Manager {
 				</button>
 				<button type="button" class="nxp-btn nxp-btn-outline" id="nxpBtnDisconnectOnlySelected">
 					🔌 Chỉ Ngắt Kết Nối Pancake (Giữ SP Trên Web)
+				</button>
+				<button type="button" class="nxp-btn nxp-btn-outline" id="nxpBtnCleanupDuplicates" style="border-color:#f59e0b;color:#b45309;background:#fffbeb;">
+					🧹 Dọn Sản Phẩm Bị Trùng Trên Website
 				</button>
 				<button type="button" class="nxp-btn nxp-btn-navy" id="nxpBtnLoadAllPancakePages" style="margin-left:auto;">
 					📥 Tải Toàn Bộ Sản Phẩm Từ Pancake POS (Tất Cả Trang)
@@ -4789,8 +5134,9 @@ final class Nexxi_Pancake_Sync_Manager {
 				return out;
 			}
 
-			function getImportOpts() {
+			function getImportOpts(forceUpdate = false) {
 				return {
+					skip_existing:   forceUpdate ? '0' : ($('#nxpProdOptSkipExisting')?.checked ? '1' : '0'),
 					sync_variations: $('#nxpProdOptVars')?.checked ? '1' : '0',
 					sync_price:      $('#nxpProdOptPrice')?.checked ? '1' : '0',
 					sync_stock:      $('#nxpProdOptStock')?.checked ? '1' : '0',
@@ -4838,7 +5184,7 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 
 			// Batch runner for importing/syncing Pancake products to Website
-			async function runBatchImport(rawItems, title) {
+			async function runBatchImport(rawItems, title, forceUpdate = false) {
 				if (isRunningBatch) return;
 				const items = deduplicateBatchItems(rawItems);
 				if (!items.length) {
@@ -4850,7 +5196,7 @@ final class Nexxi_Pancake_Sync_Manager {
 				logBox.innerHTML = '';
 				progTitle.textContent = title;
 				progBar.style.width = '0%';
-				const opts = getImportOpts();
+				const opts = getImportOpts(forceUpdate);
 				let done = 0;
 
 				for (const it of items) {
@@ -4863,7 +5209,11 @@ final class Nexxi_Pancake_Sync_Manager {
 						}, 1);
 						if (res && res.success && res.data) {
 							const d = res.data;
-							appendLog('✓ [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → ' + (d.created_new ? 'Tạo mới SP #' : 'Cập nhật SP #') + d.wc_id + ' (' + d.variations_synced + ' biến thể, tải mới ' + d.downloaded_urls + ' ảnh, gán ' + d.variations_img_set + ' ảnh phân loại)');
+							if (d.skipped_duplicate) {
+								appendLog('⏭️ Bỏ qua [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → Đã tồn tại mã SKU trên Website (SP #' + d.wc_id + '), không đồng bộ trùng.');
+							} else {
+								appendLog('✓ [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → ' + (d.created_new ? 'Tạo mới SP #' : 'Cập nhật SP #') + d.wc_id + ' (' + d.variations_synced + ' biến thể, tải mới ' + d.downloaded_urls + ' ảnh, gán ' + d.variations_img_set + ' ảnh phân loại)');
+							}
 							if (it.row_dom) updateRowAfterImport(it.row_dom, d);
 						} else {
 							appendLog('✗ [' + (it.pancake_sku || it.pancake_id) + '] ' + (res?.data?.message || 'Lỗi đồng bộ'), true);
@@ -5006,12 +5356,42 @@ final class Nexxi_Pancake_Sync_Manager {
 
 			// Per-row button: Import / Update 1 product
 			$$('.nxp-btn-import-one').forEach(btn => btn.addEventListener('click', function() {
+				const tr = $('#nxp-prod-row-' + this.dataset.rowDom);
+				const isExistingOnWeb = tr && Number(tr.dataset.wcId || 0) > 0;
 				runBatchImport([{
 					row_dom: this.dataset.rowDom,
 					pancake_id: this.dataset.pancakeId,
 					pancake_sku: this.dataset.pancakeSku
-				}], 'Đang đồng bộ sản phẩm [' + (this.dataset.pancakeSku || '') + '] từ Pancake về Website...');
+				}], 'Đang đồng bộ sản phẩm [' + (this.dataset.pancakeSku || '') + '] từ Pancake về Website...', isExistingOnWeb);
 			}));
+
+			// Button: Clean up duplicate products on Website
+			$('#nxpBtnCleanupDuplicates')?.addEventListener('click', async function() {
+				const btn = this;
+				btn.disabled = true;
+				progBox.style.display = 'block';
+				logBox.innerHTML = '';
+				progTitle.textContent = '🧹 Đang quét & dọn dẹp các sản phẩm bị trùng SKU / trùng tên trên Website...';
+				progBar.style.width = '50%';
+				try {
+					const res = await postAjax('nexxi_pancake_cleanup_duplicates', {});
+					progBar.style.width = '100%';
+					if (res && res.success && res.data) {
+						const d = res.data;
+						if (d.deleted_products > 0) {
+							(d.details || []).forEach(msg => appendLog('✓ ' + msg));
+							progTitle.textContent = '🎉 Đã dọn sạch ' + d.deleted_products + ' sản phẩm bị trùng (' + d.deleted_variations + ' biến thể thừa)! Đang tải lại trang...';
+							setTimeout(() => location.reload(), 1200);
+						} else {
+							appendLog('✓ Không phát hiện sản phẩm nào bị trùng lặp trên Website.');
+							progTitle.textContent = '✓ Danh mục Website sạch sẽ, không có sản phẩm bị trùng!';
+						}
+					}
+				} catch (e) {
+					appendLog('✗ Lỗi khi dọn trùng sản phẩm.', true);
+				}
+				btn.disabled = false;
+			});
 
 			// Per-row button: Delete & Disconnect 1 product
 			$$('.nxp-btn-delete-one').forEach(btn => btn.addEventListener('click', function() {
