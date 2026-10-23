@@ -190,43 +190,92 @@ final class Nexxi_Kids_Catalog {
 		return '#e4e2de';
 	}
 
-	/** Compact variation payload consumed by the storefront scripts. */
+	/** Compact variation payload consumed by the storefront scripts (fast postmeta batch read, 0 WC_Product_Variation instantiations). */
 	public static function variation_payload( WC_Product $product ) {
 		static $cache = array();
 		if ( ! $product->is_type( 'variable' ) ) { return array(); }
-		if ( isset( $cache[ $product->get_id() ] ) ) { return $cache[ $product->get_id() ]; }
+		$pid = $product->get_id();
+		if ( isset( $cache[ $pid ] ) ) { return $cache[ $pid ]; }
+
+		$children = array_values( array_filter( array_map( 'absint', (array) $product->get_children() ) ) );
+		if ( empty( $children ) ) {
+			$cache[ $pid ] = array();
+			return array();
+		}
+
+		// Prime postmeta cache for all variations of this product in 1 single SQL query
+		update_meta_cache( 'post', $children );
+
 		$defs = self::variation_attributes( $product );
 		$rows = array();
-		foreach ( $product->get_children() as $child_id ) {
-			$variation = wc_get_product( $child_id );
-			if ( ! $variation || ! $variation->exists() || 'publish' !== $variation->get_status() || ! $variation->is_purchasable() ) { continue; }
-			$attributes = $variation->get_attributes();
+
+		// Prime attachment meta cache for all variation thumbnails in 1 single SQL query
+		$thumb_ids = array();
+		foreach ( $children as $child_id ) {
+			$tid = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+			if ( $tid > 0 ) {
+				$thumb_ids[ $tid ] = $tid;
+			}
+		}
+		if ( ! empty( $thumb_ids ) ) {
+			update_meta_cache( 'post', array_values( $thumb_ids ) );
+		}
+
+		foreach ( $children as $child_id ) {
+			$price   = (float) get_post_meta( $child_id, '_price', true );
+			$regular = (float) get_post_meta( $child_id, '_regular_price', true );
+			if ( $price <= 0 && $regular > 0 ) {
+				$price = $regular;
+			}
+			if ( $price <= 0 ) {
+				continue;
+			}
+			if ( $regular <= 0 ) {
+				$regular = $price;
+			}
+
 			$attrs = array();
 			$roles = array( 'size' => '', 'color' => '' );
-			$any = false;
+			$any   = false;
 			foreach ( $defs as $def ) {
-				$raw = isset( $attributes[ $def['key'] ] ) ? $attributes[ $def['key'] ] : '';
+				$meta_key = 'attribute_' . $def['key'];
+				$raw      = (string) get_post_meta( $child_id, $meta_key, true );
+				if ( '' === $raw && 0 !== strpos( $def['key'], 'pa_' ) ) {
+					$raw = (string) get_post_meta( $child_id, 'attribute_pa_' . $def['key'], true );
+				}
 				$value = '' === $raw ? '' : self::attribute_value( $raw, $def['taxonomy'] );
-				if ( '' === $value ) { $any = true; }
+				if ( '' === $value ) {
+					$any = true;
+				}
 				$attrs[ $def['key'] ] = $value;
-				if ( $def['role'] ) { $roles[ $def['role'] ] = $value; }
+				if ( $def['role'] ) {
+					$roles[ $def['role'] ] = $value;
+				}
 			}
-			$image = $variation->get_image_id() ? wp_get_attachment_image_url( $variation->get_image_id(), 'large' ) : '';
+
+			$manage_stock = 'yes' === (string) get_post_meta( $child_id, '_manage_stock', true );
+			$stock_qty    = $manage_stock ? (int) get_post_meta( $child_id, '_stock', true ) : null;
+			$stock_status = (string) get_post_meta( $child_id, '_stock_status', true );
+			$in_stock     = $manage_stock ? ( $stock_qty > 0 || 'notify' === get_post_meta( $child_id, '_backorders', true ) || 'yes' === get_post_meta( $child_id, '_backorders', true ) ) : ( 'outofstock' !== $stock_status );
+
+			$tid   = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+			$image = $tid > 0 ? wp_get_attachment_image_url( $tid, 'large' ) : '';
+
 			$rows[] = array(
-				'id'      => $variation->get_id(),
+				'id'      => $child_id,
 				'attrs'   => (object) $attrs,
 				'any'     => $any,
 				'size'    => $roles['size'],
 				'color'   => $roles['color'],
-				'price'   => (float) wc_get_price_to_display( $variation ),
-				'regular' => (float) wc_get_price_to_display( $variation, array( 'price' => $variation->get_regular_price() ) ),
-				'stock'   => $variation->managing_stock() ? (int) $variation->get_stock_quantity() : null,
-				'inStock' => $variation->is_in_stock(),
-				'max'     => $variation->get_max_purchase_quantity(),
+				'price'   => $price,
+				'regular' => $regular,
+				'stock'   => $stock_qty,
+				'inStock' => $in_stock,
+				'max'     => $manage_stock && $stock_qty > 0 ? $stock_qty : -1,
 				'image'   => $image ? $image : '',
 			);
 		}
-		$cache[ $product->get_id() ] = $rows;
+		$cache[ $pid ] = $rows;
 		return $rows;
 	}
 
