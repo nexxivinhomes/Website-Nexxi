@@ -50,10 +50,11 @@ final class Nexxi_Pancake_Sync_Manager {
 		add_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $this, 'ajax_apply_classifications' ) );
 		add_action( 'wp_ajax_nexxi_pancake_link_sku', array( $this, 'ajax_link_sku' ) );
 
-		// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake + Cleanup Duplicates.
+		// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake + Cleanup Duplicates + SPA Navigation.
 		add_action( 'wp_ajax_nexxi_pancake_import_product', array( $this, 'ajax_import_product' ) );
 		add_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $this, 'ajax_delete_disconnect' ) );
 		add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
+		add_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $this, 'ajax_spa_nav' ) );
 
 		// Background WP-Cron schedule for automatic Pancake image scanning & one-time duplicate product cleanup.
 		add_filter( 'cron_schedules', array( $this, 'register_cron_schedule' ) );
@@ -2472,6 +2473,32 @@ final class Nexxi_Pancake_Sync_Manager {
 	}
 
 	/**
+	 * AJAX endpoint: Fast SPA navigation for pagination & filter changes in Tab 1 and Tab 2 without full page reload.
+	 */
+	public function ajax_spa_nav() {
+		check_ajax_referer( 'nexxi_pancake_ajax', 'nonce' );
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => 'Không có quyền thực hiện.' ) );
+		}
+
+		$query_str = isset( $_POST['query_string'] ) ? wp_unslash( $_POST['query_string'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$params    = array();
+		if ( is_string( $query_str ) && '' !== $query_str ) {
+			wp_parse_str( ltrim( $query_str, '?' ), $params );
+		}
+		foreach ( $params as $k => $v ) {
+			$_GET[ $k ] = $v;
+		}
+
+		$GLOBALS['nexxi_pancake_page_rendered'] = false;
+		ob_start();
+		$this->render_admin_page();
+		$html = ob_get_clean();
+
+		wp_send_json_success( array( 'html' => $html ) );
+	}
+
+	/**
 	 * Find an existing parent WooCommerce product (`WC_Product`) for a Pancake product entry by SKU, Pancake ID, Variation SKU prefix, or Title.
 	 */
 	public static function find_existing_wc_product_for_pancake( array $pancake_item ) {
@@ -3367,11 +3394,10 @@ final class Nexxi_Pancake_Sync_Manager {
 	 * ========================================================================== */
 
 	public function render_admin_page() {
-		static $already_rendered = false;
-		if ( $already_rendered ) {
+		if ( ! empty( $GLOBALS['nexxi_pancake_page_rendered'] ) ) {
 			return;
 		}
-		$already_rendered = true;
+		$GLOBALS['nexxi_pancake_page_rendered'] = true;
 
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			wp_die( 'Bạn không có quyền truy cập trang này.' );
@@ -3397,8 +3423,10 @@ final class Nexxi_Pancake_Sync_Manager {
 		$cache_time = (int) get_option( self::CACHE_TIME_OPT, 0 );
 		$maps       = self::build_lookup_maps( $catalog );
 
-		// Automatically clean up any duplicate products on the Website (same SKU or exact title)
-		$dedup_report = self::cleanup_duplicate_wc_products();
+		// Automatically clean up duplicate products on initial page load (skipped during fast AJAX pagination)
+		if ( ! wp_doing_ajax() ) {
+			self::cleanup_duplicate_wc_products();
+		}
 
 		// Fast SQL load of all WooCommerce products, SKUs, thumbnails & variations (0 WC_Product object overhead)
 		$wc_products = self::get_fast_wc_catalog_rows();
@@ -3498,28 +3526,24 @@ final class Nexxi_Pancake_Sync_Manager {
 				</div>
 			</div>
 
-			<!-- 2-TAB NAVIGATION BAR -->
+			<!-- 2-TAB NAVIGATION BAR (NO-RELOAD INSTANT SWITCHING) -->
 			<div class="nxp-tabs-nav">
-				<a href="<?php echo esc_url( $tab_prod_url ); ?>" class="nxp-tab-link <?php echo 'products' === $active_tab ? 'active' : ''; ?>">
+				<a href="<?php echo esc_url( $tab_prod_url ); ?>" id="nxpTabBtnProducts" data-tab="products" class="nxp-tab-link <?php echo 'products' === $active_tab ? 'active' : ''; ?>">
 					<div class="nxp-tab-icon">📦</div>
 					<div>
 						<div class="nxp-tab-title">
-							Tab 1: Quản Lý Đồng Bộ Sản Phẩm Pancake Theo Mã SKU
-							<?php if ( 'products' === $active_tab ) : ?>
-								<span class="nxp-badge nxp-badge-ok">Đang mở</span>
-							<?php endif; ?>
+							<span>Tab 1: Quản Lý Đồng Bộ Sản Phẩm Pancake Theo Mã SKU</span>
+							<span class="nxp-badge nxp-badge-ok nxp-tab-open-badge" style="<?php echo 'products' === $active_tab ? '' : 'display:none;'; ?>">Đang mở</span>
 						</div>
 						<div class="nxp-tab-desc">Quản lý sản phẩm có trên Pancake POS • Chọn 1 hoặc nhiều SP đồng bộ từ Pancake về Website • Chọn 1 hoặc nhiều SP xóa khỏi Website &amp; ngắt kết nối Pancake • Bộ lọc đa năng</div>
 					</div>
 				</a>
-				<a href="<?php echo esc_url( $tab_img_url ); ?>" class="nxp-tab-link <?php echo 'images' === $active_tab ? 'active' : ''; ?>">
+				<a href="<?php echo esc_url( $tab_img_url ); ?>" id="nxpTabBtnImages" data-tab="images" class="nxp-tab-link <?php echo 'images' === $active_tab ? 'active' : ''; ?>">
 					<div class="nxp-tab-icon">🖼️</div>
 					<div>
 						<div class="nxp-tab-title">
-							Tab 2: Quản Lý Đồng Bộ Ảnh Pancake Theo Mã SKU
-							<?php if ( 'images' === $active_tab ) : ?>
-								<span class="nxp-badge nxp-badge-ok">Đang mở</span>
-							<?php endif; ?>
+							<span>Tab 2: Quản Lý Đồng Bộ Ảnh Pancake Theo Mã SKU</span>
+							<span class="nxp-badge nxp-badge-ok nxp-tab-open-badge" style="<?php echo 'images' === $active_tab ? '' : 'display:none;'; ?>">Đang mở</span>
 						</div>
 						<div class="nxp-tab-desc">Đồng bộ SKU sản phẩm &amp; SKU phân loại từ Pancake POS • Tải toàn bộ ảnh SP (chỉ lấy ảnh chưa có) &amp; gán ảnh từng phân loại màu sắc theo SKU phân loại</div>
 					</div>
@@ -3530,13 +3554,14 @@ final class Nexxi_Pancake_Sync_Manager {
 				<div class="notice notice-success is-dismissible"><p><strong>Đã lưu cấu hình đồng bộ Pancake SKU &amp; Ảnh thành công!</strong></p></div>
 			<?php endif; ?>
 
-			<?php
-			if ( 'products' === $active_tab ) {
-				$this->render_tab_products( $settings, $catalog, $maps, $wc_products, $ajax_nonce );
-				echo '</div>';
-				return;
-			}
+			<!-- TAB 1 PANE -->
+			<div id="nxp-pane-products" class="nxp-tab-pane" style="<?php echo 'products' === $active_tab ? '' : 'display:none;'; ?>">
+				<?php $this->render_tab_products( $settings, $catalog, $maps, $wc_products, $ajax_nonce ); ?>
+			</div>
 
+			<!-- TAB 2 PANE -->
+			<div id="nxp-pane-images" class="nxp-tab-pane" style="<?php echo 'images' === $active_tab ? '' : 'display:none;'; ?>">
+			<?php
 			// =========================================================================
 			// TAB 2: QUẢN LÝ ĐỒNG BỘ ẢNH PANCAKE THEO MÃ SKU (GIỮ NGUYÊN 100%)
 			// =========================================================================
@@ -3768,8 +3793,10 @@ final class Nexxi_Pancake_Sync_Manager {
 				</div>
 			</div>
 
+			<!-- TAB 2 DYNAMIC RESULTS CONTAINER (NO-RELOAD FILTER & PAGINATION) -->
+			<div id="nxp-tab2-results" style="transition:opacity 0.15s;">
 			<!-- SEARCH & FILTER BAR -->
-			<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="nxp-filter-bar">
+			<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="nxp-filter-bar nxp-spa-filter-form" data-target-tab="images">
 				<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>">
 				<input type="hidden" name="tab" value="images">
 				<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;">
@@ -3784,11 +3811,11 @@ final class Nexxi_Pancake_Sync_Manager {
 					</select>
 					<button type="submit" class="nxp-btn nxp-btn-navy">Lọc Sản Phẩm</button>
 					<?php if ( '' !== $search_q || 'all' !== $filter_st ) : ?>
-						<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=images' ) ); ?>" class="nxp-btn nxp-btn-outline">Xóa lọc</a>
+						<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=images' ) ); ?>" class="nxp-btn nxp-btn-outline nxp-spa-page-link" data-target-tab="images">Xóa lọc</a>
 					<?php endif; ?>
 				</div>
 				<div style="font-size:13px;color:#64748b;">
-					Hiển thị <strong><?php echo count( $paged_rows ); ?></strong> / <strong><?php echo (int) $total_filtered; ?></strong> sản phẩm
+					Hiển thị <strong><?php echo count( $paged_rows ); ?></strong> / <strong><?php echo (int) $total_filtered; ?></strong> sản phẩm (Trang <?php echo (int) $paged; ?>/<?php echo (int) $total_pages; ?>)
 				</div>
 			</form>
 
@@ -3933,7 +3960,7 @@ final class Nexxi_Pancake_Sync_Manager {
 
 			<!-- PAGINATION -->
 			<?php if ( $total_pages > 1 ) : ?>
-				<div style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+				<div class="nxp-pagination" style="margin-top:16px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
 					<?php for ( $p_i = 1; $p_i <= $total_pages; $p_i++ ) :
 						$url = add_query_arg(
 							array(
@@ -3946,12 +3973,13 @@ final class Nexxi_Pancake_Sync_Manager {
 							admin_url( 'admin.php' )
 						);
 						?>
-						<a href="<?php echo esc_url( $url ); ?>" class="nxp-btn nxp-btn-sm <?php echo $p_i === $paged ? 'nxp-btn-navy' : 'nxp-btn-outline'; ?>">
+						<a href="<?php echo esc_url( $url ); ?>" data-target-tab="images" class="nxp-btn nxp-btn-sm nxp-spa-page-link <?php echo $p_i === $paged ? 'nxp-btn-navy' : 'nxp-btn-outline'; ?>">
 							<?php echo (int) $p_i; ?>
 						</a>
 					<?php endfor; ?>
 				</div>
 			<?php endif; ?>
+			</div><!-- /#nxp-tab2-results -->
 
 			<script>
 			(function(){
@@ -4297,171 +4325,182 @@ final class Nexxi_Pancake_Sync_Manager {
 					runBatchQueue(matchedIds, 'Đang quét ảnh & set phân loại cho ' + matchedIds.length + ' sản phẩm theo SKU...');
 				});
 
-				// Check all toggle
-				$('#nxpCheckAll')?.addEventListener('change', function() {
-					$$('.nxp-row-check').forEach(cb => { cb.checked = this.checked; });
+				// Event delegation on #nxp-pane-images so buttons & checkboxes work across AJAX pagination without reload
+				const paneImages = $('#nxp-pane-images');
+				paneImages?.addEventListener('change', function(e) {
+					if (e.target.id === 'nxpCheckAll') {
+						$$('.nxp-row-check', paneImages).forEach(cb => { cb.checked = e.target.checked; });
+					} else if (e.target.matches('.nxp-spa-filter-form select')) {
+						e.target.closest('form')?.requestSubmit();
+					}
 				});
 
-				// 6. Single row: Quét ảnh về Web
-				$$('.nxp-btn-sync-one').forEach(btn => btn.addEventListener('click', async function() {
-					const pid = Number(this.dataset.id);
-					const orig = this.textContent;
-					this.disabled = true;
-					this.textContent = '⏳ Đang tải...';
-					try {
-						const json = await postAjax('nexxi_pancake_sync_single', { product_id: pid, ...getOptions() });
-						if (json.success && json.data) {
-							updateRowUI(pid, json.data);
-							this.textContent = '✓ Đã xong';
+				paneImages?.addEventListener('click', async function(e) {
+					// 6. Single row: Quét ảnh về Web
+					const syncBtn = e.target.closest('.nxp-btn-sync-one');
+					if (syncBtn) {
+						const pid = Number(syncBtn.dataset.id);
+						const orig = syncBtn.textContent;
+						syncBtn.disabled = true;
+						syncBtn.textContent = '⏳ Đang tải...';
+						try {
+							const json = await postAjax('nexxi_pancake_sync_single', { product_id: pid, ...getOptions() });
+							if (json.success && json.data) {
+								updateRowUI(pid, json.data);
+								syncBtn.textContent = '✓ Đã xong';
+							} else {
+								alert(json.data?.message || 'Lỗi đồng bộ');
+								syncBtn.textContent = orig;
+								syncBtn.disabled = false;
+							}
+						} catch (err) {
+							alert('Lỗi kết nối');
+							syncBtn.textContent = orig;
+							syncBtn.disabled = false;
+						}
+						return;
+					}
+
+					// 7. Manual link SKU button
+					const linkBtn = e.target.closest('.nxp-btn-link-sku');
+					if (linkBtn) {
+						const pid = Number(linkBtn.dataset.id);
+						const input = $('#nxp-manual-sku-' + pid);
+						const sku = (input?.value || '').trim();
+						if (!sku) {
+							alert('Vui lòng nhập mã SKU Pancake.');
+							return;
+						}
+						linkBtn.disabled = true;
+						const json = await postAjax('nexxi_pancake_link_sku', { product_id: pid, pancake_sku: sku });
+						if (json.success) {
+							alert(json.data.message);
+							const skuEl = $('#nxp-wc-sku-' + pid);
+							if (skuEl && json.data.pancake_sku) skuEl.textContent = json.data.pancake_sku;
 						} else {
-							alert(json.data?.message || 'Lỗi đồng bộ');
-							this.textContent = orig;
-							this.disabled = false;
+							alert(json.data?.message || 'Không tìm thấy SKU');
+							linkBtn.disabled = false;
 						}
-					} catch (e) {
-						alert('Lỗi kết nối');
-						this.textContent = orig;
-						this.disabled = false;
-					}
-				}));
-
-				// 7. Manual link SKU button
-				$$('.nxp-btn-link-sku').forEach(btn => btn.addEventListener('click', async function() {
-					const pid = Number(this.dataset.id);
-					const input = $('#nxp-manual-sku-' + pid);
-					const sku = (input?.value || '').trim();
-					if (!sku) {
-						alert('Vui lòng nhập mã SKU Pancake.');
-						return;
-					}
-					this.disabled = true;
-					const json = await postAjax('nexxi_pancake_link_sku', { product_id: pid, pancake_sku: sku });
-					if (json.success) {
-						alert(json.data.message);
-						location.reload();
-					} else {
-						alert(json.data?.message || 'Không tìm thấy SKU');
-						this.disabled = false;
-					}
-				}));
-
-				// 8. Interactive Classification Image Mapper Drawer ("🎨 Set Ảnh Phân Loại")
-				$$('.nxp-btn-open-class').forEach(btn => btn.addEventListener('click', async function() {
-					const pid = Number(this.dataset.id);
-					const drawer = $('#nxp-drawer-' + pid);
-					const body = $('#nxp-drawer-body-' + pid);
-					if (!drawer || !body) return;
-
-					if (drawer.style.display !== 'none') {
-						drawer.style.display = 'none';
-						return;
-					}
-					drawer.style.display = 'table-row';
-					body.innerHTML = '⏳ Đang tải danh sách phân loại & ảnh từ Pancake...';
-
-					const json = await postAjax('nexxi_pancake_get_classifications', { product_id: pid });
-					if (!json.success || !json.data) {
-						body.innerHTML = '<div style="color:#dc2626;font-weight:600;">' + (json.data?.message || 'Không lấy được phân loại') + '</div>';
 						return;
 					}
 
-					const d = json.data;
-					const pClasses = d.pancake_classes || [];
-					const pImages  = d.pancake_images || [];
-					const wcClasses = d.wc_classes || [];
+					// 8. Interactive Classification Image Mapper Drawer ("🎨 Set Ảnh Phân Loại")
+					const openClassBtn = e.target.closest('.nxp-btn-open-class');
+					if (openClassBtn) {
+						const pid = Number(openClassBtn.dataset.id);
+						const drawer = $('#nxp-drawer-' + pid);
+						const body = $('#nxp-drawer-body-' + pid);
+						if (!drawer || !body) return;
 
-					if (!pImages.length) {
-						body.innerHTML = '<div style="color:#b45309;font-weight:600;">Sản phẩm này trên Pancake hiện chưa có ảnh nào. Hãy tải ảnh lên Pancake POS trước rồi bấm Làm mới dữ liệu.</div>';
-						return;
-					}
-
-					let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
-					html += '<div><strong style="font-size:14px;color:#1b2a59;">🎨 Ghép Ảnh Theo Phân Loại Pancake → Phân Loại Website: [' + d.pancake_sku + '] ' + d.product_name + '</strong>';
-					html += '<div style="font-size:12px;color:#64748b;">Chọn ảnh phân loại trên Pancake cho từng nhóm phân loại/màu sắc trên Website rồi bấm Lưu.</div></div>';
-					html += '<button type="button" class="nxp-btn nxp-btn-primary nxp-btn-save-class-map" data-id="' + pid + '">💾 Lưu &amp; Set Ảnh Phân Loại Ngay</button>';
-					html += '</div>';
-
-					// Build candidate choices from Pancake classifications + all Pancake images
-					const choices = [];
-					const seenUrls = new Set();
-					pClasses.forEach(pc => {
-						if (pc.image) {
-							choices.push({ url: pc.image, label: 'Pancake: ' + pc.label });
-							seenUrls.add(pc.image);
+						if (drawer.style.display !== 'none') {
+							drawer.style.display = 'none';
+							return;
 						}
-					});
-					pImages.forEach((u, idx) => {
-						if (!seenUrls.has(u)) {
-							choices.push({ url: u, label: 'Ảnh Pancake #' + (idx + 1) });
-							seenUrls.add(u);
-						}
-					});
+						drawer.style.display = 'table-row';
+						body.innerHTML = '⏳ Đang tải danh sách phân loại & ảnh từ Pancake...';
 
-					wcClasses.forEach(wc => {
-						const defaultUrl = wc.matched_p_img || (choices[0] ? choices[0].url : '');
-						html += '<div class="nxp-map-row" data-wc-class="' + wc.key + '" data-selected-url="' + defaultUrl + '">';
-						html += '<div>';
-						html += '<div style="font-weight:700;color:#1b2a59;font-size:13px;">Phân loại Web: ' + wc.label + '</div>';
-						html += '<div style="font-size:11.5px;color:#64748b;">Áp dụng cho ' + wc.variation_ids.length + ' biến thể size</div>';
-						if (wc.current_img) {
-							html += '<div style="margin-top:4px;font-size:11px;color:#15803d;display:flex;align-items:center;gap:6px;"><img src="' + wc.current_img + '" style="width:24px;height:24px;border-radius:4px;object-fit:cover;"> Đang có ảnh trên Web</div>';
+						const json = await postAjax('nexxi_pancake_get_classifications', { product_id: pid });
+						if (!json.success || !json.data) {
+							body.innerHTML = '<div style="color:#dc2626;font-weight:600;">' + (json.data?.message || 'Không lấy được phân loại') + '</div>';
+							return;
 						}
+
+						const d = json.data;
+						const pClasses = d.pancake_classes || [];
+						const pImages  = d.pancake_images || [];
+						const wcClasses = d.wc_classes || [];
+
+						if (!pImages.length) {
+							body.innerHTML = '<div style="color:#b45309;font-weight:600;">Sản phẩm này trên Pancake hiện chưa có ảnh nào. Hãy tải ảnh lên Pancake POS trước rồi bấm Làm mới dữ liệu.</div>';
+							return;
+						}
+
+						let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+						html += '<div><strong style="font-size:14px;color:#1b2a59;">🎨 Ghép Ảnh Theo Phân Loại Pancake → Phân Loại Website: [' + d.pancake_sku + '] ' + d.product_name + '</strong>';
+						html += '<div style="font-size:12px;color:#64748b;">Chọn ảnh phân loại trên Pancake cho từng nhóm phân loại/màu sắc trên Website rồi bấm Lưu.</div></div>';
+						html += '<button type="button" class="nxp-btn nxp-btn-primary nxp-btn-save-class-map" data-id="' + pid + '">💾 Lưu &amp; Set Ảnh Phân Loại Ngay</button>';
 						html += '</div>';
-						html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-						choices.forEach(ch => {
-							const active = ch.url === defaultUrl ? ' active' : '';
-							html += '<div class="nxp-choice-pill' + active + '" data-url="' + ch.url + '">';
-							html += '<img src="' + ch.url + '" alt="">';
-							html += '<span style="font-size:12px;font-weight:600;color:#1e293b;">' + ch.label + '</span>';
-							html += '</div>';
+
+						const choices = [];
+						const seenUrls = new Set();
+						pClasses.forEach(pc => {
+							if (pc.image) {
+								choices.push({ url: pc.image, label: 'Pancake: ' + pc.label });
+								seenUrls.add(pc.image);
+							}
 						});
-						html += '</div>';
-						html += '</div>';
-					});
-
-					body.innerHTML = html;
-
-					// Bind pill selection
-					$$('.nxp-map-row', body).forEach(row => {
-						$$('.nxp-choice-pill', row).forEach(pill => {
-							pill.addEventListener('click', () => {
-								$$('.nxp-choice-pill', row).forEach(p => p.classList.remove('active'));
-								pill.classList.add('active');
-								row.dataset.selectedUrl = pill.dataset.url;
-							});
-						});
-					});
-
-					// Bind save button
-					$('.nxp-btn-save-class-map', body)?.addEventListener('click', async function() {
-						const saveBtn = this;
-						saveBtn.disabled = true;
-						saveBtn.textContent = '⏳ Đang tải & gán ảnh phân loại...';
-
-						const payload = { product_id: pid };
-						$$('.nxp-map-row', body).forEach(row => {
-							const k = row.dataset.wcClass;
-							const u = row.dataset.selectedUrl;
-							if (k && u) {
-								payload['class_map[' + k + ']'] = u;
+						pImages.forEach((u, idx) => {
+							if (!seenUrls.has(u)) {
+								choices.push({ url: u, label: 'Ảnh Pancake #' + (idx + 1) });
+								seenUrls.add(u);
 							}
 						});
 
-						const res = await postAjax('nexxi_pancake_apply_classifications', payload);
-						if (res.success && res.data) {
-							updateRowUI(pid, res.data);
-							saveBtn.textContent = '✓ Đã gán ảnh cho ' + res.data.variations_img_set + ' biến thể!';
-							setTimeout(() => { drawer.style.display = 'none'; }, 1000);
-						} else {
-							alert(res.data?.message || 'Lỗi lưu ảnh phân loại');
-							saveBtn.disabled = false;
-							saveBtn.textContent = '💾 Lưu & Set Ảnh Phân Loại Ngay';
-						}
-					});
-				}));
+						wcClasses.forEach(wc => {
+							const defaultUrl = wc.matched_p_img || (choices[0] ? choices[0].url : '');
+							html += '<div class="nxp-map-row" data-wc-class="' + wc.key + '" data-selected-url="' + defaultUrl + '">';
+							html += '<div>';
+							html += '<div style="font-weight:700;color:#1b2a59;font-size:13px;">Phân loại Web: ' + wc.label + '</div>';
+							html += '<div style="font-size:11.5px;color:#64748b;">Áp dụng cho ' + wc.variation_ids.length + ' biến thể size</div>';
+							if (wc.current_img) {
+								html += '<div style="margin-top:4px;font-size:11px;color:#15803d;display:flex;align-items:center;gap:6px;"><img src="' + wc.current_img + '" style="width:24px;height:24px;border-radius:4px;object-fit:cover;"> Đang có ảnh trên Web</div>';
+							}
+							html += '</div>';
+							html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+							choices.forEach(ch => {
+								const active = ch.url === defaultUrl ? ' active' : '';
+								html += '<div class="nxp-choice-pill' + active + '" data-url="' + ch.url + '">';
+								html += '<img src="' + ch.url + '" alt="">';
+								html += '<span style="font-size:12px;font-weight:600;color:#1e293b;">' + ch.label + '</span>';
+								html += '</div>';
+							});
+							html += '</div>';
+							html += '</div>';
+						});
+
+						body.innerHTML = html;
+
+						$$('.nxp-map-row', body).forEach(row => {
+							$$('.nxp-choice-pill', row).forEach(pill => {
+								pill.addEventListener('click', () => {
+									$$('.nxp-choice-pill', row).forEach(p => p.classList.remove('active'));
+									pill.classList.add('active');
+									row.dataset.selectedUrl = pill.dataset.url;
+								});
+							});
+						});
+
+						$('.nxp-btn-save-class-map', body)?.addEventListener('click', async function() {
+							const saveBtn = this;
+							saveBtn.disabled = true;
+							saveBtn.textContent = '⏳ Đang tải & gán ảnh phân loại...';
+
+							const payload = { product_id: pid };
+							$$('.nxp-map-row', body).forEach(row => {
+								const k = row.dataset.wcClass;
+								const u = row.dataset.selectedUrl;
+								if (k && u) {
+									payload['class_map[' + k + ']'] = u;
+								}
+							});
+
+							const res = await postAjax('nexxi_pancake_apply_classifications', payload);
+							if (res.success && res.data) {
+								updateRowUI(pid, res.data);
+								saveBtn.textContent = '✓ Đã gán ảnh cho ' + res.data.variations_img_set + ' biến thể!';
+								setTimeout(() => { drawer.style.display = 'none'; }, 1000);
+							} else {
+								alert(res.data?.message || 'Lỗi lưu ảnh phân loại');
+								saveBtn.disabled = false;
+								saveBtn.textContent = '💾 Lưu & Set Ảnh Phân Loại Ngay';
+							}
+						});
+					}
+				});
 			})();
 			</script>
-		</div>
+			</div><!-- /#nxp-pane-images -->
+		</div><!-- /.nexxi-pancake-wrap -->
 		<?php
 	}
 
@@ -4823,8 +4862,9 @@ final class Nexxi_Pancake_Sync_Manager {
 			</div>
 		</div>
 
-		<!-- TAB 1 MULTI-CRITERIA PRODUCT FILTER BAR -->
-		<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="nxp-filter-bar">
+		<!-- TAB 1 MULTI-CRITERIA PRODUCT FILTER BAR + TABLE + PAGINATION (AJAX SPA CONTAINER) -->
+		<div id="nxp-tab1-results" style="transition:opacity 0.15s;">
+		<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="nxp-filter-bar nxp-spa-filter-form" data-target-tab="products">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>">
 			<input type="hidden" name="tab" value="products">
 			<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;">
@@ -4869,7 +4909,7 @@ final class Nexxi_Pancake_Sync_Manager {
 
 				<button type="submit" class="nxp-btn nxp-btn-navy">Lọc Sản Phẩm</button>
 				<?php if ( '' !== $search_q || 'all' !== $web_status || 'all' !== $stock_filter || 'all' !== $img_filter || '' !== $cat_filter || 'default' !== $sort_by ) : ?>
-					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=products' ) ); ?>" class="nxp-btn nxp-btn-outline">Xóa lọc</a>
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . self::MENU_SLUG . '&tab=products' ) ); ?>" class="nxp-btn nxp-btn-outline nxp-spa-page-link" data-target-tab="products">Xóa lọc</a>
 				<?php endif; ?>
 			</div>
 			<div style="font-size:13px;color:#64748b;">
@@ -5066,12 +5106,13 @@ final class Nexxi_Pancake_Sync_Manager {
 						admin_url( 'admin.php' )
 					);
 					?>
-					<a href="<?php echo esc_url( $url ); ?>" class="nxp-btn nxp-btn-sm <?php echo $p_i === $paged ? 'nxp-btn-navy' : 'nxp-btn-outline'; ?>">
+					<a href="<?php echo esc_url( $url ); ?>" class="nxp-btn nxp-btn-sm nxp-spa-page-link <?php echo $p_i === $paged ? 'nxp-btn-navy' : 'nxp-btn-outline'; ?>" data-target-tab="products">
 						<?php echo (int) $p_i; ?>
 					</a>
 				<?php endfor; ?>
 			</div>
 		<?php endif; ?>
+		</div><!-- /#nxp-tab1-results -->
 
 		<script>
 		(function(){
@@ -5278,40 +5319,103 @@ final class Nexxi_Pancake_Sync_Manager {
 				isRunningBatch = false;
 			}
 
-			// Check All toggle
-			$('#nxpProdCheckAll')?.addEventListener('change', function() {
-				$$('.nxp-prod-check').forEach(cb => { cb.checked = this.checked; });
+			const paneProducts = $('#nxp-pane-products') || document;
+			const selectedProductsMap = new Map();
+
+			function syncSelectedProductCheckbox(cb) {
+				if (!cb) return;
+				const key = String(cb.dataset.pancakeSku || cb.dataset.pancakeId || '').trim().toUpperCase();
+				if (!key) return;
+				if (cb.checked) {
+					selectedProductsMap.set(key, {
+						row_dom: cb.dataset.rowDom,
+						wc_id: Number(cb.dataset.wcId || 0),
+						pancake_id: cb.dataset.pancakeId,
+						pancake_sku: cb.dataset.pancakeSku
+					});
+				} else {
+					selectedProductsMap.delete(key);
+				}
+			}
+
+			function restoreSelectedProductCheckboxes() {
+				$$('.nxp-prod-check', paneProducts).forEach(cb => {
+					const key = String(cb.dataset.pancakeSku || cb.dataset.pancakeId || '').trim().toUpperCase();
+					if (key && selectedProductsMap.has(key)) {
+						cb.checked = true;
+					}
+				});
+			}
+
+			function collectSelectedProductItems() {
+				$$('.nxp-prod-check:checked', paneProducts).forEach(cb => syncSelectedProductCheckbox(cb));
+				return Array.from(selectedProductsMap.values());
+			}
+
+			// Event delegation on #nxp-pane-products for checkboxes & filter selects (persists across AJAX page changes)
+			paneProducts.addEventListener('change', function(e) {
+				if (e.target && e.target.id === 'nxpProdCheckAll') {
+					const checked = e.target.checked;
+					$$('.nxp-prod-check', paneProducts).forEach(cb => {
+						cb.checked = checked;
+						syncSelectedProductCheckbox(cb);
+					});
+					return;
+				}
+				if (e.target && e.target.classList && e.target.classList.contains('nxp-prod-check')) {
+					syncSelectedProductCheckbox(e.target);
+					return;
+				}
+				const filterSelect = e.target.closest ? e.target.closest('.nxp-spa-filter-form select') : null;
+				if (filterSelect) {
+					const form = filterSelect.closest('form');
+					if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+				}
 			});
 
-			// Bulk button: Import selected
+			// Event delegation on #nxp-pane-products for per-row buttons
+			paneProducts.addEventListener('click', function(e) {
+				const btnImport = e.target.closest ? e.target.closest('.nxp-btn-import-one') : null;
+				if (btnImport) {
+					e.preventDefault();
+					const tr = $('#nxp-prod-row-' + btnImport.dataset.rowDom);
+					const isExistingOnWeb = tr && Number(tr.dataset.wcId || 0) > 0;
+					runBatchImport([{
+						row_dom: btnImport.dataset.rowDom,
+						pancake_id: btnImport.dataset.pancakeId,
+						pancake_sku: btnImport.dataset.pancakeSku
+					}], 'Đang đồng bộ sản phẩm [' + (btnImport.dataset.pancakeSku || '') + '] từ Pancake về Website...', isExistingOnWeb);
+					return;
+				}
+
+				const btnDelete = e.target.closest ? e.target.closest('.nxp-btn-delete-one') : null;
+				if (btnDelete) {
+					e.preventDefault();
+					runBatchDeleteDisconnect([{
+						row_dom: btnDelete.dataset.rowDom,
+						wc_id: Number(btnDelete.dataset.wcId || 0),
+						pancake_id: btnDelete.dataset.pancakeId,
+						pancake_sku: btnDelete.dataset.pancakeSku
+					}], 'delete_and_disconnect');
+					return;
+				}
+			});
+
+			// Bulk button: Import selected (supports selections across multiple pages)
 			$('#nxpBtnImportSelected')?.addEventListener('click', function() {
-				const selected = $$('.nxp-prod-check:checked').map(cb => ({
-					row_dom: cb.dataset.rowDom,
-					pancake_id: cb.dataset.pancakeId,
-					pancake_sku: cb.dataset.pancakeSku
-				}));
+				const selected = collectSelectedProductItems();
 				runBatchImport(selected, 'Đang đồng bộ ' + selected.length + ' sản phẩm đã chọn từ Pancake về Website...');
 			});
 
 			// Bulk button: Delete from Web & Disconnect selected
 			$('#nxpBtnDeleteDisconnectSelected')?.addEventListener('click', function() {
-				const selected = $$('.nxp-prod-check:checked').map(cb => ({
-					row_dom: cb.dataset.rowDom,
-					wc_id: Number(cb.dataset.wcId || 0),
-					pancake_id: cb.dataset.pancakeId,
-					pancake_sku: cb.dataset.pancakeSku
-				}));
+				const selected = collectSelectedProductItems();
 				runBatchDeleteDisconnect(selected, 'delete_and_disconnect');
 			});
 
 			// Bulk button: Disconnect only selected
 			$('#nxpBtnDisconnectOnlySelected')?.addEventListener('click', function() {
-				const selected = $$('.nxp-prod-check:checked').map(cb => ({
-					row_dom: cb.dataset.rowDom,
-					wc_id: Number(cb.dataset.wcId || 0),
-					pancake_id: cb.dataset.pancakeId,
-					pancake_sku: cb.dataset.pancakeSku
-				}));
+				const selected = collectSelectedProductItems();
 				runBatchDeleteDisconnect(selected, 'disconnect_only');
 			});
 
@@ -5354,17 +5458,6 @@ final class Nexxi_Pancake_Sync_Manager {
 				runBatchDeleteDisconnect(items, 'delete_and_disconnect');
 			});
 
-			// Per-row button: Import / Update 1 product
-			$$('.nxp-btn-import-one').forEach(btn => btn.addEventListener('click', function() {
-				const tr = $('#nxp-prod-row-' + this.dataset.rowDom);
-				const isExistingOnWeb = tr && Number(tr.dataset.wcId || 0) > 0;
-				runBatchImport([{
-					row_dom: this.dataset.rowDom,
-					pancake_id: this.dataset.pancakeId,
-					pancake_sku: this.dataset.pancakeSku
-				}], 'Đang đồng bộ sản phẩm [' + (this.dataset.pancakeSku || '') + '] từ Pancake về Website...', isExistingOnWeb);
-			}));
-
 			// Button: Clean up duplicate products on Website
 			$('#nxpBtnCleanupDuplicates')?.addEventListener('click', async function() {
 				const btn = this;
@@ -5380,8 +5473,8 @@ final class Nexxi_Pancake_Sync_Manager {
 						const d = res.data;
 						if (d.deleted_products > 0) {
 							(d.details || []).forEach(msg => appendLog('✓ ' + msg));
-							progTitle.textContent = '🎉 Đã dọn sạch ' + d.deleted_products + ' sản phẩm bị trùng (' + d.deleted_variations + ' biến thể thừa)! Đang tải lại trang...';
-							setTimeout(() => location.reload(), 1200);
+							progTitle.textContent = '🎉 Đã dọn sạch ' + d.deleted_products + ' sản phẩm bị trùng (' + d.deleted_variations + ' biến thể thừa)!';
+							loadSpaUrlNoReload(window.location.href, 'products', false);
 						} else {
 							appendLog('✓ Không phát hiện sản phẩm nào bị trùng lặp trên Website.');
 							progTitle.textContent = '✓ Danh mục Website sạch sẽ, không có sản phẩm bị trùng!';
@@ -5393,15 +5486,130 @@ final class Nexxi_Pancake_Sync_Manager {
 				btn.disabled = false;
 			});
 
-			// Per-row button: Delete & Disconnect 1 product
-			$$('.nxp-btn-delete-one').forEach(btn => btn.addEventListener('click', function() {
-				runBatchDeleteDisconnect([{
-					row_dom: this.dataset.rowDom,
-					wc_id: Number(this.dataset.wcId || 0),
-					pancake_id: this.dataset.pancakeId,
-					pancake_sku: this.dataset.pancakeSku
-				}], 'delete_and_disconnect');
-			}));
+			// ============================================================================
+			// SPA CONTROLLER: NO-RELOAD TAB SWITCHING & NO-RELOAD PAGINATION / FILTERING
+			// ============================================================================
+			const wrapRoot = $('.nexxi-pancake-wrap') || document;
+			let spaAbortCtrl = null;
+
+			function switchTabNoReload(tabName, pushHistory = true) {
+				const targetTab = tabName === 'images' ? 'images' : 'products';
+				const p1 = $('#nxp-pane-products');
+				const p2 = $('#nxp-pane-images');
+				if (p1) p1.style.display = targetTab === 'products' ? 'block' : 'none';
+				if (p2) p2.style.display = targetTab === 'images' ? 'block' : 'none';
+
+				$$('.nxp-tab-link', wrapRoot).forEach(link => {
+					if (link.dataset.tab === targetTab) {
+						link.classList.add('is-active');
+					} else {
+						link.classList.remove('is-active');
+					}
+				});
+
+				if (pushHistory && window.history && window.history.pushState) {
+					const u = new URL(window.location.href);
+					u.searchParams.set('tab', targetTab);
+					window.history.pushState({ tab: targetTab, url: u.toString() }, '', u.toString());
+				}
+			}
+
+			async function loadSpaUrlNoReload(targetUrl, targetTab = '', pushHistory = true) {
+				try {
+					const u = new URL(targetUrl, window.location.origin);
+					const tab = targetTab || u.searchParams.get('tab') || 'products';
+					switchTabNoReload(tab, false);
+
+					const resultsContainerId = tab === 'images' ? 'nxp-tab2-results' : 'nxp-tab1-results';
+					const currentBox = document.getElementById(resultsContainerId);
+					if (currentBox) {
+						currentBox.style.opacity = '0.45';
+						currentBox.style.pointerEvents = 'none';
+					}
+
+					if (spaAbortCtrl) spaAbortCtrl.abort();
+					spaAbortCtrl = new AbortController();
+
+					const fetchUrl = new URL(ajaxUrl, window.location.origin);
+					u.searchParams.forEach((v, k) => fetchUrl.searchParams.set(k, v));
+					fetchUrl.searchParams.set('action', 'nexxi_pancake_spa_nav');
+					fetchUrl.searchParams.set('tab', tab);
+
+					const res = await fetch(fetchUrl.toString(), {
+						method: 'GET',
+						credentials: 'same-origin',
+						signal: spaAbortCtrl.signal
+					});
+					const html = await res.text();
+					const doc = new DOMParser().parseFromString(html, 'text/html');
+					const newBox = doc.getElementById(resultsContainerId);
+
+					if (newBox && currentBox) {
+						currentBox.innerHTML = newBox.innerHTML;
+						currentBox.style.opacity = '1';
+						currentBox.style.pointerEvents = 'auto';
+						if (tab === 'products') {
+							restoreSelectedProductCheckboxes();
+						}
+					} else if (currentBox) {
+						currentBox.style.opacity = '1';
+						currentBox.style.pointerEvents = 'auto';
+					}
+
+					if (pushHistory && window.history && window.history.pushState) {
+						window.history.pushState({ tab, url: u.toString() }, '', u.toString());
+					}
+				} catch (err) {
+					if (err && err.name === 'AbortError') return;
+					const b1 = document.getElementById('nxp-tab1-results');
+					const b2 = document.getElementById('nxp-tab2-results');
+					if (b1) { b1.style.opacity = '1'; b1.style.pointerEvents = 'auto'; }
+					if (b2) { b2.style.opacity = '1'; b2.style.pointerEvents = 'auto'; }
+				}
+			}
+
+			// Intercept Tab clicks & Pagination clicks across both tabs
+			wrapRoot.addEventListener('click', function(e) {
+				const tabLink = e.target.closest ? e.target.closest('.nxp-tab-link') : null;
+				if (tabLink && tabLink.dataset.tab) {
+					if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+					e.preventDefault();
+					switchTabNoReload(tabLink.dataset.tab, true);
+					return;
+				}
+
+				const pageLink = e.target.closest ? e.target.closest('.nxp-spa-page-link') : null;
+				if (pageLink && pageLink.href) {
+					if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+					e.preventDefault();
+					const tab = pageLink.dataset.targetTab || '';
+					loadSpaUrlNoReload(pageLink.href, tab, true);
+					return;
+				}
+			});
+
+			// Intercept Filter Form submissions across both tabs
+			wrapRoot.addEventListener('submit', function(e) {
+				const form = e.target.closest ? e.target.closest('.nxp-spa-filter-form') : null;
+				if (!form) return;
+				e.preventDefault();
+				const u = new URL(form.action || window.location.href, window.location.origin);
+				const fd = new FormData(form);
+				u.search = '';
+				fd.forEach((val, key) => {
+					u.searchParams.set(key, String(val));
+				});
+				u.searchParams.delete('paged');
+				const tab = form.dataset.targetTab || u.searchParams.get('tab') || 'products';
+				loadSpaUrlNoReload(u.toString(), tab, true);
+			});
+
+			// Support Browser Back / Forward buttons without page reload
+			window.addEventListener('popstate', function() {
+				const u = new URL(window.location.href);
+				const tab = u.searchParams.get('tab') || 'products';
+				loadSpaUrlNoReload(u.toString(), tab, false);
+			});
 
 			// Helper to parse Pancake POS product in browser when fetching all pages
 			function collectRecordImages(rec) {
