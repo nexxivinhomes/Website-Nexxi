@@ -2476,12 +2476,11 @@ final class Nexxi_Pancake_Sync_Manager {
 	 * AJAX endpoint: Fast SPA navigation for pagination & filter changes in Tab 1 and Tab 2 without full page reload.
 	 */
 	public function ajax_spa_nav() {
-		check_ajax_referer( 'nexxi_pancake_ajax', 'nonce' );
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			wp_send_json_error( array( 'message' => 'Không có quyền thực hiện.' ) );
 		}
 
-		$query_str = isset( $_POST['query_string'] ) ? wp_unslash( $_POST['query_string'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$query_str = isset( $_REQUEST['query_string'] ) ? wp_unslash( $_REQUEST['query_string'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$params    = array();
 		if ( is_string( $query_str ) && '' !== $query_str ) {
 			wp_parse_str( ltrim( $query_str, '?' ), $params );
@@ -5515,9 +5514,9 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 
 			async function loadSpaUrlNoReload(targetUrl, targetTab = '', pushHistory = true) {
+				const u = new URL(targetUrl, window.location.origin);
+				const tab = targetTab || u.searchParams.get('tab') || 'products';
 				try {
-					const u = new URL(targetUrl, window.location.origin);
-					const tab = targetTab || u.searchParams.get('tab') || 'products';
 					switchTabNoReload(tab, false);
 
 					const resultsContainerId = tab === 'images' ? 'nxp-tab2-results' : 'nxp-tab1-results';
@@ -5533,6 +5532,7 @@ final class Nexxi_Pancake_Sync_Manager {
 					const fetchUrl = new URL(ajaxUrl, window.location.origin);
 					u.searchParams.forEach((v, k) => fetchUrl.searchParams.set(k, v));
 					fetchUrl.searchParams.set('action', 'nexxi_pancake_spa_nav');
+					fetchUrl.searchParams.set('nonce', nonce);
 					fetchUrl.searchParams.set('tab', tab);
 
 					const res = await fetch(fetchUrl.toString(), {
@@ -5540,7 +5540,15 @@ final class Nexxi_Pancake_Sync_Manager {
 						credentials: 'same-origin',
 						signal: spaAbortCtrl.signal
 					});
-					const html = await res.text();
+					const rawText = await res.text();
+					let html = rawText;
+					try {
+						const parsed = JSON.parse(rawText);
+						if (parsed && parsed.data && typeof parsed.data.html === 'string') {
+							html = parsed.data.html;
+						}
+					} catch (e) {}
+
 					const doc = new DOMParser().parseFromString(html, 'text/html');
 					const newBox = doc.getElementById(resultsContainerId);
 
@@ -5551,20 +5559,15 @@ final class Nexxi_Pancake_Sync_Manager {
 						if (tab === 'products') {
 							restoreSelectedProductCheckboxes();
 						}
-					} else if (currentBox) {
-						currentBox.style.opacity = '1';
-						currentBox.style.pointerEvents = 'auto';
-					}
-
-					if (pushHistory && window.history && window.history.pushState) {
-						window.history.pushState({ tab, url: u.toString() }, '', u.toString());
+						if (pushHistory && window.history && window.history.pushState) {
+							window.history.pushState({ tab, url: u.toString() }, '', u.toString());
+						}
+					} else {
+						window.location.href = u.toString();
 					}
 				} catch (err) {
 					if (err && err.name === 'AbortError') return;
-					const b1 = document.getElementById('nxp-tab1-results');
-					const b2 = document.getElementById('nxp-tab2-results');
-					if (b1) { b1.style.opacity = '1'; b1.style.pointerEvents = 'auto'; }
-					if (b2) { b2.style.opacity = '1'; b2.style.pointerEvents = 'auto'; }
+					window.location.href = u.toString();
 				}
 			}
 
