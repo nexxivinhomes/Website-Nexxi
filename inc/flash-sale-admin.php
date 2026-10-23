@@ -109,60 +109,86 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 	$combined = nexxi_kids_get_program_sale( $product, 'combined' );
 	$wc_sale  = $combined['on_sale'] ? (float) $combined['sale'] : 0.0;
 
-	$apply_to_item = static function ( WC_Product $item ) use ( $wc_sale, $regular_override ) {
-		$item_reg = (float) $item->get_regular_price( 'edit' );
-		if ( $regular_override > 0 ) {
-			$item_reg = (float) $regular_override;
-			$item->set_regular_price( (string) round( $item_reg ) );
-		}
-		if ( $wc_sale > 0 && $item_reg > 0 && $wc_sale < $item_reg ) {
-			$item->set_sale_price( (string) round( $wc_sale ) );
-			$item->set_price( (string) round( $wc_sale ) );
-		} else {
-			$item->set_sale_price( '' );
-			$item->set_date_on_sale_from( null );
-			$item->set_date_on_sale_to( null );
-			if ( $item_reg > 0 ) {
-				$item->set_price( (string) round( $item_reg ) );
-			}
-		}
-		$item->save();
-	};
+	$prev_bulk = ! empty( $GLOBALS['nexxi_bulk_syncing'] );
+	$GLOBALS['nexxi_bulk_syncing'] = true;
 
 	if ( $product->is_type( 'variable' ) ) {
 		foreach ( $product->get_children() as $child_id ) {
-			$variation = wc_get_product( $child_id );
-			if ( $variation ) {
-				$apply_to_item( $variation );
+			$child_id = (int) $child_id;
+			$item_reg = (float) get_post_meta( $child_id, '_regular_price', true );
+			if ( $regular_override > 0 ) {
+				$item_reg = (float) $regular_override;
+				update_post_meta( $child_id, '_regular_price', (string) round( $item_reg ) );
+			}
+			if ( $wc_sale > 0 && $item_reg > 0 && $wc_sale < $item_reg ) {
+				$sale_str = (string) round( $wc_sale );
+				update_post_meta( $child_id, '_sale_price', $sale_str );
+				update_post_meta( $child_id, '_price', $sale_str );
+			} else {
+				update_post_meta( $child_id, '_sale_price', '' );
+				delete_post_meta( $child_id, '_sale_price_dates_from' );
+				delete_post_meta( $child_id, '_sale_price_dates_to' );
+				if ( $item_reg > 0 ) {
+					update_post_meta( $child_id, '_price', (string) round( $item_reg ) );
+				}
 			}
 		}
-		WC_Product_Variable::sync( $pid );
-		$product->save();
+		if ( class_exists( 'WC_Product_Variable' ) ) {
+			WC_Product_Variable::sync( $pid );
+		}
 	} else {
-		$apply_to_item( $product );
+		$item_reg = (float) $product->get_regular_price( 'edit' );
+		if ( $regular_override > 0 ) {
+			$item_reg = (float) $regular_override;
+			$product->set_regular_price( (string) round( $item_reg ) );
+		}
+		if ( $wc_sale > 0 && $item_reg > 0 && $wc_sale < $item_reg ) {
+			$product->set_sale_price( (string) round( $wc_sale ) );
+			$product->set_price( (string) round( $wc_sale ) );
+		} else {
+			$product->set_sale_price( '' );
+			$product->set_date_on_sale_from( null );
+			$product->set_date_on_sale_to( null );
+			if ( $item_reg > 0 ) {
+				$product->set_price( (string) round( $item_reg ) );
+			}
+		}
+		$product->save();
 	}
 
+	$GLOBALS['nexxi_bulk_syncing'] = $prev_bulk;
 	wc_delete_product_transients( $pid );
 	return true;
 }
 
-/** Flush WooCommerce on-sale cache and page caches so homepage & Flash Sale page reflect changes immediately. */
+/** Flush WooCommerce on-sale cache and page caches once at the end of the request so bulk operations never stall. */
 function nexxi_kids_flush_sale_cache() {
-	delete_transient( 'wc_products_onsale' );
-	if ( class_exists( 'WC_Cache_Helper' ) ) {
-		WC_Cache_Helper::get_transient_version( 'product', true );
+	static $scheduled = false;
+	if ( $scheduled ) {
+		return;
 	}
-	if ( function_exists( 'wp_cache_flush' ) ) {
-		wp_cache_flush();
-	}
-	if ( class_exists( 'LiteSpeed_Cache_API' ) && method_exists( 'LiteSpeed_Cache_API', 'purge_all' ) ) {
-		LiteSpeed_Cache_API::purge_all();
-	}
-	do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	$scheduled = true;
+	add_action(
+		'shutdown',
+		static function () {
+			delete_transient( 'wc_products_onsale' );
+			if ( class_exists( 'WC_Cache_Helper' ) ) {
+				WC_Cache_Helper::get_transient_version( 'product', true );
+			}
+			if ( class_exists( 'LiteSpeed_Cache_API' ) && method_exists( 'LiteSpeed_Cache_API', 'purge_all' ) ) {
+				LiteSpeed_Cache_API::purge_all();
+			}
+			do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+		},
+		99
+	);
 }
 
-/** When any variation or variable product is saved in WooCommerce, sync sale price across variations and clear caches. */
+/** When any variation or variable product is saved manually in WooCommerce, sync sale price across variations and clear caches. */
 function nexxi_kids_on_variation_saved( $variation_id ) {
+	if ( ! empty( $GLOBALS['nexxi_bulk_syncing'] ) ) {
+		return;
+	}
 	$parent_id = wp_get_post_parent_id( $variation_id );
 	if ( ! $parent_id ) { return; }
 	$parent = function_exists( 'wc_get_product' ) ? wc_get_product( $parent_id ) : null;
