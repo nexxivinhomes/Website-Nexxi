@@ -513,12 +513,15 @@ function nexxi_studio_apply_colors( $html ) {
 	return $html;
 }
 
-/** Stitch stylesheet tag; inlined with the brand colours when they were changed. */
+/** Stitch stylesheet tag; always inlined with data-no-optimize so LiteSpeed Cache never delays or breaks it. */
 function nexxi_studio_stylesheet_tag( $url, $file ) {
+	if ( ! is_readable( $file ) ) { return '<link data-no-optimize="1" rel="stylesheet" href="' . esc_url( $url ) . '">'; }
+	$css = file_get_contents( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 	$map = nexxi_studio_color_map();
-	if ( ! $map || ! is_readable( $file ) ) { return '<link rel="stylesheet" href="' . esc_url( $url ) . '">'; }
-	$css = str_ireplace( array_keys( $map ), array_values( $map ), file_get_contents( $file ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-	return '<style id="nexxi-stitch-css">' . $css . '</style>';
+	if ( $map ) {
+		$css = str_ireplace( array_keys( $map ), array_values( $map ), $css );
+	}
+	return '<style id="nexxi-stitch-css" data-no-optimize="1">' . $css . '</style>';
 }
 
 /* ------------------------------------------------------------------ fonts & custom font uploads */
@@ -806,9 +809,9 @@ function nexxi_studio_apply_fonts( $html ) {
 	$inject = '';
 	if ( $google_specs ) {
 		$families = implode( '&family=', array_values( $google_specs ) );
-		$inject .= '<link id="nexxi-studio-google-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' . esc_attr( $families ) . '&display=swap">';
+		$inject .= '<link id="nexxi-studio-google-fonts" data-no-optimize="1" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' . esc_attr( $families ) . '&display=swap">';
 	}
-	$inject .= '<style id="nexxi-studio-fonts">' . $css . '</style>';
+	$inject .= '<style id="nexxi-studio-fonts" data-no-optimize="1">' . $css . '</style>';
 
 	$head_end = stripos( $html, '</head>' );
 	if ( false !== $head_end ) {
