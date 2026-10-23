@@ -128,16 +128,5 @@ function nexxi_kids_pages_notice() {
 		}
 		echo '<div class="notice notice-success is-dismissible"><p><strong>NEXXI Kids:</strong> đã tạo các trang còn thiếu: ' . wp_kses_post( implode( ', ', $links ) ) . '. Mẹ có thể sửa nội dung trong trình soạn thảo, khung giao diện vẫn theo thiết kế NEXXI.</p></div>';
 	}
-	// Pages the theme links to but which are not published: the owner decides.
-	$links = array();
-	foreach ( array_keys( nexxi_kids_default_pages() ) as $slug ) {
-		$found = get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => array( 'draft', 'pending', 'private', 'future' ), 'numberposts' => 1, 'suppress_filters' => true ) );
-		if ( $found && ! get_posts( array( 'post_type' => 'page', 'name' => $slug, 'post_status' => 'publish', 'numberposts' => 1, 'fields' => 'ids', 'suppress_filters' => true ) ) ) {
-			$links[] = '<a href="' . esc_url( get_edit_post_link( $found[0]->ID ) ) . '">' . esc_html( get_the_title( $found[0] ) ) . '</a> (/' . esc_html( $slug ) . '/)';
-		}
-	}
-	if ( $links ) {
-		echo '<div class="notice notice-warning"><p><strong>NEXXI Kids:</strong> các trang sau đang được menu/footer liên kết nhưng <b>chưa xuất bản</b> nên khách sẽ thấy lỗi 404: ' . wp_kses_post( implode( ', ', $links ) ) . '. Mẹ mở trang và bấm <b>Xuất bản</b> nhé.</p></div>';
-	}
 }
 add_action( 'admin_notices', 'nexxi_kids_pages_notice' );

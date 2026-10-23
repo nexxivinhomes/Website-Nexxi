@@ -215,10 +215,25 @@ function nexxi_kids_normalize_variable_sale( WC_Product $product ) {
 	}
 }
 
-/** Lowest / highest display prices (regular prices for strike-through), read live from variations. */
+/** Lowest / highest display prices (regular prices for strike-through), with fast per-request cache. */
 function nexxi_kids_price_range( WC_Product $product ) {
+	static $price_cache = array();
+	$pid = $product->get_id();
+	if ( isset( $price_cache[ $pid ] ) ) {
+		return $price_cache[ $pid ];
+	}
+
 	if ( $product->is_type( 'variable' ) ) {
-		nexxi_kids_normalize_variable_sale( $product );
+		$prices = $product->get_variation_prices( true );
+		if ( ! empty( $prices['price'] ) ) {
+			$min     = (float) min( $prices['price'] );
+			$max     = (float) max( $prices['price'] );
+			$regular = ! empty( $prices['regular_price'] ) ? (float) max( $prices['regular_price'] ) : $min;
+			if ( $min > 0 ) {
+				$price_cache[ $pid ] = array( 'min' => $min, 'max' => $max, 'regular' => $regular > 0 ? $regular : $min );
+				return $price_cache[ $pid ];
+			}
+		}
 		$variations = class_exists( 'Nexxi_Kids_Catalog' ) ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
 		if ( $variations ) {
 			$min     = null;
@@ -241,18 +256,17 @@ function nexxi_kids_price_range( WC_Product $product ) {
 				}
 			}
 			if ( null !== $min ) {
-				return array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
+				$price_cache[ $pid ] = array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
+				return $price_cache[ $pid ];
 			}
 		}
-		$prices  = $product->get_variation_prices( true );
-		$min     = $prices['price'] ? (float) min( $prices['price'] ) : 0.0;
-		$max     = $prices['price'] ? (float) max( $prices['price'] ) : 0.0;
-		$regular = $prices['regular_price'] ? (float) max( $prices['regular_price'] ) : 0.0;
-		return array( 'min' => $min, 'max' => $max, 'regular' => $regular );
+		$price_cache[ $pid ] = array( 'min' => 0.0, 'max' => 0.0, 'regular' => 0.0 );
+		return $price_cache[ $pid ];
 	}
 	$price   = (float) wc_get_price_to_display( $product );
 	$regular = (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) );
-	return array( 'min' => $price, 'max' => $price, 'regular' => $regular );
+	$price_cache[ $pid ] = array( 'min' => $price, 'max' => $price, 'regular' => $regular > 0 ? $regular : $price );
+	return $price_cache[ $pid ];
 }
 
 /** Largest discount percentage across the product (0 when not on sale). */
@@ -478,67 +492,52 @@ function nexxi_kids_flash_sale_parent_ids( $include_inactive_timer = false ) {
 	if ( ! $include_inactive_timer && ! nexxi_kids_is_flash_sale_live() ) {
 		return array();
 	}
+	static $cached_fs_ids = null;
+	if ( null !== $cached_fs_ids ) {
+		return $cached_fs_ids;
+	}
 	global $wpdb;
 	$fs_meta_ids = $wpdb->get_col(
 		"SELECT p.ID FROM {$wpdb->posts} p
 		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_is_flash_sale'
 		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	$all = array_values( array_unique( array_map( 'absint', array_merge( (array) nexxi_kids_all_sale_parent_ids(), (array) $fs_meta_ids ) ) ) );
-	$out = array();
-	foreach ( $all as $id ) {
-		if ( ! $id ) { continue; }
-		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
-		if ( ! $prod ) { continue; }
-		$prog = nexxi_kids_get_program_sale( $prod, 'flash_admin' );
-		if ( $prog['on_sale'] ) {
-			$out[] = $id;
-		}
-	}
-	return $out;
+	$cached_fs_ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $fs_meta_ids ) ) ) );
+	return $cached_fs_ids;
 }
 
 /**
  * Resolve parent product IDs that belong to the Regular Product Discount program (🏷️ Giảm Giá SP).
  */
 function nexxi_kids_regular_sale_parent_ids() {
+	static $cached_reg_ids = null;
+	if ( null !== $cached_reg_ids ) {
+		return $cached_reg_ids;
+	}
 	global $wpdb;
 	$meta_ids = $wpdb->get_col(
 		"SELECT p.ID FROM {$wpdb->posts} p
 		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_has_prod_sale'
 		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	$out = array();
-	foreach ( (array) $meta_ids as $id ) {
-		$id   = absint( $id );
-		$prod = function_exists( 'wc_get_product' ) ? wc_get_product( $id ) : null;
-		if ( ! $prod ) { continue; }
-		$prog = nexxi_kids_get_program_sale( $prod, 'regular_admin' );
-		if ( $prog['on_sale'] ) {
-			$out[] = $id;
-		}
-	}
-	return $out;
+	$cached_reg_ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $meta_ids ) ) ) );
+	return $cached_reg_ids;
 }
 
 /**
  * Resolve all parent product IDs that currently have an active sale price on
- * either the product itself or any of its variations, even if WooCommerce's
- * wc_products_onsale transient has not refreshed yet.
+ * either the product itself or any of its variations.
  */
 function nexxi_kids_all_sale_parent_ids() {
-	global $wpdb;
-	$ids    = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
-	$direct = $wpdb->get_col(
-		"SELECT DISTINCT CASE WHEN p.post_parent > 0 THEN p.post_parent ELSE p.ID END
-		 FROM {$wpdb->posts} p
-		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_sale_price'
-		 WHERE p.post_type IN ('product', 'product_variation')
-		   AND p.post_status = 'publish'
-		   AND pm.meta_value != ''
-		   AND CAST(pm.meta_value AS DECIMAL(12,2)) > 0"
-	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	return nexxi_kids_sale_parent_ids( array_merge( (array) $ids, (array) $direct ) );
+	static $cached_all_ids = null;
+	if ( null !== $cached_all_ids ) {
+		return $cached_all_ids;
+	}
+	$fs_ids  = nexxi_kids_flash_sale_parent_ids( true );
+	$reg_ids = nexxi_kids_regular_sale_parent_ids();
+	$wc_ids  = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
+	$cached_all_ids = nexxi_kids_sale_parent_ids( array_merge( (array) $fs_ids, (array) $reg_ids, (array) $wc_ids ) );
+	return $cached_all_ids;
 }
 
 /** Map product/variation IDs to unique published parent product IDs. */
