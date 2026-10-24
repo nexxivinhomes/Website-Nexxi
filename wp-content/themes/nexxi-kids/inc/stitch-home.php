@@ -8,19 +8,8 @@ function nexxi_kids_home_category_slugs() {
 }
 
 function nexxi_kids_stitch_home( $html ) {
-	// Hero background slider overlay & navigation dots.
-	$overlay = nexxi_studio_opt( 'home-hero__bg_overlay', 'balanced' );
-	if ( ! in_array( $overlay, array( 'balanced', 'light', 'clear', 'strong' ), true ) ) {
-		$overlay = 'balanced';
-	}
-	$html = nexxi_dom_set_attr( $html, 'data-nexxi-hero-slider', 'data-overlay', $overlay );
 	if ( nexxi_studio_changed( 'home-hero__bg5' ) ) {
 		$html = str_replace( '<div class="nexxi-hero-bg__slide is-empty" data-hero-slide="4">', '<div class="nexxi-hero-bg__slide" data-hero-slide="4">', $html );
-	}
-	$hero_el = nexxi_dom_locate( $html, 'data-nxr="home-hero"' );
-	if ( $hero_el ) {
-		$dots_html = '<div class="nexxi-hero-bg__nav relative z-20 flex items-center justify-center gap-2 pt-space-md" data-nexxi-hero-dots aria-label="Chuyển ảnh nền banner"></div>';
-		$html      = substr( $html, 0, $hero_el['inner_end'] ) . $dots_html . substr( $html, $hero_el['inner_end'] );
 	}
 	// Hero CTAs, category cards and lookbook buttons.
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-shop', 'href', nexxi_kids_shop_url() );

@@ -94,21 +94,6 @@ function nexxi_studio_customize( WP_Customize_Manager $wp ) {
 			}
 			$group = $label;
 			nexxi_studio_add_field( $wp, $key, $field, $section, $priority++ );
-			if ( 'home-hero__bg5' === $key ) {
-				$wp->add_setting( 'nexxi_studio[home-hero__bg_overlay]', array( 'type' => 'theme_mod', 'default' => 'balanced', 'sanitize_callback' => 'sanitize_key', 'transport' => 'postMessage' ) );
-				$wp->add_control( 'nexxi_studio[home-hero__bg_overlay]', array(
-					'label'   => 'Độ phủ mờ nền chữ trên ảnh Banner',
-					'section' => $section,
-					'type'    => 'select',
-					'choices' => array(
-						'balanced' => 'Mặc định (Hài hòa – Ảnh rõ, chữ bên trái sắc nét)',
-						'light'    => 'Rõ ảnh nền hơn (Lớp phủ mỏng)',
-						'clear'    => 'Hiển thị 100% ảnh gốc (Không phủ mờ)',
-						'strong'   => 'Phủ sáng đậm hơn',
-					),
-					'priority' => $priority++,
-				) );
-			}
 		}
 
 		// Region specific extras.

@@ -751,24 +751,14 @@
     });
   };
 
-  /* ---------- Exact 0px Gap Between Fixed Header & Main/Banner ---------- */
+  /* ---------- Exact 0px Gap Between Sticky Header & Main/Banner ---------- */
   const syncHeaderOffset = () => {
     const header = $('body > header');
     const main = $('body > header + main') || $('main');
     if (!header || !main) return;
-    const apply = () => {
-      const h = Math.round(header.getBoundingClientRect().height);
-      if (h > 0) {
-        document.documentElement.style.setProperty('--nexxi-header-h', `${h}px`);
-        main.style.setProperty('padding-top', `${h}px`, 'important');
-      }
-    };
-    apply();
-    if (window.ResizeObserver) {
-      new ResizeObserver(apply).observe(header);
-    }
-    window.addEventListener('resize', apply, {passive: true});
-    window.addEventListener('load', apply, {once: true});
+    header.style.setProperty('position', 'sticky', 'important');
+    main.style.setProperty('padding-top', '0px', 'important');
+    main.style.setProperty('margin-top', '0px', 'important');
   };
 
   syncHeaderOffset();

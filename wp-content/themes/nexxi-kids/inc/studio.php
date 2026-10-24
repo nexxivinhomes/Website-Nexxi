@@ -123,6 +123,13 @@ function nexxi_studio_fields() {
 	if ( null === $fields ) {
 		$file = get_template_directory() . '/inc/studio-fields.php';
 		$generated = is_readable( $file ) ? include $file : array();
+		if ( is_array( $generated ) ) {
+			foreach ( array_keys( $generated ) as $gk ) {
+				if ( 0 === strpos( $gk, 'home-hero__' ) ) {
+					unset( $generated[ $gk ] );
+				}
+			}
+		}
 		$fields = array_merge( nexxi_studio_manual_fields(), is_array( $generated ) ? $generated : array() );
 	}
 	return $fields;
