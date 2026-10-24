@@ -877,5 +877,166 @@ body.nexxi-mob-drawer-open {
   border-color: #fd6a49 !important;
 }
 
+/* ==========================================================================
+   Hero Background Banner Slideshow (5s/slide behind text & right photo frame)
+   ========================================================================== */
+.nexxi-hero-section {
+  position: relative;
+  overflow: hidden;
+}
+.nexxi-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.nexxi-hero-bg__slides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.nexxi-hero-bg__slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 5.6s ease-out;
+  will-change: opacity, transform;
+  z-index: 1;
+}
+.nexxi-hero-bg__slide.is-active {
+  opacity: 1;
+  transform: scale(1);
+  z-index: 2;
+}
+.nexxi-hero-bg__slide.is-empty {
+  display: none !important;
+}
+.nexxi-hero-bg__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 28%;
+  display: block;
+}
+.nexxi-hero-bg__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(
+    90deg,
+    rgba(251, 249, 245, 0.84) 0%,
+    rgba(251, 249, 245, 0.70) 44%,
+    rgba(251, 249, 245, 0.28) 74%,
+    rgba(251, 249, 245, 0.14) 100%
+  );
+  transition: background 0.35s ease;
+}
+.nexxi-hero-bg[data-overlay="light"] .nexxi-hero-bg__overlay {
+  background: linear-gradient(
+    90deg,
+    rgba(251, 249, 245, 0.65) 0%,
+    rgba(251, 249, 245, 0.45) 45%,
+    rgba(251, 249, 245, 0.12) 78%,
+    rgba(251, 249, 245, 0.05) 100%
+  );
+}
+.nexxi-hero-bg[data-overlay="clear"] .nexxi-hero-bg__overlay {
+  background: transparent;
+}
+.nexxi-hero-bg[data-overlay="strong"] .nexxi-hero-bg__overlay {
+  background: linear-gradient(
+    90deg,
+    rgba(251, 249, 245, 0.92) 0%,
+    rgba(251, 249, 245, 0.82) 50%,
+    rgba(251, 249, 245, 0.48) 82%,
+    rgba(251, 249, 245, 0.32) 100%
+  );
+}
+@media (max-width: 1023px) {
+  .nexxi-hero-bg__overlay {
+    background: linear-gradient(
+      180deg,
+      rgba(251, 249, 245, 0.84) 0%,
+      rgba(251, 249, 245, 0.72) 55%,
+      rgba(251, 249, 245, 0.32) 100%
+    );
+  }
+  .nexxi-hero-bg[data-overlay="light"] .nexxi-hero-bg__overlay {
+    background: linear-gradient(
+      180deg,
+      rgba(251, 249, 245, 0.66) 0%,
+      rgba(251, 249, 245, 0.48) 55%,
+      rgba(251, 249, 245, 0.16) 100%
+    );
+  }
+  .nexxi-hero-bg[data-overlay="clear"] .nexxi-hero-bg__overlay {
+    background: transparent;
+  }
+}
+.nexxi-hero-section h1 {
+  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.9);
+}
+.nexxi-hero-section [data-nxe="home-hero__t7"] {
+  text-shadow: 0 1px 10px rgba(255, 255, 255, 0.92);
+  color: #25262e;
+  font-weight: 500;
+}
+.nexxi-hero-section [data-nxe="home-hero__t12"] {
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.9);
+}
+.nexxi-hero-bg__nav {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 14px;
+}
+.nexxi-hero-bg__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(3, 20, 68, 0.22);
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+  box-shadow: 0 2px 6px rgba(3, 20, 68, 0.12);
+}
+.nexxi-hero-bg__dot:hover {
+  transform: scale(1.12);
+  background: #ffffff;
+}
+.nexxi-hero-bg__dot.is-active {
+  width: 36px;
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(174, 49, 21, 0.45);
+}
+.nexxi-hero-bg__dot.is-active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(90deg, #ae3115, #fd6a49);
+  border-radius: 999px;
+  transform-origin: left center;
+  animation: nexxiHeroDotProgress 5s linear forwards;
+}
+@keyframes nexxiHeroDotProgress {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+
 
 
