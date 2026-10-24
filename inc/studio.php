@@ -460,12 +460,13 @@ function nexxi_studio_socials() {
 	);
 }
 
-/** Social buttons replace the three decorative footer icons once at least one link is set. */
+/** Render the Bộ Công Thương badge in the footer brand column (plus any configured social links). */
 function nexxi_studio_footer_social( $html ) {
 	$needle = '<div class="flex items-center gap-space-sm pt-space-xs">';
 	$footer = nexxi_dom_locate( $html, '<footer' );
 	if ( ! $footer || false === strpos( substr( $html, $footer['start'], $footer['end'] - $footer['start'] ), $needle ) ) { return $html; }
 	$html = nexxi_dom_set_attr( $html, $needle, 'data-nxr', 'footer-social' );
+	$bct_badge = '<a href="https://online.gov.vn/nen-tang/7e10ce7d-19e7-47bc-a785-5cf68d3a1247" target="_blank" rel="noopener noreferrer" aria-label="Đã thông báo Bộ Công Thương" class="inline-block hover:opacity-90 transition-opacity"><img src="{{STITCH_ASSET}}/images/da-thong-bao-bct.png" alt="Đã thông báo Bộ Công Thương" class="h-12 w-auto object-contain" style="height:48px;width:auto;"></a>';
 	$buttons = '';
 	foreach ( nexxi_studio_socials() as $key => $social ) {
 		$value = trim( nexxi_studio_opt( 'social_' . $key ) );
@@ -473,7 +474,7 @@ function nexxi_studio_footer_social( $html ) {
 		if ( 'zalo' === $key && preg_match( '~^[\d\s.+]+$~', $value ) ) { $value = 'https://zalo.me/' . preg_replace( '~\D~', '', $value ); }
 		$buttons .= '<a class="w-9 h-9 rounded-full bg-surface-container-lowest flex items-center justify-center text-secondary shadow-sm hover:scale-105 transition-all" href="' . esc_url( $value ) . '" target="_blank" rel="noopener" aria-label="' . esc_attr( $social[0] ) . '">' . $social[1] . '</a>';
 	}
-	return $buttons ? nexxi_dom_set_inner( $html, 'data-nxr="footer-social"', $buttons ) : $html;
+	return nexxi_dom_set_inner( $html, 'data-nxr="footer-social"', $bct_badge . $buttons );
 }
 
 /* ------------------------------------------------------------------ colours */
