@@ -42,7 +42,7 @@ function nexxi_kids_default_pages() {
 		'lien-he' => array(
 			'title'   => 'Liên Hệ Với NEXXI',
 			'content' => '<h2>Câu hỏi thường gặp</h2>
-<h3>Bao lâu thì mẹ nhận được hàng?</h3><p>Nội thành Hà Nội và TP.HCM 1–2 ngày, các tỉnh thành khác 2–4 ngày làm việc.</p>
+<h3>Bao lâu thì mẹ nhận được hàng?</h3><p>Nội thành TP.HCM: 1–2 ngày làm việc, các tỉnh thành khác: 3–5 ngày làm việc.</p>
 <h3>Bé mặc không vừa thì làm sao?</h3><p>Ba mẹ được hỗ trợ đổi size hoặc đổi mẫu trong vòng 15 ngày kể từ khi nhận hàng, sản phẩm còn nguyên tem mác.</p>
 <h3>NEXXI có kiểm hàng trước khi thanh toán không?</h3><p>Có, ba mẹ được mở kiện hàng kiểm tra sản phẩm trước khi thanh toán cho shipper.</p>',
 		),
@@ -51,13 +51,13 @@ function nexxi_kids_default_pages() {
 			'content' => '<h2>Hỗ trợ đổi size, đổi mẫu trong vòng 15 ngày</h2>
 <p>Kể từ ngày nhận hàng, ba mẹ có 15 ngày để đổi size hoặc đổi sang mẫu khác. NEXXI cam kết hoàn tiền 100% nếu sản phẩm nhận được không giống với mô tả.</p>
 <h3>Điều kiện đổi hàng</h3><ul><li>Sản phẩm còn nguyên tem mác, chưa qua giặt tẩy.</li><li>Không có mùi lạ, vết bẩn hoặc hư hỏng do sử dụng.</li><li>Kèm hóa đơn hoặc mã đơn hàng.</li></ul>
-<h3>Quy trình</h3><ol><li>Liên hệ hotline/Zalo 0942 958 091 hoặc gửi lời nhắn tại trang Liên hệ.</li><li>Đóng gói sản phẩm cần đổi theo hướng dẫn của tư vấn viên NEXXI.</li><li>Nhận sản phẩm đổi mới trong 2–4 ngày làm việc.</li></ol>',
+<h3>Quy trình</h3><ol><li>Liên hệ hotline/Zalo 0942 958 091 hoặc gửi lời nhắn tại trang Liên hệ.</li><li>Đóng gói sản phẩm cần đổi theo hướng dẫn của tư vấn viên NEXXI.</li><li>Nhận sản phẩm đổi mới (Nội thành TP.HCM: 1–2 ngày làm việc, các tỉnh thành khác: 3–5 ngày làm việc).</li></ol>',
 		),
 		'van-chuyen' => array(
 			'title'   => 'Chính Sách Vận Chuyển',
 			'content' => '<h2>Phí giao hàng</h2>
 <p><strong>NEXXI miễn phí ship toàn quốc</strong> cho các đơn hàng đặt mua tại website.</p>
-<h2>Thời gian giao hàng</h2><ul><li>Nội thành Hà Nội, TP.HCM: 1–2 ngày làm việc.</li><li>Các tỉnh thành khác: 2–4 ngày làm việc.</li></ul>
+<h2>Thời gian giao hàng</h2><ul><li>Nội thành TP.HCM: 1–2 ngày làm việc.</li><li>Các tỉnh thành khác: 3–5 ngày làm việc.</li></ul>
 <h2>Đóng gói</h2><p>Mỗi đơn hàng đều được NEXXI kiểm tra kỹ lưỡng và đóng gói chỉn chu trước khi giao đến tay ba mẹ và bé yêu.</p>',
 		),
 		'yeu-thich' => array(
