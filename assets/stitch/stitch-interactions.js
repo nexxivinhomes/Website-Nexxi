@@ -674,12 +674,36 @@
     }
 
     const intervalMs = Number(slider.getAttribute('data-interval')) || 5000;
-    const allSlides = $$('.nexxi-hero-bg__slide', slider);
+    const slidesContainer = $('.nexxi-hero-bg__slides', slider) || slider;
     let activeSlides = [];
     let currentIndex = 0;
     let timer = null;
 
-    const getValidSlides = () => allSlides.filter(slide => {
+    const applySlideOrder = () => {
+      const rawOrder = (slider.getAttribute('data-order') || '1,2,3,4,5').split(',');
+      const currentNodes = $$('.nexxi-hero-bg__slide', slidesContainer);
+      const bySlot = new Map();
+      currentNodes.forEach((node, idx) => {
+        const slot = Number(node.getAttribute('data-hero-slot')) || (idx + 1);
+        bySlot.set(slot, node);
+      });
+      const ordered = [];
+      rawOrder.forEach(part => {
+        const slot = Number(part.trim());
+        if (bySlot.has(slot)) {
+          ordered.push(bySlot.get(slot));
+          bySlot.delete(slot);
+        }
+      });
+      bySlot.forEach(node => ordered.push(node));
+      ordered.forEach((node, idx) => {
+        node.setAttribute('data-hero-slide', String(idx));
+        slidesContainer.appendChild(node);
+      });
+      return ordered;
+    };
+
+    const getValidSlides = () => applySlideOrder().filter(slide => {
       const img = $('img', slide);
       const src = (img?.getAttribute('src') || '').trim();
       const valid = src !== '' && !src.endsWith('/');

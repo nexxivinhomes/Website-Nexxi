@@ -16,6 +16,7 @@
 	}
 	function value(key, v) {
 		v = (v || '').trim();
+		if (key.indexOf('home-hero__bg') === 0) { return v; }
 		return v === '' ? (D.defaults[key] || '') : v;
 	}
 	document.querySelectorAll('[data-nxe]').forEach(function (el) {
@@ -44,10 +45,11 @@
 			}
 		});
 	});
-	setting('home-hero__bg_overlay', function (v) {
+	setting('home-hero__order', function (v) {
 		var slider = document.querySelector('[data-nexxi-hero-slider]');
 		if (slider) {
-			slider.setAttribute('data-overlay', v || 'balanced');
+			slider.setAttribute('data-order', v || '1,2,3,4,5');
+			document.dispatchEvent(new CustomEvent('nexxi:hero-slider-refresh', { detail: { orderChanged: true } }));
 		}
 	});
 	document.querySelectorAll('[data-nxp]').forEach(function (el) {
