@@ -34,8 +34,14 @@
 .nexxi-stitch-commerce .woocommerce .woocommerce-info,
 .nexxi-stitch-commerce .woocommerce .woocommerce-message { border-top-color: #fd6a49; border-radius: 16px; }
 .nexxi-stitch-commerce .woocommerce form .form-row input.input-text,
+.nexxi-stitch-commerce .woocommerce form .form-row select,
+.nexxi-stitch-commerce .woocommerce form .form-row .select2-container .select2-selection--single,
 .nexxi-stitch-commerce .woocommerce form .form-row textarea,
-.nexxi-stitch-commerce .woocommerce .quantity .qty { background: #f5f3ef; border: 1px solid #e4e2de; border-radius: 12px; min-height: 44px; padding: 8px 12px; }
+.nexxi-stitch-commerce .woocommerce .quantity .qty { width: 100%; background: #f5f3ef; border: 1px solid #e4e2de; border-radius: 14px; min-height: 46px; padding: 10px 14px; font-size: 14px; color: #1b1c1a; box-sizing: border-box; }
+.nexxi-stitch-commerce .woocommerce form .form-row #billing_address_2_field,
+.nexxi-stitch-commerce .woocommerce form .form-row #shipping_address_2_field,
+#billing_address_2_field,
+#shipping_address_2_field { display: none !important; }
 /* Keep the approved NEXXI navigation composition on one line at every desktop width. */
 body > header > div:nth-child(2) > div { flex-wrap: nowrap; min-width: 0; }
 body > header nav { flex-wrap: nowrap !important; white-space: nowrap !important; flex-shrink: 1; min-width: 0; }
