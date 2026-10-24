@@ -833,6 +833,84 @@
     }
   };
 
+  /* ---------- Flash Sale Page: Show More / Collapse + Upward Fade Mask ---------- */
+  const initFlashPageShowMore = () => {
+    const grid = $('[data-nx="flash-grid"]');
+    const wrap = $('[data-nexxi-flash-more-wrap]');
+    if (!grid || !wrap) return;
+
+    const btn = $('[data-nexxi-flash-toggle]', wrap);
+    const labelEl = $('[data-nexxi-flash-label]', wrap);
+    const iconEl = $('[data-nexxi-flash-icon]', wrap);
+    const sparkleEl = $('.nexxi-flash-toggle-btn__sparkle', wrap);
+    if (!btn) return;
+
+    const initialLimit = Math.max(1, parseInt(wrap.getAttribute('data-initial') || '10', 10));
+    const step = Math.max(1, parseInt(wrap.getAttribute('data-step') || '10', 10));
+
+    const syncState = () => {
+      const allItems = $$('[data-nexxi-flash-item]', grid);
+      const hiddenItems = allItems.filter(el => el.classList.contains('is-hidden'));
+      if (hiddenItems.length > 0) {
+        wrap.classList.add('has-more');
+        wrap.classList.remove('is-expanded');
+        btn.classList.add('is-more');
+        btn.classList.remove('is-less');
+        if (sparkleEl) sparkleEl.textContent = '✨';
+        if (labelEl) labelEl.textContent = `Xem Thêm ${hiddenItems.length} Deal Săn Giờ Vàng Đang Mở`;
+        if (iconEl) iconEl.textContent = 'keyboard_double_arrow_down';
+      } else {
+        wrap.classList.remove('has-more');
+        wrap.classList.add('is-expanded');
+        btn.classList.remove('is-more');
+        btn.classList.add('is-less');
+        if (sparkleEl) sparkleEl.textContent = '🔥';
+        if (labelEl) labelEl.textContent = 'Thu Gọn Danh Sách Deal';
+        if (iconEl) iconEl.textContent = 'keyboard_double_arrow_up';
+      }
+    };
+
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      const allItems = $$('[data-nexxi-flash-item]', grid);
+      const hiddenItems = allItems.filter(el => el.classList.contains('is-hidden'));
+
+      if (hiddenItems.length > 0) {
+        const toShow = hiddenItems.slice(0, step);
+        toShow.forEach((el, idx) => {
+          el.classList.remove('is-hidden', 'is-collapsing');
+          el.style.animationDelay = `${idx * 45}ms`;
+          el.classList.add('is-revealing');
+          setTimeout(() => {
+            el.classList.remove('is-revealing');
+            el.style.animationDelay = '';
+          }, 520 + idx * 45);
+        });
+        syncState();
+      } else {
+        const extraItems = allItems.slice(initialLimit);
+        extraItems.forEach(el => {
+          el.classList.remove('is-revealing');
+          el.classList.add('is-collapsing');
+        });
+        setTimeout(() => {
+          extraItems.forEach(el => {
+            el.classList.remove('is-collapsing');
+            el.classList.add('is-hidden');
+          });
+          syncState();
+          const gridRect = grid.getBoundingClientRect();
+          if (gridRect.top < 0) {
+            const topY = window.scrollY + gridRect.top - 110;
+            window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
+          }
+        }, 210);
+      }
+    });
+
+    syncState();
+  };
+
   /* ---------- Exact 0px Gap Between Sticky Header & Main/Banner ---------- */
   const syncHeaderOffset = () => {
     const header = $('body > header');
@@ -846,6 +924,7 @@
   syncHeaderOffset();
   initHeroSlider();
   initFlashSaleCarousel();
+  initFlashPageShowMore();
   initCards();
   paintWishlist();
   renderWishlistPage();

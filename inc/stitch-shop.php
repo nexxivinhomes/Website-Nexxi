@@ -99,9 +99,9 @@ function nexxi_kids_attribute_terms( $slug ) {
 	return $terms;
 }
 
-/** Products per page: 25 (5 × 5 grid) on the shop, 12 (4 × 3) on Flash Sale. */
+/** Products per page: 25 (5 × 5 grid) on the shop, 200 (all deals for instant JS show-more/collapse) on Flash Sale. */
 function nexxi_kids_loop_per_page() {
-	return isset( $_GET['on_sale'] ) ? 12 : 25; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	return isset( $_GET['on_sale'] ) ? 200 : 25; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 }
 add_filter( 'loop_shop_per_page', 'nexxi_kids_loop_per_page', 999 );
 
@@ -117,6 +117,9 @@ add_filter( 'woocommerce_default_catalog_orderby', static function ( $default ) 
 function nexxi_kids_legacy_sort( $query ) {
 	if ( empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$query->set( 'posts_per_page', 25 );
+	} else {
+		$query->set( 'posts_per_page', 200 );
+		$query->set( 'paged', 1 );
 	}
 	if ( ! empty( $_GET['cat_group'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$groups = nexxi_kids_cat_groups();
@@ -365,11 +368,16 @@ function nexxi_kids_pagination() {
 
 /** Flash Sale screen: live sale products, category chips, campaign stats. */
 function nexxi_kids_stitch_flash( $html ) {
-	global $wp_query;
-	$html = nexxi_dom_remove( $html, 'data-nxr="flash-steps"' );
-	$products = nexxi_kids_loop_products();
-	$cards = '';
-	foreach ( $products as $product ) { $cards .= nexxi_kids_card_flash_page( $product ); }
+	$html          = nexxi_dom_remove( $html, 'data-nxr="flash-steps"' );
+	$products      = array_values( nexxi_kids_loop_products() );
+	$initial_limit = 10; // 2 rows × 5 products per row
+	$total_count   = count( $products );
+	$cards         = '';
+	foreach ( $products as $idx => $product ) {
+		$item_cls = 'nexxi-flash-grid-item' . ( $idx >= $initial_limit ? ' is-hidden' : '' );
+		$cards   .= '<div class="' . esc_attr( $item_cls ) . '" data-nexxi-flash-item="' . (int) $idx . '">' . nexxi_kids_card_flash_page( $product ) . '</div>';
+	}
+	$html = nexxi_dom_set_attr( $html, 'nx:flash-grid', 'class', 'nexxi-flash-page-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-space-md relative' );
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-grid', $cards ? $cards : nexxi_kids_empty_state( 'Khung giờ này đã hết deal', 'Mẹ quay lại khung giờ sau hoặc xem các mẫu mới nhé.', 'Xem tất cả sản phẩm', nexxi_kids_shop_url() ) );
 
 	// Category chips limited to categories that currently have Flash Sale products.
@@ -408,11 +416,18 @@ function nexxi_kids_stitch_flash( $html ) {
 		$html = nexxi_dom_set_inner( $html, 'nx:flash-slot', 'Chưa mở khung giờ Flash Sale' );
 	}
 
-	// Load more → next page of deals, or hide when everything is shown.
-	$page = max( 1, (int) get_query_var( 'paged' ) );
-	$remaining = max( 0, (int) $wp_query->found_posts - $page * nexxi_kids_loop_per_page() );
+	// Interactive Show More / Collapse button with upward fade mask (no page reload).
+	$remaining = max( 0, $total_count - $initial_limit );
 	if ( $remaining > 0 ) {
-		$html = nexxi_dom_set_outer( $html, 'nx:flash-more', '<a class="bg-surface-container-lowest hover:bg-surface-container text-primary font-bold px-space-xl py-space-sm rounded-full shadow-sm hover:shadow-md transition-all flex items-center gap-2 font-label-lg text-label-lg" href="' . esc_url( get_pagenum_link( $page + 1 ) ) . '"><span>Xem Thêm ' . (int) $remaining . ' Deal Săn Giờ Vàng Đang Mở</span><span class="material-symbols-outlined text-[20px]">expand_more</span></a>' );
+		$more_html = '<div class="nexxi-flash-more-wrap has-more" data-nexxi-flash-more-wrap data-initial="' . (int) $initial_limit . '" data-step="10" data-total="' . (int) $total_count . '">'
+			. '<div class="nexxi-flash-fade-mask" data-nexxi-flash-mask aria-hidden="true"></div>'
+			. '<button type="button" class="nexxi-flash-toggle-btn is-more" data-nexxi-flash-toggle>'
+			. '<span class="nexxi-flash-toggle-btn__sparkle" aria-hidden="true">✨</span>'
+			. '<span class="nexxi-flash-toggle-btn__text" data-nexxi-flash-label>Xem Thêm ' . (int) $remaining . ' Deal Săn Giờ Vàng Đang Mở</span>'
+			. '<span class="nexxi-flash-toggle-btn__badge"><span class="material-symbols-outlined" data-nexxi-flash-icon>keyboard_double_arrow_down</span></span>'
+			. '</button>'
+			. '</div>';
+		$html = nexxi_dom_set_outer( $html, 'nx:flash-more', $more_html );
 	} else {
 		$html = nexxi_dom_remove( $html, 'nx:flash-more' );
 	}

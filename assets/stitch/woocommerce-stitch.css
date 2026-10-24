@@ -227,6 +227,7 @@ html {
 }
 @media (min-width: 1024px) {
   [data-nx="shop-grid"],
+  [data-nx="flash-grid"],
   .nexxi-home-new-grid {
     display: grid !important;
     grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
@@ -353,6 +354,200 @@ html {
   transform: translateY(-3px) scale(1.03);
   box-shadow: 0 14px 30px -4px rgba(174, 49, 21, 0.6);
   filter: brightness(1.06);
+}
+
+/* Flash Sale Page: Show More / Collapse + Upward Fade Mask */
+.nexxi-flash-grid-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nexxi-flash-grid-item > * {
+  height: 100%;
+  width: 100%;
+}
+.nexxi-flash-grid-item.is-hidden {
+  display: none !important;
+}
+@keyframes nexxiFlashCardReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes nexxiFlashCardCollapse {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+}
+.nexxi-flash-grid-item.is-revealing {
+  animation: nexxiFlashCardReveal 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.nexxi-flash-grid-item.is-collapsing {
+  animation: nexxiFlashCardCollapse 0.24s ease forwards;
+  pointer-events: none;
+}
+
+.nexxi-flash-more-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  transition: margin-top 0.35s ease, padding-top 0.35s ease;
+}
+.nexxi-flash-more-wrap.has-more {
+  margin-top: -28px;
+  padding-top: 36px;
+}
+.nexxi-flash-more-wrap.is-expanded {
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.nexxi-flash-fade-mask {
+  position: absolute;
+  left: -16px;
+  right: -16px;
+  bottom: 24px;
+  height: 210px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to top,
+    #f7f6f7 10%,
+    rgba(247, 246, 247, 0.92) 38%,
+    rgba(247, 246, 247, 0.55) 68%,
+    rgba(247, 246, 247, 0) 100%
+  );
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.38s ease, visibility 0.38s ease, height 0.38s ease;
+}
+.nexxi-flash-more-wrap.is-expanded .nexxi-flash-fade-mask {
+  opacity: 0;
+  visibility: hidden;
+  height: 0;
+}
+
+@keyframes nexxiFlashBtnShimmer {
+  0% {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  55%, 100% {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+@keyframes nexxiFlashArrowBounceDown {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+@keyframes nexxiFlashArrowBounceUp {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.nexxi-flash-toggle-btn {
+  position: relative;
+  z-index: 5;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1.85rem 0.85rem 2rem;
+  border-radius: 9999px;
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 800;
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+  color: #ffffff !important;
+  cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease, background 0.35s ease, filter 0.28s ease;
+}
+.nexxi-flash-toggle-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.38) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: nexxiFlashBtnShimmer 3.2s infinite;
+  pointer-events: none;
+}
+.nexxi-flash-toggle-btn.is-more {
+  background: linear-gradient(135deg, #ff512f 0%, #fd6a49 48%, #f03e65 100%);
+  box-shadow: 0 12px 30px -4px rgba(253, 106, 73, 0.58), 0 0 0 4px rgba(253, 106, 73, 0.16);
+}
+.nexxi-flash-toggle-btn.is-more:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 16px 36px -4px rgba(240, 62, 101, 0.68), 0 0 0 6px rgba(253, 106, 73, 0.24);
+  filter: brightness(1.05);
+}
+.nexxi-flash-toggle-btn.is-less {
+  background: linear-gradient(135deg, #031444 0%, #162b6f 52%, #fd6a49 145%);
+  box-shadow: 0 12px 28px -4px rgba(3, 20, 68, 0.42), 0 0 0 4px rgba(3, 20, 68, 0.12);
+}
+.nexxi-flash-toggle-btn.is-less:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 16px 34px -4px rgba(3, 20, 68, 0.54), 0 0 0 6px rgba(253, 106, 73, 0.22);
+  filter: brightness(1.07);
+}
+.nexxi-flash-toggle-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+.nexxi-flash-toggle-btn__sparkle {
+  font-size: 1.05rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+.nexxi-flash-toggle-btn__badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.35);
+  transition: background-color 0.25s ease, transform 0.25s ease;
+}
+.nexxi-flash-toggle-btn:hover .nexxi-flash-toggle-btn__badge {
+  background: rgba(255, 255, 255, 0.32);
+}
+.nexxi-flash-toggle-btn .material-symbols-outlined {
+  font-size: 20px;
+  line-height: 1;
+}
+.nexxi-flash-toggle-btn.is-more .material-symbols-outlined {
+  animation: nexxiFlashArrowBounceDown 1.5s ease-in-out infinite;
+}
+.nexxi-flash-toggle-btn.is-less .material-symbols-outlined {
+  animation: nexxiFlashArrowBounceUp 1.5s ease-in-out infinite;
 }
 
 /* Product Detail Page: keep gallery & info panel balanced in viewport */
