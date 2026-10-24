@@ -27,7 +27,7 @@ function nexxi_kids_page_content( $post ) {
 	if ( $post_obj instanceof WP_Post && function_exists( 'nexxi_kids_default_pages' ) ) {
 		$defs = nexxi_kids_default_pages();
 		$slug = $post_obj->post_name;
-		if ( isset( $defs[ $slug ] ) && ( false !== stripos( $raw, '30 ngày' ) || false !== stripos( $raw, 'hộp quà' ) || false !== stripos( $raw, '90 ngày' ) ) ) {
+		if ( isset( $defs[ $slug ] ) && ( false !== stripos( $raw, '30 ngày' ) || false !== stripos( $raw, 'hộp quà' ) || false !== stripos( $raw, '90 ngày' ) || false !== stripos( $raw, '299' ) ) ) {
 			$raw = $defs[ $slug ]['content'];
 			wp_update_post( array(
 				'ID'           => $post_obj->ID,
