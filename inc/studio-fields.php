@@ -14,7 +14,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => 'Bộ Sưu Tập Mới Tinh Tươm 2025 • Chuẩn Style Nhật - Hàn',
+    'd' => 'Bộ Sưu Tập Mới 2025 • Cảm Hứng Thời Trang Hàn Quốc',
     'l' => 'Dòng chữ',
     'g' => 'Cute Tag Badge',
   ),
@@ -54,7 +54,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => 'Từng thớ vải sợi tre sinh học organic 100% được ủ mềm tinh xảo, may giấu đường chỉ tinh tế. Nhẹ nhàng, êm ái tựa làn hơi ấm từ cái ôm đầu đời của mẹ dành riêng cho thiên thần nhỏ.',
+    'd' => 'NEXXI là thương hiệu thời trang trẻ em nội địa Việt Nam, mang cảm hứng Hàn Quốc vào những thiết kế dành cho bé trai và bé gái (12–45 kg). Đẹp khi nhìn, thoải mái khi mặc để bé tự nhiên vui chơi mỗi ngày.',
     'l' => 'Đoạn mô tả',
     'g' => 'Subtitle',
   ),
@@ -79,14 +79,14 @@ return array (
     'r' => 'home-hero',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Nhận Quà Chào Đón 50K”',
+    'l' => 'Link khi bấm: “Mua Nhiều Giảm Thêm 10%”',
     'g' => 'CTAs',
   ),
   'home-hero__t9' => 
   array (
     'r' => 'home-hero',
     't' => 'icon',
-    'd' => 'redeem',
+    'd' => 'local_offer',
     'l' => 'Biểu tượng',
     'g' => 'CTAs',
   ),
@@ -94,7 +94,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => 'Nhận Quà Chào Đón 50K',
+    'd' => 'Mua Nhiều Giảm Thêm 10%',
     'l' => 'Chữ trên nút / liên kết',
     'g' => 'CTAs',
   ),
@@ -134,7 +134,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => '10.000+ Mẹ Bỉm Sữa Cực Kỳ Hài Lòng',
+    'd' => 'Một Lựa Chọn Chu Đáo Để Ba Mẹ An Tâm',
     'l' => 'Dòng chữ',
     'g' => 'Social Proof Bubble',
   ),
@@ -142,7 +142,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => '🌱',
+    'd' => '✨',
     'l' => 'Emoji trang trí',
     'g' => 'Floating Cloud Sticker 1',
   ),
@@ -150,7 +150,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => '100% Organic',
+    'd' => 'Style Hàn Quốc',
     'l' => 'Nhãn',
     'g' => 'Floating Cloud Sticker 1',
   ),
@@ -158,7 +158,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => 'Chứng nhận OEKO-TEX',
+    'd' => 'Thiết kế cho bé 12–45kg',
     'l' => 'Nhãn',
     'g' => 'Floating Cloud Sticker 1',
   ),
@@ -174,7 +174,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => 'Mềm Mại Tối Đa',
+    'd' => 'Chất Liệu Mềm Mại',
     'l' => 'Nhãn',
     'g' => 'Floating Cloud Sticker 2',
   ),
@@ -182,7 +182,7 @@ return array (
   array (
     'r' => 'home-hero',
     't' => 'text',
-    'd' => '0 gây ngứa da non',
+    'd' => 'Thoải mái vận động mỗi ngày',
     'l' => 'Nhãn',
     'g' => 'Floating Cloud Sticker 2',
   ),
@@ -679,14 +679,14 @@ return array (
     'r' => 'footer-col-1',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Đồ sơ sinh Organic”',
+    'l' => 'Link khi bấm: “Set phối & Bộ đồ”',
     'g' => '',
   ),
   'footer-col-1__t4' => 
   array (
     'r' => 'footer-col-1',
     't' => 'text',
-    'd' => 'Đồ sơ sinh Organic',
+    'd' => 'Set phối & Bộ đồ',
     'l' => 'Chữ liên kết',
     'g' => '',
   ),
@@ -735,14 +735,14 @@ return array (
     'r' => 'footer-col-2',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Chính sách đổi trả 30 ngày”',
+    'l' => 'Link khi bấm: “Chính sách đổi hàng 15 ngày”',
     'g' => '',
   ),
   'footer-col-2__t2' => 
   array (
     'r' => 'footer-col-2',
     't' => 'text',
-    'd' => 'Chính sách đổi trả 30 ngày',
+    'd' => 'Chính sách đổi hàng 15 ngày',
     'l' => 'Chữ liên kết',
     'g' => '',
   ),
@@ -751,14 +751,14 @@ return array (
     'r' => 'footer-col-2',
     't' => 'link',
     'd' => '',
-    'l' => 'Link khi bấm: “Chính sách bảo hành an toàn”',
+    'l' => 'Link khi bấm: “Chính sách vận chuyển toàn quốc”',
     'g' => '',
   ),
   'footer-col-2__t3' => 
   array (
     'r' => 'footer-col-2',
     't' => 'text',
-    'd' => 'Chính sách bảo hành an toàn',
+    'd' => 'Chính sách vận chuyển toàn quốc',
     'l' => 'Chữ liên kết',
     'g' => '',
   ),
@@ -814,7 +814,7 @@ return array (
   array (
     'r' => 'footer-newsletter',
     't' => 'text',
-    'd' => 'Nhận Quà Xinh Cho Bé',
+    'd' => 'Đồng Hành Cùng NEXXI',
     'l' => 'Tiêu đề mục',
     'g' => '',
   ),
@@ -822,7 +822,7 @@ return array (
   array (
     'r' => 'footer-newsletter',
     't' => 'text',
-    'd' => 'Mẹ đăng ký email để nhận voucher 50K và quà tặng bất ngờ sinh nhật bé!',
+    'd' => 'Ba mẹ đăng ký email để cập nhật các mẫu thiết kế mới nhất và chương trình ưu đãi từ NEXXI nhé!',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -894,7 +894,7 @@ return array (
   array (
     'r' => 'shop-hero',
     't' => 'text',
-    'd' => 'Boutique Organic Thuần Khiết',
+    'd' => 'NEXXI – Phong Cách Khác, Giá Trị Khác',
     'l' => 'Nhãn',
     'g' => 'Banner Title Header',
   ),
@@ -902,7 +902,7 @@ return array (
   array (
     'r' => 'shop-hero',
     't' => 'text',
-    'd' => 'Tủ Đồ Ngọt Ngào Của Bé Yêu 🧸',
+    'd' => 'Tủ Đồ Xinh Xắn Cho Bé Yêu 🧸',
     'l' => 'Tiêu đề chính',
     'g' => 'Banner Title Header',
   ),
@@ -910,7 +910,7 @@ return array (
   array (
     'r' => 'shop-hero',
     't' => 'text',
-    'd' => 'Bộ sưu tập sợi tre hữu cơ, đũi mát và cotton organic nâng niu từng giấc ngủ và nụ cười rạng rỡ của con yêu suốt ngày dài năng động.',
+    'd' => 'Thiết kế thời trang trẻ em cảm hứng Hàn Quốc dành cho bé trai và bé gái từ 12–45 kg. Chất liệu mềm mại, phom dáng gọn gàng giúp bé thoải mái vận động và vui chơi tự nhiên mỗi ngày.',
     'l' => 'Đoạn mô tả',
     'g' => 'Banner Title Header',
   ),
@@ -942,7 +942,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Tâm Huyết NEXXI Dành Cho Con',
+    'd' => 'Những Điều NEXXI Chú Trọng',
     'l' => 'Nhãn',
     'g' => '',
   ),
@@ -950,7 +950,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Bảo Chứng An Toàn Cho Làn Da Nhạy Cảm Của Bé 🌿',
+    'd' => 'Đẹp Khi Nhìn • Thoải Mái Khi Mặc ✨',
     'l' => 'Tiêu đề khu vực',
     'g' => '',
   ),
@@ -958,7 +958,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Mỗi chiếc áo, chiếc váy nhỏ xinh đến tay bé đều trải qua quy trình kiểm soát nghiêm ngặt nhất để ba mẹ hoàn toàn yên tâm.',
+    'd' => 'Một bộ trang phục đẹp để bé tự tin. Một lựa chọn chu đáo, thiết thực và phù hợp với gia đình Việt để ba mẹ an tâm.',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -966,7 +966,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'icon',
-    'd' => 'eco',
+    'd' => 'directions_run',
     'l' => 'Biểu tượng',
     'g' => 'Feature 1',
   ),
@@ -974,7 +974,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Cam Kết Chuẩn Oeko-Tex',
+    'd' => 'Thoải Mái Trong Từng Chuyển Động',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 1',
   ),
@@ -982,7 +982,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => '100% sợi nhuộm tự nhiên không chứa Formaldehyde, tuyệt đối không gây ngứa hay kích ứng làn da non nớt của trẻ.',
+    'd' => 'NEXXI chú trọng lựa chọn chất liệu mềm mại và thiết kế dễ mặc, hướng đến sự dễ chịu trong sinh hoạt hằng ngày của bé.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 1',
   ),
@@ -990,7 +990,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'icon',
-    'd' => 'content_cut',
+    'd' => 'auto_awesome',
     'l' => 'Biểu tượng',
     'g' => 'Feature 2',
   ),
@@ -998,7 +998,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'May Giấu Chỉ & Cắt Tag Sườn',
+    'd' => 'Phong Cách Hàn Quốc Có Nét Riêng',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 2',
   ),
@@ -1006,7 +1006,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Đường vắt sổ phẳng mịn hoàn hảo, mác in trực tiếp trên vải thay vì may tag cọ xát giúp con thoải mái lăn bò chơi đùa.',
+    'd' => 'Kết hợp phom dáng tối giản với những điểm nhấn đáng yêu, năng động cho bé trai và bé gái từ 12–45 kg.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 2',
   ),
@@ -1022,7 +1022,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Đổi Trả 30 Ngày Tận Nhà',
+    'd' => 'Hỗ Trợ 15 Ngày Đổi Hàng',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 3',
   ),
@@ -1030,7 +1030,7 @@ return array (
   array (
     'r' => 'shop-trust',
     't' => 'text',
-    'd' => 'Bé mặc không vừa hoặc mẹ muốn đổi màu? Shipper đến tận nhà thu đổi miễn phí, mẹ không phải đi lại vất vả.',
+    'd' => 'Cam kết hoàn tiền 100% nếu sản phẩm không giống với mô tả và hỗ trợ đổi hàng thuận tiện trong vòng 15 ngày.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 3',
   ),
@@ -1078,7 +1078,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => 'Săn deal đồ xinh sợi tre hữu cơ, đũi mát và cotton kháng khuẩn chuẩn chứng nhận Oeko-Tex Châu Âu. Mềm êm tựa mây trời, số lượng có hạn theo từng khung giờ!',
+    'd' => 'Săn deal thời trang trẻ em cảm hứng Hàn Quốc dành cho bé trai và bé gái từ 12–45 kg. Thiết kế đáng yêu, chất liệu mềm mại dễ mặc, số lượng ưu đãi có hạn!',
     'l' => 'Đoạn mô tả',
     'g' => 'Left Content',
   ),
@@ -1142,7 +1142,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => '100% Vải Lành Bé Yêu',
+    'd' => 'Style Hàn Quốc (12–45kg)',
     'l' => 'Nhãn',
     'g' => 'Overlaid Badge',
   ),
@@ -1158,7 +1158,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => 'Freeship Tận Cửa',
+    'd' => 'Miễn Ship Toàn Quốc',
     'l' => 'Nhãn',
     'g' => 'Bottom Floating Pill',
   ),
@@ -1166,7 +1166,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => 'Đơn từ 199K toàn quốc',
+    'd' => 'Đơn từ 299K toàn quốc',
     'l' => 'Nhãn',
     'g' => 'Bottom Floating Pill',
   ),
@@ -1238,7 +1238,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => '🎁 Mã Giảm Chồng Mã',
+    'd' => '🎁 Ưu Đãi Mua Nhiều Giảm Thêm',
     'l' => 'Nhãn',
     'g' => '',
   ),
@@ -1246,7 +1246,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Thu Thập Voucher Giờ Vàng Cực Hời',
+    'd' => 'Mua Càng Nhiều • Ưu Đãi Càng Lớn',
     'l' => 'Tiêu đề khu vực',
     'g' => '',
   ),
@@ -1254,7 +1254,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Được áp dụng đồng thời trực tiếp lên các sản phẩm đang giảm giá Flash Sale!',
+    'd' => 'Chương trình ưu đãi combo hấp dẫn dành cho ba mẹ khi mua sắm tại NEXXI!',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -1262,7 +1262,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'FLASH10',
+    'd' => 'COMBO 2',
     'l' => 'Nhãn',
     'g' => 'Voucher 1',
   ),
@@ -1270,7 +1270,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Giảm Thêm 10% Tối Đa 50K',
+    'd' => 'Mua 2 Sản Phẩm Giảm Thêm 5%',
     'l' => 'Nhãn',
     'g' => 'Voucher 1',
   ),
@@ -1278,7 +1278,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Áp dụng cho mọi đơn Flash Sale từ 299K',
+    'd' => 'Áp dụng khi mua từ 2 sản phẩm bất kỳ',
     'l' => 'Dòng chữ',
     'g' => 'Voucher 1',
   ),
@@ -1294,7 +1294,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'HSD: Hôm Nay',
+    'd' => 'Áp dụng toàn cửa hàng',
     'l' => 'Nhãn',
     'g' => 'Voucher 1',
   ),
@@ -1302,7 +1302,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Lưu Mã',
+    'd' => 'Chọn Ngay',
     'l' => 'Chữ trên nút',
     'g' => 'Voucher 1',
   ),
@@ -1310,7 +1310,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'FREESHIPXINH',
+    'd' => 'COMBO 3',
     'l' => 'Nhãn',
     'g' => 'Voucher 2',
   ),
@@ -1318,7 +1318,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Freeship Toàn Quốc 0Đ',
+    'd' => 'Mua 3 Sản Phẩm Giảm Thêm 7%',
     'l' => 'Nhãn',
     'g' => 'Voucher 2',
   ),
@@ -1326,7 +1326,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Áp dụng cho đơn hàng chỉ từ 199K',
+    'd' => 'Kết hợp cùng miễn ship đơn từ 299K',
     'l' => 'Dòng chữ',
     'g' => 'Voucher 2',
   ),
@@ -1342,7 +1342,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'HSD: 23:59 Hôm nay',
+    'd' => 'Miễn ship từ 299K',
     'l' => 'Nhãn',
     'g' => 'Voucher 2',
   ),
@@ -1350,7 +1350,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'BEYEU20',
+    'd' => 'COMBO 4',
     'l' => 'Nhãn',
     'g' => 'Voucher 3',
   ),
@@ -1358,7 +1358,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Tặng 20K Cho Mẹ Mới',
+    'd' => 'Mua 4 Sản Phẩm Giảm Thêm 10%',
     'l' => 'Nhãn',
     'g' => 'Voucher 3',
   ),
@@ -1366,7 +1366,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Đặc quyền dành riêng cho đơn đầu tiên',
+    'd' => 'Tiết kiệm tối đa khi sắm trọn tủ đồ cho bé',
     'l' => 'Dòng chữ',
     'g' => 'Voucher 3',
   ),
@@ -1382,7 +1382,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Dành cho mẹ bỉm mới',
+    'd' => 'Ưu đãi tốt nhất',
     'l' => 'Nhãn',
     'g' => 'Voucher 3',
   ),
@@ -1390,7 +1390,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Cam Kết Từ NEXXI Boutique',
+    'd' => 'Cam Kết Từ NEXXI',
     'l' => 'Tiêu đề khu vực',
     'g' => '',
   ),
@@ -1398,7 +1398,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Dù giá sale sâu, chất lượng và dịch vụ nâng niu bé luôn giữ trọn 100% vẹn nguyên.',
+    'd' => 'Một bộ trang phục đẹp để bé tự tin. Một lựa chọn chu đáo để ba mẹ an tâm.',
     'l' => 'Đoạn mô tả',
     'g' => '',
   ),
@@ -1414,7 +1414,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => '100% Chuẩn Oeko-Tex',
+    'd' => 'Hoàn Tiền 100%',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 1',
   ),
@@ -1422,7 +1422,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Không bao giờ xả hàng lỗi, hàng tồn cũ. Từng sản phẩm đều được kiểm tra sợi vải và đường may giấu chỉ êm ái trước khi đóng gói.',
+    'd' => 'Cam kết hoàn tiền 100% nếu sản phẩm không giống với mô tả. Từng trang phục đều được kiểm tra chỉn chu trước khi đóng gói.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 1',
   ),
@@ -1438,7 +1438,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Đổi Size 30 Ngày Tận Nhà',
+    'd' => 'Hỗ Trợ 15 Ngày Đổi Hàng',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 2',
   ),
@@ -1446,7 +1446,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Bé mặc không vừa hoặc mẹ muốn đổi mẫu khác? Shiper mang size mới tới tận nhà đổi ngay, mẹ không cần mang ra bưu cục vất vả.',
+    'd' => 'Bé mặc chưa vừa hoặc ba mẹ muốn đổi sang mẫu khác? NEXXI hỗ trợ đổi hàng thuận tiện trong vòng 15 ngày.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 2',
   ),
@@ -1454,7 +1454,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'icon',
-    'd' => 'bolt',
+    'd' => 'local_shipping',
     'l' => 'Biểu tượng',
     'g' => 'Feature 3',
   ),
@@ -1462,7 +1462,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Giao Hỏa Tốc 2H Nội Thành',
+    'd' => 'Miễn Ship Đơn Từ 299K',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 3',
   ),
@@ -1470,7 +1470,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Kịp cho bé diện đi tiệc, đi chơi cuối tuần hoặc chuẩn bị đồ mới cho kỳ nghỉ hè gia đình mà không để ba mẹ phải chờ đợi lâu.',
+    'd' => 'Giao hàng bán lẻ và bán sỉ trên toàn quốc nhanh chóng, đóng gói cẩn thận gửi đến tay ba mẹ và bé yêu.',
     'l' => 'Đoạn mô tả',
     'g' => 'Feature 3',
   ),
@@ -1542,7 +1542,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'icon',
-    'd' => 'nest_eco_leaf',
+    'd' => 'directions_run',
     'l' => 'Biểu tượng',
     'g' => '',
   ),
@@ -1550,7 +1550,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => 'Sợi Tự Nhiên',
+    'd' => 'Chất Liệu Mềm Mại',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1558,7 +1558,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => 'Thấm mồ hôi tối đa',
+    'd' => 'Dễ chịu suốt ngày dài',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1566,7 +1566,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'icon',
-    'd' => 'dry_cleaning',
+    'd' => 'auto_awesome',
     'l' => 'Biểu tượng',
     'g' => '',
   ),
@@ -1574,7 +1574,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => 'Không Xù Lông',
+    'd' => 'Style Hàn Quốc',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1582,7 +1582,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => 'Bền đẹp sau 50 lần giặt',
+    'd' => 'Phom dáng gọn gàng',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1590,7 +1590,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'icon',
-    'd' => 'sentiment_very_satisfied',
+    'd' => 'checkroom',
     'l' => 'Biểu tượng',
     'g' => '',
   ),
@@ -1598,7 +1598,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => 'Da Dịu Êm',
+    'd' => 'Dễ Mặc & Dễ Phối',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1606,7 +1606,7 @@ return array (
   array (
     'r' => 'pdp-features',
     't' => 'text',
-    'd' => '100% không mẩn ngứa',
+    'd' => 'Thoải mái vận động',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1622,7 +1622,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Freeship Toàn Quốc',
+    'd' => 'Miễn Ship Toàn Quốc',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1630,7 +1630,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Đơn chỉ từ 299.000₫',
+    'd' => 'Đơn từ 299.000₫',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1646,7 +1646,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Đổi Size 30 Ngày Tận Nhà',
+    'd' => 'Hỗ Trợ 15 Ngày Đổi Hàng',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1654,7 +1654,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Shipper mang size mới đến tận cửa',
+    'd' => 'Đổi size & mẫu thuận tiện',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1662,7 +1662,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'icon',
-    'd' => 'redeem',
+    'd' => 'local_offer',
     'l' => 'Biểu tượng',
     'g' => '',
   ),
@@ -1670,7 +1670,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Tặng Kẹp Nơ / Vớ Gấu',
+    'd' => 'Mua Nhiều Giảm Thêm',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1678,7 +1678,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Quà xinh đi kèm mỗi đơn hàng',
+    'd' => 'Mua 2 (-5%) • Mua 3 (-7%) • Mua 4 (-10%)',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1686,7 +1686,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'icon',
-    'd' => 'health_and_safety',
+    'd' => 'verified_user',
     'l' => 'Biểu tượng',
     'g' => '',
   ),
@@ -1694,7 +1694,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'May Cuộn Giấu Mép Chỉ',
+    'd' => 'Hoàn Tiền 100%',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1702,7 +1702,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Chống đỏ ngứa làn da nhạy cảm',
+    'd' => 'Nếu sản phẩm không giống mô tả',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1718,7 +1718,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Gia Đình NEXXI Club 🧸',
+    'd' => 'NEXXI Kids Fashion 🧸',
     'l' => 'Nhãn',
     'g' => 'Playful Badge',
   ),
@@ -1734,7 +1734,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Không gian thời trang thủ công sợi tre tự nhiên, chăm chút cho nụ cười rạng rỡ của bé yêu mỗi ngày.',
+    'd' => 'Thương hiệu thời trang trẻ em nội địa Việt Nam mang cảm hứng Hàn Quốc dành cho bé trai và bé gái (12–45 kg).',
     'l' => 'Đoạn mô tả',
     'g' => 'Playful Badge',
   ),
@@ -1750,7 +1750,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'icon',
-    'd' => 'spa',
+    'd' => 'auto_awesome',
     'l' => 'Biểu tượng',
     'g' => 'Brand Visual Banner',
   ),
@@ -1758,7 +1758,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => '100% Sợi tre hữu cơ kháng khuẩn',
+    'd' => 'Đẹp khi nhìn • Thoải mái khi mặc',
     'l' => 'Nhãn',
     'g' => 'Brand Visual Banner',
   ),
@@ -1766,7 +1766,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Đặc quyền dành riêng cho gia đình',
+    'd' => 'Cam kết & Ưu đãi từ NEXXI',
     'l' => 'Tiêu đề khu vực – phần tô màu',
     'g' => 'Membership Perks List',
   ),
@@ -1774,7 +1774,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'ĐỘC QUYỀN',
+    'd' => 'CHÍNH HÃNG',
     'l' => 'Tiêu đề khu vực – phần tô màu',
     'g' => 'Membership Perks List',
   ),
@@ -1782,7 +1782,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'icon',
-    'd' => 'confirmation_number',
+    'd' => 'local_offer',
     'l' => 'Biểu tượng',
     'g' => 'Perk 1',
   ),
@@ -1790,7 +1790,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Tặng Voucher 50.000đ',
+    'd' => 'Mua Nhiều Giảm Thêm Đến 10%',
     'l' => 'Dòng chữ',
     'g' => 'Perk 1',
   ),
@@ -1798,7 +1798,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Áp dụng ngay cho đơn hàng đầu tiên',
+    'd' => 'Mua 2 giảm 5% • Mua 3 giảm 7% • Mua 4 giảm 10%',
     'l' => 'Dòng chữ',
     'g' => 'Perk 1',
   ),
@@ -1806,7 +1806,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'icon',
-    'd' => 'savings',
+    'd' => 'local_shipping',
     'l' => 'Biểu tượng',
     'g' => 'Perk 2',
   ),
@@ -1814,7 +1814,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Tích Điểm Kẹo Bông 5%',
+    'd' => 'Miễn Ship Đơn Từ 299K',
     'l' => 'Dòng chữ',
     'g' => 'Perk 2',
   ),
@@ -1822,7 +1822,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Quy đổi voucher giảm giá trọn đời',
+    'd' => 'Giao hàng bán lẻ và bán sỉ trên toàn quốc',
     'l' => 'Dòng chữ',
     'g' => 'Perk 2',
   ),
@@ -1830,7 +1830,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'icon',
-    'd' => 'cake',
+    'd' => 'verified_user',
     'l' => 'Biểu tượng',
     'g' => 'Perk 3',
   ),
@@ -1838,7 +1838,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Quà Sinh Nhật Bé Yêu',
+    'd' => 'Hoàn Tiền 100%',
     'l' => 'Dòng chữ',
     'g' => 'Perk 3',
   ),
@@ -1846,7 +1846,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Hộp quà thời trang bất ngờ hàng năm',
+    'd' => 'Nếu sản phẩm nhận được không giống với mô tả',
     'l' => 'Dòng chữ',
     'g' => 'Perk 3',
   ),
@@ -1862,7 +1862,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Đổi Size Miễn Phí 30 Ngày',
+    'd' => 'Hỗ Trợ 15 Ngày Đổi Hàng',
     'l' => 'Dòng chữ',
     'g' => 'Perk 4',
   ),
@@ -1870,7 +1870,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Shipper đến lấy đổi tận cửa tiện lợi',
+    'd' => 'Hỗ trợ đổi size và mẫu thuận tiện trong 15 ngày',
     'l' => 'Dòng chữ',
     'g' => 'Perk 4',
   ),
@@ -1886,7 +1886,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => '“Mua sắm tại NEXXI từ khi bé mới lọt lòng, chất liệu xô và sợi tre siêu mềm mịn, giặt máy không lo xù lông!”',
+    'd' => '“Một bộ trang phục đẹp để bé tự tin. Một lựa chọn chu đáo để ba mẹ an tâm.”',
     'l' => 'Đoạn mô tả',
     'g' => 'Bottom: Testimonial Bubble',
   ),
@@ -1894,7 +1894,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Mẹ Thảo Linh • Bé Bắp (18 tháng tuổi)',
+    'd' => 'NEXXI – Phong cách khác, giá trị khác (12–45 kg)',
     'l' => 'Dòng chữ',
     'g' => 'Bottom: Testimonial Bubble',
   ),
