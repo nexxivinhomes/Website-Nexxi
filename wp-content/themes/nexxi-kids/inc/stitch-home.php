@@ -36,10 +36,37 @@ function nexxi_kids_stitch_home( $html ) {
 	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-1', 'href', add_query_arg( 'cat_group', 'dam-vay', nexxi_kids_shop_url() ) );
 	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'href', add_query_arg( 'cat_group', 'set-bo', nexxi_kids_shop_url() ) );
 
-	// Flash Sale rail.
-	$sale = nexxi_kids_sale_products( 4 );
+	// Flash Sale rail: 5 products per row, max 2 rows, horizontal scroll with left/right arrows.
+	$sale  = nexxi_kids_sale_products( -1 );
 	$flash = '';
-	foreach ( $sale as $product ) { $flash .= nexxi_kids_card_home_flash( $product ); }
+	if ( ! empty( $sale ) ) {
+		$row1_html = '';
+		$row2_html = '';
+		foreach ( array_values( $sale ) as $idx => $product ) {
+			$item_html = '<div class="nexxi-fs-item">' . nexxi_kids_card_home_flash( $product ) . '</div>';
+			if ( $idx < 5 ) {
+				$row1_html .= $item_html;
+			} elseif ( $idx < 10 ) {
+				$row2_html .= $item_html;
+			} elseif ( 0 === ( $idx - 10 ) % 2 ) {
+				$row1_html .= $item_html;
+			} else {
+				$row2_html .= $item_html;
+			}
+		}
+		$rows_markup = '<div class="nexxi-fs-row">' . $row1_html . '</div>';
+		if ( '' !== $row2_html ) {
+			$rows_markup .= '<div class="nexxi-fs-row">' . $row2_html . '</div>';
+		}
+		$flash = '<button type="button" class="nexxi-fs-arrow nexxi-fs-arrow--prev" data-nexxi-fs-prev aria-label="Xem sản phẩm Flash Sale trước">'
+			. '<span class="material-symbols-outlined">chevron_left</span>'
+			. '</button>'
+			. '<div class="nexxi-fs-track" data-nexxi-fs-track>' . $rows_markup . '</div>'
+			. '<button type="button" class="nexxi-fs-arrow nexxi-fs-arrow--next" data-nexxi-fs-next aria-label="Xem thêm sản phẩm Flash Sale">'
+			. '<span class="material-symbols-outlined">chevron_right</span>'
+			. '</button>';
+		$html = nexxi_dom_set_attr( $html, 'nx:home-flash-grid', 'class', 'nexxi-fs-carousel-wrap relative pt-space-lg' );
+	}
 	$html = nexxi_dom_set_inner( $html, 'nx:home-flash-grid', $flash ? $flash : nexxi_kids_empty_state( 'Flash Sale sắp quay trở lại', 'Mẹ quay lại sau để săn deal xinh cho bé nhé!', 'Xem tất cả sản phẩm', nexxi_kids_shop_url() ) );
 
 	// Best sellers + category tabs.

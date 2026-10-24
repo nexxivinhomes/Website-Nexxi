@@ -775,6 +775,64 @@
     });
   };
 
+  /* ---------- Home Flash Sale 5x2 Horizontal Carousel ---------- */
+  const initFlashSaleCarousel = () => {
+    const wrap = $('[data-nx="home-flash-grid"]');
+    if (!wrap) return;
+    const track = $('[data-nexxi-fs-track]', wrap);
+    const prevBtn = $('[data-nexxi-fs-prev]', wrap);
+    const nextBtn = $('[data-nexxi-fs-next]', wrap);
+    if (!track) return;
+
+    const getStep = () => {
+      const firstItem = $('.nexxi-fs-item', track);
+      const itemW = firstItem ? firstItem.getBoundingClientRect().width + 14.4 : track.clientWidth / 5;
+      return Math.max(itemW * 2, track.clientWidth * 0.6);
+    };
+
+    const scrollDir = dir => {
+      const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+      if (maxScroll <= 4) {
+        track.animate(
+          [
+            { transform: 'translateX(0px)' },
+            { transform: `translateX(${dir > 0 ? '-14px' : '14px'})` },
+            { transform: 'translateX(0px)' }
+          ],
+          { duration: 260, easing: 'ease-out' }
+        );
+        return;
+      }
+      const step = getStep();
+      if (dir > 0) {
+        if (track.scrollLeft >= maxScroll - 6) {
+          track.scrollTo({ left: 0, behavior: 'smooth' });
+        } else {
+          track.scrollBy({ left: step, behavior: 'smooth' });
+        }
+      } else {
+        if (track.scrollLeft <= 6) {
+          track.scrollTo({ left: maxScroll, behavior: 'smooth' });
+        } else {
+          track.scrollBy({ left: -step, behavior: 'smooth' });
+        }
+      }
+    };
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', e => {
+        e.preventDefault();
+        scrollDir(-1);
+      });
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', e => {
+        e.preventDefault();
+        scrollDir(1);
+      });
+    }
+  };
+
   /* ---------- Exact 0px Gap Between Sticky Header & Main/Banner ---------- */
   const syncHeaderOffset = () => {
     const header = $('body > header');
@@ -787,6 +845,7 @@
 
   syncHeaderOffset();
   initHeroSlider();
+  initFlashSaleCarousel();
   initCards();
   paintWishlist();
   renderWishlistPage();
