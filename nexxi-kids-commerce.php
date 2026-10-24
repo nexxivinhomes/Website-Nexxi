@@ -99,17 +99,17 @@ final class Nexxi_Kids_Commerce {
 
 	public function product_service_note() {
 		if ( ! function_exists( 'is_product' ) || ! is_product() ) { return; }
-		echo '<div class="nexxi-product-perks"><span>✓ ' . esc_html__( 'Chất liệu mềm mại, thoải mái vận động', 'nexxi-kids-commerce' ) . '</span><span>↻ ' . esc_html__( 'Hỗ trợ 15 ngày đổi hàng', 'nexxi-kids-commerce' ) . '</span><span>⌂ ' . esc_html__( 'Miễn ship từ 299.000₫', 'nexxi-kids-commerce' ) . '</span></div>';
+		echo '<div class="nexxi-product-perks"><span>✓ ' . esc_html__( 'Chất liệu mềm mại, thoải mái vận động', 'nexxi-kids-commerce' ) . '</span><span>↻ ' . esc_html__( 'Hỗ trợ 15 ngày đổi hàng', 'nexxi-kids-commerce' ) . '</span><span>⌂ ' . esc_html__( 'Miễn phí ship toàn quốc', 'nexxi-kids-commerce' ) . '</span></div>';
 		if ( shortcode_exists( 'nexxi_size_guide' ) ) { echo '<details class="nexxi-size-details"><summary>' . esc_html__( 'Chưa biết chọn size? Xem gợi ý size', 'nexxi-kids-commerce' ) . '</summary>' . $this->size_guide( array( 'compact' => 'yes' ) ) . '</details>'; }
 	}
 
 	public function cart_shipping_progress() {
 		if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return; }
-		$threshold = (float) apply_filters( 'nexxi_kids_free_shipping_threshold', 299000 );
+		$threshold = (float) apply_filters( 'nexxi_kids_free_shipping_threshold', 0 );
 		$total = (float) WC()->cart->get_displayed_subtotal();
 		$remaining = max( 0, $threshold - $total );
 		$progress = min( 100, $threshold > 0 ? ( $total / $threshold ) * 100 : 100 );
-		$message = $remaining > 0 ? sprintf( __( 'Mua thêm %s để nhận ưu đãi freeship.', 'nexxi-kids-commerce' ), wp_strip_all_tags( wc_price( $remaining ) ) ) : __( 'Đơn hàng đã đạt mốc ưu đãi freeship!', 'nexxi-kids-commerce' );
+		$message = $remaining > 0 ? sprintf( __( 'Mua thêm %s để nhận ưu đãi miễn phí ship toàn quốc.', 'nexxi-kids-commerce' ), wp_strip_all_tags( wc_price( $remaining ) ) ) : __( 'Miễn phí ship toàn quốc cho đơn hàng!', 'nexxi-kids-commerce' );
 		echo '<div class="nexxi-shipping-progress"><p>' . esc_html( $message ) . '</p><div class="nexxi-shipping-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' . esc_attr( (string) round( $progress ) ) . '"><span style="width:' . esc_attr( (string) $progress ) . '%"></span></div></div>';
 	}
 
