@@ -99,7 +99,7 @@ final class Nexxi_Kids_Commerce {
 
 	public function product_service_note() {
 		if ( ! function_exists( 'is_product' ) || ! is_product() ) { return; }
-		echo '<div class="nexxi-product-perks"><span>✓ ' . esc_html__( 'Chất liệu mềm dịu cho bé', 'nexxi-kids-commerce' ) . '</span><span>↻ ' . esc_html__( 'Hỗ trợ đổi size trong 30 ngày', 'nexxi-kids-commerce' ) . '</span><span>⌂ ' . esc_html__( 'Freeship từ 299.000₫', 'nexxi-kids-commerce' ) . '</span></div>';
+		echo '<div class="nexxi-product-perks"><span>✓ ' . esc_html__( 'Chất liệu mềm mại, thoải mái vận động', 'nexxi-kids-commerce' ) . '</span><span>↻ ' . esc_html__( 'Hỗ trợ 15 ngày đổi hàng', 'nexxi-kids-commerce' ) . '</span><span>⌂ ' . esc_html__( 'Miễn ship từ 299.000₫', 'nexxi-kids-commerce' ) . '</span></div>';
 		if ( shortcode_exists( 'nexxi_size_guide' ) ) { echo '<details class="nexxi-size-details"><summary>' . esc_html__( 'Chưa biết chọn size? Xem gợi ý size', 'nexxi-kids-commerce' ) . '</summary>' . $this->size_guide( array( 'compact' => 'yes' ) ) . '</details>'; }
 	}
 
