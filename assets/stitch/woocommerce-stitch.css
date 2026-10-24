@@ -340,9 +340,14 @@ html {
    MOBILE & TABLET UI OPTIMIZATION (< 1024px & < 640px)
    ========================================================================== */
 
-html, body {
+html {
   overflow-x: hidden;
-  max-width: 100vw;
+  overflow-y: auto !important;
+}
+body {
+  overflow-x: clip;
+  overflow-y: visible !important;
+  overscroll-behavior: auto !important;
 }
 body.nexxi-mob-drawer-open {
   overflow: hidden !important;
@@ -519,81 +524,14 @@ body.nexxi-mob-drawer-open {
   border: 1px solid #e4e2de;
 }
 
-/* ---------- Mobile Sticky Bottom Tab Bar (< 768px) ---------- */
-.nexxi-mobile-bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 90;
-  height: 60px;
-  background: rgba(255, 255, 255, 0.97);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid #e4e2de;
-  box-shadow: 0 -6px 24px rgba(3, 20, 68, 0.08);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  align-items: center;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-@media (min-width: 768px) {
-  .nexxi-mobile-bottom-nav {
-    display: none !important;
-  }
-}
-.nexxi-mobile-bottom-nav__item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  height: 100%;
-  color: #45464f;
-  font-family: Quicksand, sans-serif;
-  font-weight: 700;
-  font-size: 10.5px;
-  text-decoration: none;
-  transition: color 0.18s;
-}
-.nexxi-mobile-bottom-nav__item .material-symbols-outlined {
-  font-size: 21px;
-}
-.nexxi-mobile-bottom-nav__item.is-active {
-  color: #ae3115;
-}
-.nexxi-mobile-bottom-nav__item--flash .material-symbols-outlined {
-  color: #fd6a49;
-}
-.nexxi-mobile-bottom-nav__icon-wrap {
-  position: relative;
-  display: inline-flex;
-}
-.nexxi-mobile-bottom-nav__badge {
-  position: absolute;
-  top: -5px;
-  right: -9px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: #ae3115;
-  color: #ffffff;
-  font-size: 9.5px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* ---------- Tablet & Mobile (< 1024px) Layout Adjustments ---------- */
 @media (max-width: 1023px) {
-  /* Account for the 2nd-row quicknav ribbon inside fixed header */
   header[data-nexxi-shared-header="1"] + main,
   body > header + main {
-    padding-top: 8.25rem !important;
+    padding-top: 6.25rem !important;
   }
   body > header > div:nth-child(2) > div {
-    height: 3.6rem !important;
+    height: 3.75rem !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
     gap: 0.4rem !important;
@@ -601,13 +539,6 @@ body.nexxi-mob-drawer-open {
   body > header .w-10 {
     width: 2.2rem !important;
     height: 2.2rem !important;
-  }
-  .nexxi-mobile-quicknav {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .nexxi-mobile-quicknav::-webkit-scrollbar {
-    display: none;
   }
 
   /* Collapsible Shop Filter Sidebar on Mobile/Tablet (<1024px) */
@@ -648,13 +579,6 @@ body.nexxi-mob-drawer-open {
 
 /* ---------- Mobile Phone (< 768px) Layout & Horizontal Scroll Ribbons ---------- */
 @media (max-width: 767px) {
-  body {
-    padding-bottom: 64px !important;
-  }
-  .nexxi-toast {
-    bottom: 74px !important;
-  }
-
   /* Horizontal single-line swipeable category/collection pills on Shop page */
   .nexxi-mobile-scroll-row {
     flex-wrap: nowrap !important;
