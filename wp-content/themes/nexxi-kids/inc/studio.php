@@ -81,7 +81,7 @@ function nexxi_studio_page_url( $page ) {
 /** Hand-written fields (header + PHP-rendered home sections). */
 function nexxi_studio_manual_fields() {
 	$f = array(
-		'header-ticker__lines' => array( 'r' => 'header-ticker', 't' => 'lines', 'd' => "🔥 Giảm giá sản phẩm 25%-40%-50%\n🚚 Miễn ship cho đơn từ 299k toàn quốc\n🛍️ Mua 2 sản phẩm giảm thêm 5%\n🎁 Mua 3 sản phẩm giảm thêm 7%\n💎 Mua 4 sản phẩm giảm thêm 10%\n🛡️ Hoàn tiền 100% nếu sản phẩm không giống với mô tả.\n🔄 Hỗ trợ 15 ngày đổi hàng\n✨ Hàng ngàn ưu đãi hấp dẫn hàng tháng", 'l' => 'Các thông báo (mỗi dòng một thông báo)', 'g' => '' ),
+		'header-ticker__lines' => array( 'r' => 'header-ticker', 't' => 'lines', 'd' => "🔥 Giảm giá sản phẩm 25%-40%-50%\n🚚 Miễn phí ship toàn quốc\n🛍️ Mua 2 sản phẩm giảm thêm 5%\n🎁 Mua 3 sản phẩm giảm thêm 7%\n💎 Mua 4 sản phẩm giảm thêm 10%\n🛡️ Hoàn tiền 100% nếu sản phẩm không giống với mô tả.\n🔄 Hỗ trợ 15 ngày đổi hàng\n✨ Hàng ngàn ưu đãi hấp dẫn hàng tháng", 'l' => 'Các thông báo (mỗi dòng một thông báo)', 'g' => '' ),
 		'header-brand__logo'   => array( 'r' => 'header-brand', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/logo-transparent.png', 'l' => 'Logo (dùng cho header và footer)', 'g' => '' ),
 		'header-brand__label'  => array( 'r' => 'header-brand', 't' => 'text', 'd' => 'Kids FASHION', 'l' => 'Nhãn nhỏ cạnh logo', 'g' => '' ),
 		'header-search__p'     => array( 'r' => 'header-search', 't' => 'placeholder', 'd' => 'Mẹ muốn tìm đồ xinh cho bé...', 'l' => 'Chữ gợi ý trong ô tìm kiếm', 'g' => '' ),
@@ -100,7 +100,7 @@ function nexxi_studio_manual_fields() {
 	$items = array(
 		array( 'directions_run', 'Chất Liệu Mềm Mại', 'Thoải mái vận động và vui chơi mỗi ngày.' ),
 		array( 'autorenew', 'Hỗ Trợ 15 Ngày Đổi Hàng', 'Đổi size và mẫu thuận tiện trong 15 ngày.' ),
-		array( 'local_shipping', 'Miễn Ship Từ 299K', 'Giao hàng bán lẻ và bán sỉ toàn quốc.' ),
+		array( 'local_shipping', 'Miễn Phí Ship Toàn Quốc', 'Giao hàng bán lẻ và bán sỉ toàn quốc.' ),
 		array( 'verified', 'Hoàn Tiền 100%', 'Nếu sản phẩm không giống với mô tả.' ),
 	);
 	foreach ( $items as $n => $item ) {
@@ -203,7 +203,7 @@ function nexxi_studio_changed( $key ) {
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
 		if ( $norm === $legacy_ticker ) { return null; }
 	}
-	if ( preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
+	if ( preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
 		return null;
 	}
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;

@@ -1158,7 +1158,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => 'Miễn Ship Toàn Quốc',
+    'd' => 'Miễn Phí Ship Toàn Quốc',
     'l' => 'Nhãn',
     'g' => 'Bottom Floating Pill',
   ),
@@ -1166,7 +1166,7 @@ return array (
   array (
     'r' => 'flash-hero',
     't' => 'text',
-    'd' => 'Đơn từ 299K toàn quốc',
+    'd' => 'Giao hàng tận nơi toàn quốc',
     'l' => 'Nhãn',
     'g' => 'Bottom Floating Pill',
   ),
@@ -1326,7 +1326,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Kết hợp cùng miễn ship đơn từ 299K',
+    'd' => 'Kết hợp cùng miễn phí ship toàn quốc',
     'l' => 'Dòng chữ',
     'g' => 'Voucher 2',
   ),
@@ -1342,7 +1342,7 @@ return array (
   array (
     'r' => 'flash-vouchers',
     't' => 'text',
-    'd' => 'Miễn ship từ 299K',
+    'd' => 'Miễn phí ship toàn quốc',
     'l' => 'Nhãn',
     'g' => 'Voucher 2',
   ),
@@ -1462,7 +1462,7 @@ return array (
   array (
     'r' => 'flash-terms',
     't' => 'text',
-    'd' => 'Miễn Ship Đơn Từ 299K',
+    'd' => 'Miễn Phí Ship Toàn Quốc',
     'l' => 'Tiêu đề mục',
     'g' => 'Feature 3',
   ),
@@ -1622,7 +1622,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Miễn Ship Toàn Quốc',
+    'd' => 'Miễn Phí Ship Toàn Quốc',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1630,7 +1630,7 @@ return array (
   array (
     'r' => 'pdp-services',
     't' => 'text',
-    'd' => 'Đơn từ 299.000₫',
+    'd' => 'Giao hàng bán lẻ & bán sỉ',
     'l' => 'Dòng chữ',
     'g' => '',
   ),
@@ -1814,7 +1814,7 @@ return array (
   array (
     'r' => 'login-story',
     't' => 'text',
-    'd' => 'Miễn Ship Đơn Từ 299K',
+    'd' => 'Miễn Phí Ship Toàn Quốc',
     'l' => 'Dòng chữ',
     'g' => 'Perk 2',
   ),

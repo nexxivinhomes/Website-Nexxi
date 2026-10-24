@@ -1,7 +1,7 @@
 <?php if ( ! defined( 'ABSPATH' ) ) { exit; } ?><!doctype html>
 <html <?php language_attributes(); ?>><head><meta charset="<?php bloginfo( 'charset' ); ?>"><meta name="viewport" content="width=device-width, initial-scale=1"><?php wp_head(); ?></head>
 <body <?php body_class(); ?>><?php wp_body_open(); ?>
-<div class="promo-bar"><div class="container promo-bar__inner"><span>✨ Freeship cho đơn từ 299.000₫</span><span>🛍️ Mua 2 giảm 5% · Mua 3 giảm 7% · Mua 4 giảm 10%</span><span>🔄 Hỗ trợ 15 ngày đổi hàng</span></div></div>
+<div class="promo-bar"><div class="container promo-bar__inner"><span>🚚 Miễn phí ship toàn quốc</span><span>🛍️ Mua 2 giảm 5% · Mua 3 giảm 7% · Mua 4 giảm 10%</span><span>🔄 Hỗ trợ 15 ngày đổi hàng</span></div></div>
 <header class="site-header"><div class="container site-header__row">
 	<div class="brand">
 		<?php if ( has_custom_logo() ) { the_custom_logo(); } else { ?><a href="<?php echo esc_url( home_url( '/' ) ); ?>" aria-label="NEXXI Kids - Trang chủ"><img src="<?php echo esc_url( get_template_directory_uri() . '/assets/images/logo.jpg' ); ?>" alt="NEXXI Kids" width="205" height="45"></a><?php } ?>

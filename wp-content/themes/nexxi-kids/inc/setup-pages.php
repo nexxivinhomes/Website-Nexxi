@@ -56,7 +56,7 @@ function nexxi_kids_default_pages() {
 		'van-chuyen' => array(
 			'title'   => 'Chính Sách Vận Chuyển',
 			'content' => '<h2>Phí giao hàng</h2>
-<table><thead><tr><th>Giá trị đơn hàng</th><th>Phí giao hàng</th></tr></thead><tbody><tr><td>Từ 299.000₫</td><td>Miễn phí toàn quốc</td></tr><tr><td>Dưới 299.000₫</td><td>30.000₫</td></tr></tbody></table>
+<p><strong>NEXXI miễn phí ship toàn quốc</strong> cho các đơn hàng đặt mua tại website.</p>
 <h2>Thời gian giao hàng</h2><ul><li>Nội thành Hà Nội, TP.HCM: 1–2 ngày làm việc.</li><li>Các tỉnh thành khác: 2–4 ngày làm việc.</li></ul>
 <h2>Đóng gói</h2><p>Mỗi đơn hàng đều được NEXXI kiểm tra kỹ lưỡng và đóng gói chỉn chu trước khi giao đến tay ba mẹ và bé yêu.</p>',
 		),

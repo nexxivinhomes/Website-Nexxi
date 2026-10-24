@@ -36,15 +36,15 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_content_clean_v2';
+	$purge_ver = '20261024_content_clean_v3';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
-		// Clean up legacy 30-day & unverified claims in database pages and studio theme_mod.
+		// Clean up legacy 30-day, 299k & unverified claims in database pages and studio theme_mod.
 		$saved = get_theme_mod( 'nexxi_studio', array() );
 		if ( is_array( $saved ) && $saved ) {
 			$changed_mod = false;
 			foreach ( $saved as $k => $v ) {
-				if ( is_scalar( $v ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', (string) $v ) ) {
+				if ( is_scalar( $v ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', (string) $v ) ) {
 					unset( $saved[ $k ] );
 					$changed_mod = true;
 				}
@@ -60,7 +60,7 @@ add_action( 'init', static function () {
 					continue;
 				}
 				$page = get_page_by_path( $slug );
-				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) || false !== stripos( $page->post_content, '90 ngày' ) ) ) {
+				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) || false !== stripos( $page->post_content, '90 ngày' ) || false !== stripos( $page->post_content, '299' ) ) ) {
 					wp_update_post( array(
 						'ID'           => $page->ID,
 						'post_title'   => $defs[ $slug ]['title'],

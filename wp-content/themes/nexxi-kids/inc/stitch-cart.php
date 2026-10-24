@@ -8,15 +8,15 @@ function nexxi_kids_stitch_cart_content() {
 	$cart = WC()->cart;
 	$count = $cart->get_cart_contents_count();
 	$subtotal = (float) $cart->get_displayed_subtotal();
-	$remaining = max( 0, 299000 - $subtotal );
-	$progress = min( 100, 299000 > 0 ? round( $subtotal / 299000 * 100 ) : 100 );
+	$remaining = 0;
+	$progress = 100;
 	?>
 	<main class="w-full pt-28 md:pt-36 bg-background min-h-screen"><div class="w-full px-margin-mobile md:px-margin py-space-lg max-w-[1440px] mx-auto">
 		<nav aria-label="Breadcrumb" class="flex items-center gap-space-xs text-body-sm font-body-sm text-outline mb-space-md"><a class="hover:text-primary" href="<?php echo esc_url( home_url( '/' ) ); ?>">⌂ Trang Chủ</a><span>/</span><span class="text-primary font-bold">Giỏ Hàng Của Bé</span></nav>
 		<div class="flex flex-wrap items-baseline justify-between gap-space-sm mb-space-lg"><div class="flex items-center gap-space-sm"><h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-primary tracking-tight">Giỏ Hàng Của Bé Yêu</h1><span class="bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md px-space-md py-1 rounded-full"><?php echo esc_html( $count ); ?> món tuyển chọn</span></div><a class="font-label-md text-label-md text-secondary hover:underline" href="<?php echo esc_url( nexxi_kids_stitch_url( 'shop.html' ) ); ?>">Tiếp tục mua sắm →</a></div>
 		<?php wc_print_notices(); ?>
 		<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm mb-space-xl">
-			<div class="flex items-center gap-space-sm mb-space-xs"><span class="material-symbols-outlined text-secondary">local_shipping</span><p class="font-label-lg text-label-lg text-primary"><?php echo $remaining > 0 ? 'Mua thêm ' . wp_kses_post( wc_price( $remaining ) ) . ' để nhận <strong class="text-secondary">Freeship Toàn Quốc</strong>' : '<strong class="text-secondary">Đơn hàng đã đạt mốc Freeship Toàn Quốc!</strong>'; ?></p></div>
+			<div class="flex items-center gap-space-sm mb-space-xs"><span class="material-symbols-outlined text-secondary">local_shipping</span><p class="font-label-lg text-label-lg text-primary"><strong class="text-secondary">Miễn Phí Ship Toàn Quốc</strong> cho đơn hàng của ba mẹ!</p></div>
 			<div class="w-full h-3 bg-surface-container-high rounded-full overflow-hidden p-0.5"><div class="h-full bg-gradient-to-r from-secondary-container to-secondary rounded-full" style="width:<?php echo esc_attr( $progress ); ?>%"></div></div>
 		</div>
 		<?php if ( $cart->is_empty() ) : ?>
