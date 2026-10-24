@@ -37,7 +37,7 @@ function nexxi_studio_regions() {
 		'header-menu'       => array( 'nxs_header', 'Menu chính', '', false, 'Thanh menu ở giữa header.' ),
 		'header-search'     => array( 'nxs_header', 'Ô tìm kiếm', '', false, 'Bên phải header.' ),
 		'home-hero'         => array( 'nxs_home', '1. Banner chính (Hero)', 'home', true, 'Khu vực đầu tiên của trang chủ.' ),
-		'home-categories'   => array( 'nxs_home', '2. Danh mục theo độ tuổi', 'home', true, '4 thẻ danh mục ngay dưới banner.' ),
+		'home-categories'   => array( 'nxs_home', '2. Danh mục theo độ tuổi', 'home', true, '3 thẻ danh mục ngay dưới banner.' ),
 		'home-flash'        => array( 'nxs_home', '3. Flash Sale (tiêu đề)', 'home', true, 'Sản phẩm trong khối này lấy tự động từ sản phẩm đang giảm giá.' ),
 		'home-bestsellers'  => array( 'nxs_home', '4. Bán chạy (tiêu đề)', 'home', true, 'Danh sách sản phẩm lấy tự động theo lượt bán.' ),
 		'home-commit'       => array( 'nxs_home', '5. Cam kết NEXXI', 'home', true, '4 cam kết với biểu tượng.' ),
@@ -124,8 +124,9 @@ function nexxi_studio_fields() {
 		$file = get_template_directory() . '/inc/studio-fields.php';
 		$generated = is_readable( $file ) ? include $file : array();
 		if ( is_array( $generated ) ) {
+			$removed_cat_1 = array( 'home-categories__l1', 'home-categories__i1', 'home-categories__t5', 'home-categories__t6', 'home-categories__t7' );
 			foreach ( array_keys( $generated ) as $gk ) {
-				if ( 0 === strpos( $gk, 'home-hero__' ) ) {
+				if ( 0 === strpos( $gk, 'home-hero__' ) || in_array( $gk, $removed_cat_1, true ) ) {
 					unset( $generated[ $gk ] );
 				}
 			}
