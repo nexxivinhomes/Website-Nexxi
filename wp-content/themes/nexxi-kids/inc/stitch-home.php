@@ -8,9 +8,25 @@ function nexxi_kids_home_category_slugs() {
 }
 
 function nexxi_kids_stitch_home( $html ) {
-	if ( nexxi_studio_changed( 'home-hero__bg5' ) ) {
-		$html = str_replace( '<div class="nexxi-hero-bg__slide is-empty" data-hero-slide="4">', '<div class="nexxi-hero-bg__slide" data-hero-slide="4">', $html );
+	$hero_order  = nexxi_studio_hero_slide_order();
+	$slides_html = '';
+	$first_found = false;
+	foreach ( $hero_order as $idx => $slot ) {
+		$url = nexxi_studio_hero_slide_url( $slot );
+		$cls = 'nexxi-hero-bg__slide';
+		if ( '' === $url ) {
+			$cls .= ' is-empty';
+		} elseif ( ! $first_found ) {
+			$cls .= ' is-active';
+			$first_found = true;
+		}
+		$loading = ( 0 === $idx ) ? ' loading="eager" fetchpriority="high"' : ' loading="lazy"';
+		$slides_html .= '<div class="' . esc_attr( $cls ) . '" data-hero-slide="' . (int) $idx . '" data-hero-slot="' . (int) $slot . '">'
+			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '" alt="Banner NEXXI ' . (int) $slot . '"' . $loading . '>'
+			. '</div>';
 	}
+	$html = nexxi_dom_set_attr( $html, 'data-nexxi-hero-slider', 'data-order', implode( ',', $hero_order ) );
+	$html = nexxi_dom_set_inner( $html, '<div class="nexxi-hero-bg__slides">', $slides_html );
 	// Hero CTAs, category cards and lookbook buttons.
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-shop', 'href', nexxi_kids_shop_url() );
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-account', 'href', wc_get_page_permalink( 'myaccount' ) );

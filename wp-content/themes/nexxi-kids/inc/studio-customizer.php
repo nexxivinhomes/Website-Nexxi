@@ -24,6 +24,28 @@ function nexxi_studio_define_controls() {
 			echo '<div class="nxs-help">' . wp_kses_post( $this->html ) . '</div>';
 		}
 	}
+
+	/** Interactive drag-and-drop + up/down sorter for Hero Banner slides (1..5). */
+	class Nexxi_Studio_Hero_Order_Control extends WP_Customize_Control {
+		public $type = 'nexxi-hero-order';
+		public function render_content() {
+			?>
+			<div class="nxs-hero-sorter-wrap">
+				<div class="nxs-hero-sorter__head">
+					<span class="nxs-hero-sorter__title">⇅ Sắp xếp thứ tự ảnh Banner</span>
+					<button type="button" class="button-link nxs-hero-sorter__reset" data-nxs-hero-order-reset>Đặt lại 1 → 5</button>
+				</div>
+				<p class="nxs-hero-sorter__desc">Kéo thả các dòng hoặc bấm nút <b>↑ / ↓</b> để đổi thứ tự chạy slide (5s/ảnh):</p>
+				<input type="hidden" <?php $this->link(); ?> value="<?php echo esc_attr( $this->value() ); ?>" data-nxs-hero-order-input>
+				<ul class="nxs-hero-sorter" data-nxs-hero-sorter></ul>
+			</div>
+			<?php
+		}
+	}
+}
+
+function nexxi_studio_sanitize_hero_order( $value ) {
+	return implode( ',', nexxi_studio_hero_slide_order( $value ) );
 }
 
 function nexxi_studio_sanitize_text( $value ) {
@@ -91,9 +113,22 @@ function nexxi_studio_customize( WP_Customize_Manager $wp ) {
 			$label = nexxi_studio_group_label( $field['g'] );
 			if ( $label !== $group && '' !== $label ) {
 				$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_h_' . $key, array( 'label' => $label, 'section' => $section, 'settings' => array(), 'priority' => $priority++ ) ) );
+				if ( 'home-hero__bg1' === $key ) {
+					$wp->add_setting( 'nexxi_studio[home-hero__order]', array(
+						'type'              => 'theme_mod',
+						'default'           => '1,2,3,4,5',
+						'sanitize_callback' => 'nexxi_studio_sanitize_hero_order',
+						'transport'         => 'postMessage',
+					) );
+					$wp->add_control( new Nexxi_Studio_Hero_Order_Control( $wp, 'nexxi_studio[home-hero__order]', array(
+						'section'  => $section,
+						'priority' => $priority++,
+					) ) );
+				}
 			}
 			$group = $label;
-			nexxi_studio_add_field( $wp, $key, $field, $section, $priority++ );
+			$field_priority = ( 0 === strpos( $key, 'home-hero__bg' ) ) ? ( 10 + (int) substr( $key, -1 ) ) : $priority++;
+			nexxi_studio_add_field( $wp, $key, $field, $section, $field_priority );
 		}
 
 		// Region specific extras.
@@ -289,7 +324,11 @@ function nexxi_studio_controls_assets() {
 	foreach ( nexxi_studio_regions() as $id => $meta ) {
 		$regions[ $id ] = array( 'url' => nexxi_studio_page_url( $meta[2] ), 'title' => $meta[1] );
 	}
-	wp_localize_script( 'nexxi-studio-controls', 'NexxiStudioControls', array( 'regions' => $regions ) );
+	$hero_defaults = array();
+	for ( $slot = 1; $slot <= 5; $slot++ ) {
+		$hero_defaults[ $slot ] = nexxi_studio_default( 'home-hero__bg' . $slot );
+	}
+	wp_localize_script( 'nexxi-studio-controls', 'NexxiStudioControls', array( 'regions' => $regions, 'heroDefaults' => $hero_defaults ) );
 }
 add_action( 'customize_controls_enqueue_scripts', 'nexxi_studio_controls_assets' );
 

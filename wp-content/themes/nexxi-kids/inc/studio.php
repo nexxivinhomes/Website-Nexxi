@@ -218,7 +218,40 @@ function nexxi_studio_changed( $key ) {
 	if ( preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
 		return null;
 	}
+	if ( preg_match( '~^home-hero__bg[1-5]$~', $key ) && '' === $value ) {
+		return '';
+	}
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;
+}
+
+/** Normalized 1..5 slide order for the Hero Banner slideshow. */
+function nexxi_studio_hero_slide_order( $raw = null ) {
+	if ( null === $raw ) {
+		$raw = nexxi_studio_opt( 'home-hero__order', '1,2,3,4,5' );
+	}
+	$order = array();
+	foreach ( explode( ',', (string) $raw ) as $part ) {
+		$slot = (int) trim( $part );
+		if ( $slot >= 1 && $slot <= 5 && ! in_array( $slot, $order, true ) ) {
+			$order[] = $slot;
+		}
+	}
+	for ( $slot = 1; $slot <= 5; $slot++ ) {
+		if ( ! in_array( $slot, $order, true ) ) {
+			$order[] = $slot;
+		}
+	}
+	return $order;
+}
+
+/** Resolved image URL for Hero Banner slot 1..5 (empty string if removed). */
+function nexxi_studio_hero_slide_url( $slot ) {
+	$key   = 'home-hero__bg' . (int) $slot;
+	$saved = nexxi_studio_saved();
+	if ( array_key_exists( $key, $saved ) && is_scalar( $saved[ $key ] ) ) {
+		return trim( (string) $saved[ $key ] );
+	}
+	return nexxi_studio_default( $key );
 }
 
 function nexxi_studio_value( $key ) {
