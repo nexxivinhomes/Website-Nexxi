@@ -27,7 +27,7 @@ function nexxi_kids_page_content( $post ) {
 	if ( $post_obj instanceof WP_Post && function_exists( 'nexxi_kids_default_pages' ) ) {
 		$defs = nexxi_kids_default_pages();
 		$slug = $post_obj->post_name;
-		if ( isset( $defs[ $slug ] ) && ( false !== stripos( $raw, '30 ngày' ) || false !== stripos( $raw, 'hộp quà' ) || false !== stripos( $raw, '90 ngày' ) || false !== stripos( $raw, '299' ) ) ) {
+		if ( isset( $defs[ $slug ] ) && ( false !== stripos( $raw, '30 ngày' ) || false !== stripos( $raw, 'hộp quà' ) || false !== stripos( $raw, '90 ngày' ) || false !== stripos( $raw, '299' ) || false !== stripos( $raw, 'Hà Nội' ) || false !== stripos( $raw, '2–4 ngày' ) || false !== stripos( $raw, '2-4 ngày' ) ) ) {
 			$raw = $defs[ $slug ]['content'];
 			wp_update_post( array(
 				'ID'           => $post_obj->ID,
@@ -37,8 +37,8 @@ function nexxi_kids_page_content( $post ) {
 		}
 	}
 	$raw = str_ireplace(
-		array( 'đổi size hoặc đổi mẫu miễn phí trong 30 ngày', 'miễn phí trong 30 ngày', '30 ngày' ),
-		array( 'hỗ trợ đổi size hoặc đổi mẫu trong vòng 15 ngày', 'trong vòng 15 ngày', '15 ngày' ),
+		array( 'đổi size hoặc đổi mẫu miễn phí trong 30 ngày', 'miễn phí trong 30 ngày', '30 ngày', 'Nội thành Hà Nội, TP.HCM:', 'Nội thành Hà Nội và TP.HCM 1–2 ngày, các tỉnh thành khác 2–4 ngày làm việc.', '2–4 ngày làm việc', '2-4 ngày làm việc' ),
+		array( 'hỗ trợ đổi size hoặc đổi mẫu trong vòng 15 ngày', 'trong vòng 15 ngày', '15 ngày', 'Nội thành TP.HCM:', 'Nội thành TP.HCM: 1–2 ngày làm việc, các tỉnh thành khác: 3–5 ngày làm việc.', '3–5 ngày làm việc', '3–5 ngày làm việc' ),
 		$raw
 	);
 	$content = apply_filters( 'the_content', $raw ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound

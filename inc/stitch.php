@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_content_clean_v3';
+	$purge_ver = '20261024_content_clean_v4';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Clean up legacy 30-day, 299k & unverified claims in database pages and studio theme_mod.
@@ -60,7 +60,7 @@ add_action( 'init', static function () {
 					continue;
 				}
 				$page = get_page_by_path( $slug );
-				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) || false !== stripos( $page->post_content, '90 ngày' ) || false !== stripos( $page->post_content, '299' ) ) ) {
+				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) || false !== stripos( $page->post_content, '90 ngày' ) || false !== stripos( $page->post_content, '299' ) || false !== stripos( $page->post_content, 'Hà Nội' ) || false !== stripos( $page->post_content, '2–4 ngày' ) || false !== stripos( $page->post_content, '2-4 ngày' ) ) ) {
 					wp_update_post( array(
 						'ID'           => $page->ID,
 						'post_title'   => $defs[ $slug ]['title'],
