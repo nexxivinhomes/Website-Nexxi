@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_mobile_ui_v1';
+	$purge_ver = '20261024_mobile_ui_v2';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		do_action( 'litespeed_purge_all' );
@@ -214,7 +214,7 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 		$header = substr( $header, 0, $search['start'] ) . $open . substr( $header, $search['open_end'] );
 	}
 
-	// Inject Mobile Search Toggle + Hamburger Menu Button into the right header actions bar, plus a horizontal scrollable quick-nav bar for <1024px screens.
+	// Inject Mobile Search Toggle + Hamburger Menu Button into the right header actions bar.
 	$mobile_btns = '<button type="button" class="nexxi-mob-icon-btn md:hidden w-9 h-9 rounded-full bg-surface-container-low hover:bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-secondary transition-all shrink-0" data-nexxi-mob-search-open aria-label="Tìm kiếm sản phẩm"><span class="material-symbols-outlined text-[20px]">search</span></button>'
 		. '<button type="button" class="nexxi-mob-icon-btn lg:hidden w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm transition-all shrink-0" data-nexxi-mob-menu-open aria-label="Mở menu điều hướng" aria-expanded="false"><span class="material-symbols-outlined text-[20px]">menu</span></button>';
 
@@ -225,25 +225,6 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 			$header = substr( $header, 0, $actions_el['inner_end'] ) . $mobile_btns . substr( $header, $actions_el['inner_end'] );
 		}
 	}
-
-	$mob_nav_items = array(
-		'trang-chu'        => array( 'Trang Chủ', $routes['trang-chu'], '' ),
-		'san-pham'         => array( 'Sản Phẩm', $routes['san-pham'], '<span class="text-[9px] bg-tertiary-fixed text-on-tertiary-fixed px-1.5 py-0.5 rounded-full font-bold ml-1">Bé Yêu</span>' ),
-		'flash-sale'       => array( 'Flash Sale', $routes['flash-sale'], '<span class="text-[9px] bg-secondary text-on-secondary px-1.5 py-0.5 rounded-full font-bold ml-1">⚡Hot</span>' ),
-		'gioi-thieu'       => array( 'Giới Thiệu', $routes['gioi-thieu'], '' ),
-		'bang-size-cho-be' => array( 'Bảng Size', $routes['bang-size-cho-be'], '' ),
-		'lien-he'          => array( 'Liên Hệ', $routes['lien-he'], '' ),
-	);
-	$mob_ribbon = '<div class="nexxi-mobile-quicknav lg:hidden w-full bg-surface-container-lowest/95 border-t border-surface-container-high px-3 py-1.5 overflow-x-auto"><div class="flex items-center gap-1.5 w-max">';
-	foreach ( $mob_nav_items as $m_key => $m_item ) {
-		$is_act = ( $m_key === $active_path );
-		$cls    = $is_act
-			? 'bg-secondary-fixed text-on-secondary-fixed font-bold shadow-sm'
-			: 'bg-surface-container-low text-on-surface-variant hover:text-primary';
-		$mob_ribbon .= '<a href="' . esc_url( $m_item[1] ) . '" class="inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-[12px] font-label-md transition-all ' . $cls . '">' . esc_html( $m_item[0] ) . $m_item[2] . '</a>';
-	}
-	$mob_ribbon .= '</div></div>';
-	$header = preg_replace( '~</header>\s*$~i', $mob_ribbon . '</header>', $header, 1 );
 
 	return substr( $html, 0, $el['start'] ) . $header . substr( $html, $el['end'] );
 }
@@ -354,33 +335,6 @@ function nexxi_kids_mobile_shell_ui( $screen ) {
 			</div>
 		</div>
 	</div>
-
-	<!-- NEXXI MOBILE STICKY BOTTOM NAVIGATION BAR (<768px) -->
-	<nav id="nexxi-mobile-bottom-nav" class="nexxi-mobile-bottom-nav md:hidden" aria-label="Thanh điều hướng nhanh di động">
-		<a href="<?php echo esc_url( $home_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'index' === $screen ? 'is-active' : ''; ?>">
-			<span class="material-symbols-outlined">home</span>
-			<span>Trang chủ</span>
-		</a>
-		<a href="<?php echo esc_url( $shop_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'shop' === $screen || 'product' === $screen ? 'is-active' : ''; ?>">
-			<span class="material-symbols-outlined">storefront</span>
-			<span>Cửa hàng</span>
-		</a>
-		<a href="<?php echo esc_url( $flash_url ); ?>" class="nexxi-mobile-bottom-nav__item nexxi-mobile-bottom-nav__item--flash <?php echo 'flash-sale' === $screen ? 'is-active' : ''; ?>">
-			<span class="material-symbols-outlined">bolt</span>
-			<span>Flash Sale</span>
-		</a>
-		<a href="<?php echo esc_url( $cart_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'cart' === $screen ? 'is-active' : ''; ?>">
-			<span class="nexxi-mobile-bottom-nav__icon-wrap">
-				<span class="material-symbols-outlined">shopping_bag</span>
-				<span class="nexxi-mobile-bottom-nav__badge" data-nexxi-cart-count><?php echo (int) $cart_cnt; ?></span>
-			</span>
-			<span>Giỏ hàng</span>
-		</a>
-		<a href="<?php echo esc_url( $acct_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'account' === $screen ? 'is-active' : ''; ?>">
-			<span class="material-symbols-outlined">person</span>
-			<span>Tài khoản</span>
-		</a>
-	</nav>
 	<?php
 	return ob_get_clean();
 }
@@ -607,6 +561,8 @@ function nexxi_kids_render_stitch( $screen ) {
 		$html
 	);
 	$html = str_replace( array( '14 - 17kg', '14-17kg' ), array( '14 - 16kg', '14-16kg' ), $html );
+	// Remove overscroll-behavior:none and scrollbar hiding from Stitch base styles so vertical touch/mouse scrolling works smoothly everywhere.
+	$html = str_replace( array( 'body{overscroll-behavior:none;}', '::-webkit-scrollbar{display:none;}' ), '', $html );
 	// Convert Tailwind config fontSize definitions from fixed px to fluid rem and guard against LiteSpeed JS reorder/delay.
 	$html = preg_replace_callback( '~(<script id="tailwind-config">)(.*?)(</script>)~s', static function ( $m ) {
 		$px_to_rem = array(
