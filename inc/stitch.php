@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_content_clean_v4';
+	$purge_ver = '20261024_checkout_member_points_v5';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Clean up legacy 30-day, 299k & unverified claims in database pages and studio theme_mod.
@@ -416,12 +416,14 @@ function nexxi_kids_stitch_footer( $html ) {
 }
 
 function nexxi_kids_stitch_login_forms( $html ) {
-	$html = preg_replace_callback( '~<form\b[^>]*onsubmit="handleAuthSubmit\(event, \'(login|register)\'\)"[^>]*>.*?</form>~s', static function ( $match ) {
+	$prefill_email = isset( $_GET['nexxi_login_email'] ) ? sanitize_email( wp_unslash( $_GET['nexxi_login_email'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$html = preg_replace_callback( '~<form\b[^>]*onsubmit="handleAuthSubmit\(event, \'(login|register)\'\)"[^>]*>.*?</form>~s', static function ( $match ) use ( $prefill_email ) {
 		$kind = $match[1];
 		$form = $match[0];
 		if ( 'login' === $kind ) {
 			$form = str_replace( 'onsubmit="handleAuthSubmit(event, \'login\')"', 'method="post"', $form );
-			$form = str_replace( 'id="login-account"', 'id="login-account" name="username" autocomplete="username"', $form );
+			$val_attr = $prefill_email ? ' value="' . esc_attr( $prefill_email ) . '"' : '';
+			$form = str_replace( 'id="login-account"', 'id="login-account" name="username" autocomplete="username"' . $val_attr, $form );
 			$form = str_replace( 'id="login-password"', 'id="login-password" name="password" autocomplete="current-password"', $form );
 			$form = str_replace( 'type="checkbox"', 'type="checkbox" name="rememberme" value="forever"', $form );
 			$form = str_replace( 'type="submit"', 'type="submit" name="login" value="Đăng nhập"', $form );
@@ -438,6 +440,23 @@ function nexxi_kids_stitch_login_forms( $html ) {
 		}
 		return str_replace( '</form>', $nonce . '</form>', $form );
 	}, $html );
+
+	if ( function_exists( 'wc_print_notices' ) ) {
+		ob_start();
+		wc_print_notices();
+		$notices_html = trim( ob_get_clean() );
+		if ( $prefill_email ) {
+			$notices_html .= '<div class="mb-4 p-3.5 rounded-xl bg-secondary-fixed/60 border border-secondary text-primary font-body-sm text-body-sm">Vui lòng đăng nhập tài khoản <strong>' . esc_html( $prefill_email ) . '</strong> (Mật khẩu mặc định là <strong>Số điện thoại đặt hàng</strong> nếu tài khoản được tạo tự động) để kiểm tra điểm thành viên NEXXI và ưu đãi của bạn.</div>';
+		}
+		if ( '' !== $notices_html ) {
+			$html = str_replace(
+				'<div class="space-y-space-md" id="login-form-container">',
+				'<div class="nexxi-login-notices mb-space-md">' . $notices_html . '</div><div class="space-y-space-md" id="login-form-container">',
+				$html
+			);
+		}
+	}
+
 	$html = preg_replace( '~(<a\b[^>]*href=")#("[^>]*>\s*<span[^>]*>arrow_back</span>)~s', '$1' . esc_url( home_url( '/' ) ) . '$2', $html, 1 );
 	$hotline = nexxi_kids_setting( 'nexxi_kids_hotline' );
 	$hours   = nexxi_kids_setting( 'nexxi_kids_hours' );
