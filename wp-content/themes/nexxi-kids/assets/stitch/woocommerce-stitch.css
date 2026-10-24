@@ -534,9 +534,9 @@ body.nexxi-mob-drawer-open {
 @media (max-width: 1023px) {
   header[data-nexxi-shared-header="1"] + main,
   body > header + main {
-    padding-top: 6.25rem !important;
+    padding-top: var(--nexxi-header-h, 5.375rem) !important;
   }
-  body > header > div:nth-child(2) > div {
+  body > header > div:last-child > div {
     height: 3.75rem !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
