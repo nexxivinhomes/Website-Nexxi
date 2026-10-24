@@ -625,6 +625,40 @@
     if (button) button.disabled = false;
   }));
 
+  /* ---------- Mobile Drawer & Mobile Shop Filter Toggle ---------- */
+  const mobDrawer = $('#nexxi-mobile-drawer');
+  const setMobDrawer = (open, focusSearch = false) => {
+    if (!mobDrawer) return;
+    mobDrawer.classList.toggle('is-open', open);
+    mobDrawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+    document.body.classList.toggle('nexxi-mob-drawer-open', open);
+    $$('[data-nexxi-mob-menu-open]').forEach(btn => btn.setAttribute('aria-expanded', open ? 'true' : 'false'));
+    if (open && focusSearch) {
+      setTimeout(() => $('[data-nexxi-mob-search-input]', mobDrawer)?.focus(), 120);
+    }
+  };
+  $$('[data-nexxi-mob-menu-open]').forEach(btn => btn.addEventListener('click', e => {
+    e.preventDefault();
+    setMobDrawer(!mobDrawer?.classList.contains('is-open'), false);
+  }));
+  $$('[data-nexxi-mob-search-open]').forEach(btn => btn.addEventListener('click', e => {
+    e.preventDefault();
+    setMobDrawer(true, true);
+  }));
+  $$('[data-nexxi-mob-close]').forEach(el => el.addEventListener('click', () => setMobDrawer(false)));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && mobDrawer?.classList.contains('is-open')) setMobDrawer(false);
+  });
+
+  $$('[data-nexxi-mobile-filter-toggle]').forEach(btn => btn.addEventListener('click', e => {
+    if (window.innerWidth >= 1024) return;
+    e.preventDefault();
+    const card = btn.closest('.nexxi-shop-filter-card');
+    if (!card) return;
+    const isOpen = card.classList.toggle('is-open');
+    btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }));
+
   initCards();
   paintWishlist();
   renderWishlistPage();
