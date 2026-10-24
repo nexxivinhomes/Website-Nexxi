@@ -299,14 +299,13 @@ function nexxi_kids_vn_provinces_options( $current_val = '' ) {
 
 /**
  * Options array for the Ward / Commune (Phường / Xã) dropdown select.
- * Includes posted/current values so WooCommerce server-side select validation always passes.
+ * Strictly requires a Province/City (Tỉnh / Thành phố) to be selected first.
  *
  * @param string $city_val Current province/city value.
  * @param string $ward_val Current ward value.
  * @return array<string,string>
  */
 function nexxi_kids_vn_wards_options( $city_val = '', $ward_val = '' ) {
-	$opts     = array( '' => '-- Chọn Phường / Xã --' );
 	$city_val = trim( (string) $city_val );
 	$ward_val = trim( (string) $ward_val );
 
@@ -317,18 +316,25 @@ function nexxi_kids_vn_wards_options( $city_val = '', $ward_val = '' ) {
 		$ward_val = sanitize_text_field( wp_unslash( $_POST['billing_ward'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 	}
 
+	if ( '' === $city_val ) {
+		$opts = array( '' => '-- Vui lòng chọn Tỉnh / Thành phố trước --' );
+		if ( '' !== $ward_val ) {
+			$opts[ $ward_val ] = $ward_val;
+		}
+		return $opts;
+	}
+
+	$opts = array( '' => '-- Chọn Phường / Xã --' );
 	foreach ( nexxi_kids_vn_addresses_2025() as $prov ) {
 		if ( empty( $prov['name'] ) || empty( $prov['wards'] ) || ! is_array( $prov['wards'] ) ) {
 			continue;
 		}
-		if ( '' === $city_val || 0 === strcasecmp( (string) $prov['name'], $city_val ) ) {
+		if ( 0 === strcasecmp( (string) $prov['name'], $city_val ) ) {
 			foreach ( $prov['wards'] as $w ) {
 				$w          = (string) $w;
 				$opts[ $w ] = $w;
 			}
-			if ( '' !== $city_val ) {
-				break;
-			}
+			break;
 		}
 	}
 
@@ -732,19 +738,19 @@ function nexxi_kids_account_addresses_view( WP_User $user ) {
 </div>
 
 <div>
-<label class="block font-label-md text-label-md text-primary font-bold mb-1.5" for="nexxi-addr-ward">Phường / Xã <span class="text-secondary">*</span></label>
-<select id="nexxi-addr-ward" name="addr_ward" required data-selected-ward="<?php echo esc_attr( $val_ward ); ?>" class="<?php echo esc_attr( $input_cls ); ?>">
-<?php foreach ( $wards as $w_val => $w_label ) : ?>
-<option value="<?php echo esc_attr( $w_val ); ?>" <?php selected( $val_ward, $w_val ); ?>><?php echo esc_html( $w_label ); ?></option>
+<label class="block font-label-md text-label-md text-primary font-bold mb-1.5" for="nexxi-addr-city">Tỉnh / Thành phố <span class="text-secondary">*</span></label>
+<select id="nexxi-addr-city" name="addr_city" required data-selected-city="<?php echo esc_attr( $val_city ); ?>" class="<?php echo esc_attr( $input_cls ); ?>">
+<?php foreach ( $provinces as $p_val => $p_label ) : ?>
+<option value="<?php echo esc_attr( $p_val ); ?>" <?php selected( $val_city, $p_val ); ?>><?php echo esc_html( $p_label ); ?></option>
 <?php endforeach; ?>
 </select>
 </div>
 
 <div>
-<label class="block font-label-md text-label-md text-primary font-bold mb-1.5" for="nexxi-addr-city">Tỉnh / Thành phố <span class="text-secondary">*</span></label>
-<select id="nexxi-addr-city" name="addr_city" required data-selected-city="<?php echo esc_attr( $val_city ); ?>" class="<?php echo esc_attr( $input_cls ); ?>">
-<?php foreach ( $provinces as $p_val => $p_label ) : ?>
-<option value="<?php echo esc_attr( $p_val ); ?>" <?php selected( $val_city, $p_val ); ?>><?php echo esc_html( $p_label ); ?></option>
+<label class="block font-label-md text-label-md text-primary font-bold mb-1.5" for="nexxi-addr-ward">Phường / Xã <span class="text-secondary">*</span></label>
+<select id="nexxi-addr-ward" name="addr_ward" required data-selected-ward="<?php echo esc_attr( $val_ward ); ?>" class="<?php echo esc_attr( $input_cls ); ?>">
+<?php foreach ( $wards as $w_val => $w_label ) : ?>
+<option value="<?php echo esc_attr( $w_val ); ?>" <?php selected( $val_ward, $w_val ); ?>><?php echo esc_html( $w_label ); ?></option>
 <?php endforeach; ?>
 </select>
 </div>
@@ -1056,9 +1062,9 @@ add_filter( 'woocommerce_my_account_edit_address_field_value', static function (
  *  2. Họ và tên người nhận * (priority 20)
  *  3. Số điện thoại * (priority 30 — dưới Họ và tên người nhận)
  *  4. Địa chỉ * (priority 40 — 1 dòng duy nhất)
- *  5. Phường / Xã * (priority 50 — dropdown select theo địa chỉ mới VN)
- *  6. Tỉnh / Thành phố * (priority 60 — dropdown select theo địa chỉ mới VN)
- *  7. Quốc gia / Khu vực * (priority 70 — dưới Thành phố)
+ *  5. Tỉnh / Thành phố * (priority 50 — chọn Thành phố trước, dropdown select cho phép gõ tìm kiếm)
+ *  6. Phường / Xã * (priority 60 — gắn với Thành phố đã chọn, dropdown select cho phép gõ tìm kiếm)
+ *  7. Quốc gia / Khu vực * (priority 70 — dưới Thành phố & Phường/Xã)
  */
 add_filter( 'woocommerce_default_address_fields', static function ( $fields ) {
 	unset( $fields['postcode'], $fields['last_name'], $fields['company'], $fields['address_2'], $fields['state'] );
@@ -1075,22 +1081,22 @@ add_filter( 'woocommerce_default_address_fields', static function ( $fields ) {
 		$fields['address_1']['class']       = array( 'form-row-wide' );
 		$fields['address_1']['priority']    = 40;
 	}
-	$fields['ward'] = array(
-		'label'    => 'Phường / Xã',
-		'required' => true,
-		'type'     => 'select',
-		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
-		'options'  => nexxi_kids_vn_wards_options(),
-		'priority' => 50,
-	);
 	if ( isset( $fields['city'] ) ) {
 		$fields['city']['label']    = 'Tỉnh / Thành phố';
 		$fields['city']['required'] = true;
 		$fields['city']['type']     = 'select';
 		$fields['city']['class']    = array( 'form-row-wide', 'nexxi-city-field' );
 		$fields['city']['options']  = nexxi_kids_vn_provinces_options();
-		$fields['city']['priority'] = 60;
+		$fields['city']['priority'] = 50;
 	}
+	$fields['ward'] = array(
+		'label'    => 'Phường / Xã',
+		'required' => true,
+		'type'     => 'select',
+		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
+		'options'  => nexxi_kids_vn_wards_options(),
+		'priority' => 60,
+	);
 	if ( isset( $fields['country'] ) ) {
 		$fields['country']['label']    = 'Quốc gia / Khu vực';
 		$fields['country']['default']  = 'VN';
@@ -1109,8 +1115,8 @@ add_filter( 'woocommerce_get_country_locale', static function ( $locale ) {
 		$locale[ $country ]['first_name']['priority'] = 20;
 		$locale[ $country ]['phone']['priority']      = 30;
 		$locale[ $country ]['address_1']['priority']  = 40;
-		$locale[ $country ]['ward']['priority']       = 50;
-		$locale[ $country ]['city']['priority']       = 60;
+		$locale[ $country ]['city']['priority']       = 50;
+		$locale[ $country ]['ward']['priority']       = 60;
 		$locale[ $country ]['country']['priority']    = 70;
 	}
 	$locale['VN'] = array(
@@ -1118,8 +1124,8 @@ add_filter( 'woocommerce_get_country_locale', static function ( $locale ) {
 		'phone'      => array( 'label' => 'Số điện thoại', 'priority' => 30, 'required' => true ),
 		'address_1'  => array( 'label' => 'Địa chỉ', 'placeholder' => 'Số nhà, tên đường...', 'priority' => 40, 'required' => true ),
 		'address_2'  => array( 'required' => false, 'hidden' => true ),
-		'ward'       => array( 'label' => 'Phường / Xã', 'priority' => 50, 'required' => true ),
-		'city'       => array( 'label' => 'Tỉnh / Thành phố', 'priority' => 60, 'required' => true ),
+		'city'       => array( 'label' => 'Tỉnh / Thành phố', 'priority' => 50, 'required' => true ),
+		'ward'       => array( 'label' => 'Phường / Xã', 'priority' => 60, 'required' => true ),
 		'country'    => array( 'label' => 'Quốc gia / Khu vực', 'priority' => 70, 'required' => true ),
 		'postcode'   => array( 'required' => false, 'hidden' => true ),
 		'state'      => array( 'required' => false, 'hidden' => true ),
@@ -1166,15 +1172,6 @@ add_filter( 'woocommerce_billing_fields', static function ( $fields ) {
 		$fields['billing_address_1']['class']       = array( 'form-row-wide' );
 		$fields['billing_address_1']['priority']    = 40;
 	}
-	$fields['billing_ward'] = array(
-		'label'    => 'Phường / Xã',
-		'required' => true,
-		'type'     => 'select',
-		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
-		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
-		'default'  => $saved_ward,
-		'priority' => 50,
-	);
 	$fields['billing_city'] = array(
 		'label'    => 'Tỉnh / Thành phố',
 		'required' => true,
@@ -1182,6 +1179,15 @@ add_filter( 'woocommerce_billing_fields', static function ( $fields ) {
 		'class'    => array( 'form-row-wide', 'nexxi-city-field' ),
 		'options'  => nexxi_kids_vn_provinces_options( $saved_city ),
 		'default'  => $saved_city,
+		'priority' => 50,
+	);
+	$fields['billing_ward'] = array(
+		'label'    => 'Phường / Xã',
+		'required' => true,
+		'type'     => 'select',
+		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
+		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
+		'default'  => $saved_ward,
 		'priority' => 60,
 	);
 	if ( isset( $fields['billing_country'] ) ) {
@@ -1221,15 +1227,6 @@ add_filter( 'woocommerce_shipping_fields', static function ( $fields ) {
 		$fields['shipping_address_1']['class']       = array( 'form-row-wide' );
 		$fields['shipping_address_1']['priority']    = 40;
 	}
-	$fields['shipping_ward'] = array(
-		'label'    => 'Phường / Xã',
-		'required' => true,
-		'type'     => 'select',
-		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
-		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
-		'default'  => $saved_ward,
-		'priority' => 50,
-	);
 	$fields['shipping_city'] = array(
 		'label'    => 'Tỉnh / Thành phố',
 		'required' => true,
@@ -1237,6 +1234,15 @@ add_filter( 'woocommerce_shipping_fields', static function ( $fields ) {
 		'class'    => array( 'form-row-wide', 'nexxi-city-field' ),
 		'options'  => nexxi_kids_vn_provinces_options( $saved_city ),
 		'default'  => $saved_city,
+		'priority' => 50,
+	);
+	$fields['shipping_ward'] = array(
+		'label'    => 'Phường / Xã',
+		'required' => true,
+		'type'     => 'select',
+		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
+		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
+		'default'  => $saved_ward,
 		'priority' => 60,
 	);
 	if ( isset( $fields['shipping_country'] ) ) {
@@ -1285,17 +1291,6 @@ add_filter( 'woocommerce_address_to_edit', static function ( $address, $load_add
 		$address[ $load_address . '_address_1' ]['priority']    = 40;
 	}
 
-	$ward_key = $load_address . '_ward';
-	$address[ $ward_key ] = array(
-		'label'    => 'Phường / Xã',
-		'required' => true,
-		'type'     => 'select',
-		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
-		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
-		'priority' => 50,
-		'value'    => $saved_ward,
-	);
-
 	$city_key = $load_address . '_city';
 	$address[ $city_key ] = array(
 		'label'    => 'Tỉnh / Thành phố',
@@ -1303,8 +1298,19 @@ add_filter( 'woocommerce_address_to_edit', static function ( $address, $load_add
 		'type'     => 'select',
 		'class'    => array( 'form-row-wide', 'nexxi-city-field' ),
 		'options'  => nexxi_kids_vn_provinces_options( $saved_city ),
-		'priority' => 60,
+		'priority' => 50,
 		'value'    => $saved_city,
+	);
+
+	$ward_key = $load_address . '_ward';
+	$address[ $ward_key ] = array(
+		'label'    => 'Phường / Xã',
+		'required' => true,
+		'type'     => 'select',
+		'class'    => array( 'form-row-wide', 'nexxi-ward-field' ),
+		'options'  => nexxi_kids_vn_wards_options( $saved_city, $saved_ward ),
+		'priority' => 60,
+		'value'    => $saved_ward,
 	);
 
 	$country_key = $load_address . '_country';
@@ -1336,7 +1342,7 @@ add_action( 'woocommerce_checkout_create_order', static function ( WC_Order $ord
 }, 20, 2 );
 
 /**
- * Output interactive Vietnam 2025 Province/City <-> Ward/Commune cascading select & Checkout field order script.
+ * Output interactive Vietnam 2025 Searchable Select (Tỉnh/Thành phố -> Phường/Xã) & Checkout field order script.
  */
 function nexxi_kids_vn_address_script() {
 	if ( ! ( ( function_exists( 'is_checkout' ) && is_checkout() ) || ( function_exists( 'is_account_page' ) && is_account_page() ) ) ) {
@@ -1351,31 +1357,209 @@ function nexxi_kids_vn_address_script() {
 	(function() {
 		window.NexxiVNAddresses2025 = <?php echo wp_json_encode( $vn_data ); ?>;
 
+		function foldVN(str) {
+			if (!str) return '';
+			return String(str)
+				.toLowerCase()
+				.normalize('NFD')
+				.replace(/[\u0300-\u036f]/g, '')
+				.replace(/đ/g, 'd')
+				.replace(/\s+/g, ' ')
+				.trim();
+		}
+
 		function findProvince(cityName) {
 			if (!cityName || !Array.isArray(window.NexxiVNAddresses2025)) return null;
-			var target = String(cityName).trim().toLowerCase();
+			var target = foldVN(cityName);
 			for (var i = 0; i < window.NexxiVNAddresses2025.length; i++) {
 				var p = window.NexxiVNAddresses2025[i];
-				if (p && p.name && String(p.name).trim().toLowerCase() === target) {
+				if (p && p.name && foldVN(p.name) === target) {
 					return p;
 				}
 			}
 			return null;
 		}
 
-		function findProvinceByWard(wardName) {
-			if (!wardName || !Array.isArray(window.NexxiVNAddresses2025)) return null;
-			var target = String(wardName).trim().toLowerCase();
-			for (var i = 0; i < window.NexxiVNAddresses2025.length; i++) {
-				var p = window.NexxiVNAddresses2025[i];
-				if (!p || !Array.isArray(p.wards)) continue;
-				for (var j = 0; j < p.wards.length; j++) {
-					if (String(p.wards[j]).trim().toLowerCase() === target) {
-						return p;
-					}
-				}
+		var openSSelect = null;
+
+		function closeAllSSelect() {
+			if (openSSelect) {
+				openSSelect.classList.remove('is-open');
+				openSSelect = null;
 			}
-			return null;
+		}
+
+		document.addEventListener('click', function(e) {
+			if (openSSelect && !openSSelect.contains(e.target)) {
+				closeAllSSelect();
+			}
+		});
+
+		function destroyWCSelect2(selectEl) {
+			if (!selectEl || !window.jQuery) return;
+			try {
+				var $el = window.jQuery(selectEl);
+				if ($el.hasClass('select2-hidden-accessible') && typeof $el.select2 === 'function') {
+					$el.select2('destroy');
+				}
+				var nextS2 = selectEl.parentNode ? selectEl.parentNode.querySelector('.select2-container') : null;
+				if (nextS2 && nextS2.parentNode) {
+					nextS2.parentNode.removeChild(nextS2);
+				}
+			} catch (err) {}
+		}
+
+		function createOrUpdateSearchableSelect(selectEl, opts) {
+			if (!selectEl) return null;
+			opts = opts || {};
+			destroyWCSelect2(selectEl);
+			selectEl.classList.add('nexxi-sselect-native-hidden');
+
+			var wrapper = selectEl._nexxiSSelect;
+			if (!wrapper || !wrapper.parentNode) {
+				wrapper = document.createElement('div');
+				wrapper.className = 'nexxi-sselect';
+
+				var trigger = document.createElement('button');
+				trigger.type = 'button';
+				trigger.className = 'nexxi-sselect__trigger';
+				trigger.innerHTML = '<span class="nexxi-sselect__label"></span><span class="nexxi-sselect__arrow"><span class="material-symbols-outlined" style="font-size:20px;">expand_more</span></span>';
+
+				var popover = document.createElement('div');
+				popover.className = 'nexxi-sselect__popover';
+				popover.innerHTML =
+					'<div class="nexxi-sselect__search-wrap">' +
+						'<span class="material-symbols-outlined nexxi-sselect__search-icon">search</span>' +
+						'<input type="text" class="nexxi-sselect__search" autocomplete="off" placeholder="' + (opts.searchPlaceholder || 'Gõ tên để tìm kiếm...') + '">' +
+					'</div>' +
+					'<ul class="nexxi-sselect__list" role="listbox"></ul>';
+
+				wrapper.appendChild(trigger);
+				wrapper.appendChild(popover);
+				selectEl.parentNode.insertBefore(wrapper, selectEl.nextSibling);
+				selectEl._nexxiSSelect = wrapper;
+
+				var searchInput = popover.querySelector('.nexxi-sselect__search');
+				var listEl = popover.querySelector('.nexxi-sselect__list');
+
+				trigger.addEventListener('click', function(e) {
+					e.preventDefault();
+					e.stopPropagation();
+
+					if (wrapper.classList.contains('is-locked')) {
+						if (typeof wrapper._onLockedClick === 'function') {
+							wrapper._onLockedClick();
+						}
+						return;
+					}
+
+					if (wrapper.classList.contains('is-open')) {
+						closeAllSSelect();
+						return;
+					}
+
+					closeAllSSelect();
+					wrapper.classList.add('is-open');
+					openSSelect = wrapper;
+					searchInput.value = '';
+					wrapper._renderList('');
+					setTimeout(function() {
+						searchInput.focus();
+					}, 20);
+				});
+
+				searchInput.addEventListener('click', function(e) {
+					e.stopPropagation();
+				});
+
+				searchInput.addEventListener('input', function() {
+					wrapper._renderList(searchInput.value);
+				});
+
+				searchInput.addEventListener('keydown', function(e) {
+					if (e.key === 'Escape') {
+						closeAllSSelect();
+						trigger.focus();
+					} else if (e.key === 'Enter') {
+						e.preventDefault();
+						var firstOpt = listEl.querySelector('.nexxi-sselect__option');
+						if (firstOpt) {
+							firstOpt.click();
+						}
+					}
+				});
+			}
+
+			var triggerEl = wrapper.querySelector('.nexxi-sselect__trigger');
+			var labelEl = wrapper.querySelector('.nexxi-sselect__label');
+			var listEl = wrapper.querySelector('.nexxi-sselect__list');
+			var searchInputEl = wrapper.querySelector('.nexxi-sselect__search');
+			if (opts.searchPlaceholder && searchInputEl) {
+				searchInputEl.placeholder = opts.searchPlaceholder;
+			}
+			wrapper._onLockedClick = opts.onLockedClick || null;
+
+			wrapper._syncDisplay = function() {
+				var isLocked = !!opts.locked;
+				wrapper.classList.toggle('is-locked', isLocked);
+				var selectedOpt = selectEl.options[selectEl.selectedIndex];
+				var val = selectEl.value;
+				var txt = selectedOpt ? selectedOpt.textContent : '';
+				if (!val) {
+					labelEl.textContent = txt || opts.placeholder || '-- Chọn --';
+					triggerEl.classList.add('is-placeholder');
+				} else {
+					labelEl.textContent = txt;
+					triggerEl.classList.remove('is-placeholder');
+				}
+			};
+
+			wrapper._renderList = function(query) {
+				while (listEl.firstChild) {
+					listEl.removeChild(listEl.firstChild);
+				}
+				var q = foldVN(query || '');
+				var count = 0;
+				var currentVal = selectEl.value;
+
+				for (var i = 0; i < selectEl.options.length; i++) {
+					var o = selectEl.options[i];
+					if (!o.value) continue;
+					var text = o.textContent || o.value;
+					if (q && foldVN(text).indexOf(q) === -1) {
+						continue;
+					}
+					count++;
+					var li = document.createElement('li');
+					li.className = 'nexxi-sselect__option' + (o.value === currentVal ? ' is-selected' : '');
+					li.setAttribute('data-value', o.value);
+					li.textContent = text;
+					li.addEventListener('click', function(ev) {
+						ev.stopPropagation();
+						var chosen = this.getAttribute('data-value') || '';
+						selectEl.value = chosen;
+						selectEl.setAttribute('data-selected-city', chosen);
+						selectEl.setAttribute('data-selected-ward', chosen);
+						wrapper._syncDisplay();
+						closeAllSSelect();
+						selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+						if (window.jQuery) {
+							window.jQuery(selectEl).trigger('change');
+						}
+					});
+					listEl.appendChild(li);
+				}
+
+				if (count === 0) {
+					var emptyLi = document.createElement('li');
+					emptyLi.className = 'nexxi-sselect__empty';
+					emptyLi.textContent = 'Không tìm thấy kết quả phù hợp';
+					listEl.appendChild(emptyLi);
+				}
+			};
+
+			wrapper._syncDisplay();
+			return wrapper;
 		}
 
 		window.nexxiSyncWardDropdown = function(citySelectId, wardSelectId, preferredWard) {
@@ -1384,6 +1568,9 @@ function nexxi_kids_vn_address_script() {
 			if (!cityEl || !wardEl) return;
 
 			var currentCity = cityEl.value || cityEl.getAttribute('data-selected-city') || '';
+			if (currentCity && !cityEl.value) {
+				cityEl.value = currentCity;
+			}
 			var currentWard = (typeof preferredWard === 'string') ? preferredWard : (wardEl.value || wardEl.getAttribute('data-selected-ward') || '');
 			var prov = findProvince(currentCity);
 
@@ -1393,7 +1580,7 @@ function nexxi_kids_vn_address_script() {
 
 			var placeholder = document.createElement('option');
 			placeholder.value = '';
-			placeholder.textContent = prov ? '-- Chọn Phường / Xã --' : '-- Chọn Phường / Xã (hoặc chọn Tỉnh/Thành phố bên dưới) --';
+			placeholder.textContent = prov ? '-- Chọn Phường / Xã --' : '-- Vui lòng chọn Tỉnh / Thành phố trước --';
 			wardEl.appendChild(placeholder);
 
 			if (prov && Array.isArray(prov.wards)) {
@@ -1402,43 +1589,40 @@ function nexxi_kids_vn_address_script() {
 					var opt = document.createElement('option');
 					opt.value = w;
 					opt.textContent = w;
-					if (currentWard && w === currentWard) {
+					if (currentWard && foldVN(w) === foldVN(currentWard)) {
 						opt.selected = true;
 					}
 					wardEl.appendChild(opt);
 				}
-			} else if (Array.isArray(window.NexxiVNAddresses2025)) {
-				for (var pIdx = 0; pIdx < window.NexxiVNAddresses2025.length; pIdx++) {
-					var pItem = window.NexxiVNAddresses2025[pIdx];
-					if (!pItem || !pItem.name || !Array.isArray(pItem.wards)) continue;
-					var group = document.createElement('optgroup');
-					group.label = pItem.name;
-					for (var wIdx = 0; wIdx < pItem.wards.length; wIdx++) {
-						var wName = pItem.wards[wIdx];
-						var optItem = document.createElement('option');
-						optItem.value = wName;
-						optItem.textContent = wName;
-						optItem.setAttribute('data-province', pItem.name);
-						if (currentWard && wName === currentWard) {
-							optItem.selected = true;
+			} else {
+				wardEl.value = '';
+			}
+
+			createOrUpdateSearchableSelect(cityEl, {
+				placeholder: '-- Chọn Tỉnh / Thành phố --',
+				searchPlaceholder: 'Gõ tên Tỉnh / Thành phố để tìm nhanh...',
+				locked: false
+			});
+
+			createOrUpdateSearchableSelect(wardEl, {
+				placeholder: prov ? '-- Chọn Phường / Xã --' : '-- Vui lòng chọn Tỉnh / Thành phố trước --',
+				searchPlaceholder: prov ? ('Gõ tên Phường / Xã thuộc ' + prov.name + '...') : 'Vui lòng chọn Tỉnh / Thành phố trước',
+				locked: !prov,
+				onLockedClick: function() {
+					if (cityEl._nexxiSSelect) {
+						var cityTrigger = cityEl._nexxiSSelect.querySelector('.nexxi-sselect__trigger');
+						if (cityTrigger) {
+							cityTrigger.classList.add('nexxi-field-highlight-pulse');
+							setTimeout(function() {
+								cityTrigger.classList.remove('nexxi-field-highlight-pulse');
+							}, 600);
+							cityTrigger.click();
 						}
-						group.appendChild(optItem);
+					} else {
+						cityEl.focus();
 					}
-					wardEl.appendChild(group);
 				}
-			}
-
-			if (currentWard && wardEl.value !== currentWard) {
-				var customOpt = document.createElement('option');
-				customOpt.value = currentWard;
-				customOpt.textContent = currentWard;
-				customOpt.selected = true;
-				wardEl.appendChild(customOpt);
-			}
-
-			if (window.jQuery && window.jQuery(wardEl).hasClass('select2-hidden-accessible')) {
-				window.jQuery(wardEl).trigger('change.select2');
-			}
+			});
 		};
 
 		function bindCityWardPair(citySelectId, wardSelectId) {
@@ -1448,30 +1632,11 @@ function nexxi_kids_vn_address_script() {
 
 			if (!cityEl.getAttribute('data-nexxi-bound')) {
 				cityEl.setAttribute('data-nexxi-bound', '1');
-				var onCityChange = function() {
-					window.nexxiSyncWardDropdown(citySelectId, wardSelectId, wardEl.value);
-				};
-				cityEl.addEventListener('change', onCityChange);
-				if (window.jQuery) {
-					window.jQuery(cityEl).on('select2:select change', onCityChange);
-				}
-			}
-
-			if (!wardEl.getAttribute('data-nexxi-bound')) {
-				wardEl.setAttribute('data-nexxi-bound', '1');
-				var onWardChange = function() {
-					var selectedOpt = wardEl.options[wardEl.selectedIndex];
-					var optProv = selectedOpt ? selectedOpt.getAttribute('data-province') : '';
-					if (!cityEl.value && (optProv || wardEl.value)) {
-						var matchedProv = optProv ? { name: optProv } : findProvinceByWard(wardEl.value);
-						if (matchedProv && matchedProv.name) {
-							var chosenWard = wardEl.value;
-							cityEl.value = matchedProv.name;
-							window.nexxiSyncWardDropdown(citySelectId, wardSelectId, chosenWard);
-						}
-					}
-				};
-				wardEl.addEventListener('change', onWardChange);
+				cityEl.addEventListener('change', function() {
+					cityEl.setAttribute('data-selected-city', cityEl.value);
+					wardEl.setAttribute('data-selected-ward', '');
+					window.nexxiSyncWardDropdown(citySelectId, wardSelectId, '');
+				});
 			}
 
 			window.nexxiSyncWardDropdown(citySelectId, wardSelectId);
@@ -1494,8 +1659,8 @@ function nexxi_kids_vn_address_script() {
 					pre + '_first_name_field',
 					pre + '_phone_field',
 					pre + '_address_1_field',
-					pre + '_ward_field',
 					pre + '_city_field',
+					pre + '_ward_field',
 					pre + '_country_field'
 				];
 				for (var i = 0; i < order.length; i++) {

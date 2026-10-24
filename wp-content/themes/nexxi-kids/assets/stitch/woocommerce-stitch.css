@@ -722,4 +722,160 @@ body.nexxi-mob-drawer-open {
   }
 }
 
+/* ---------- NEXXI Searchable Address Select (Tỉnh/Thành phố & Phường/Xã) ---------- */
+.nexxi-sselect-native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.nexxi-sselect {
+  position: relative;
+  width: 100%;
+  font-family: "Nunito Sans", sans-serif;
+}
+.nexxi-sselect__trigger {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 16px;
+  background: #f5f3ef;
+  border: 1px solid #e4e2de;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #1b1c1a;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  box-sizing: border-box;
+}
+.nexxi-account .nexxi-sselect__trigger {
+  border-radius: 999px;
+  padding: 11px 18px;
+}
+.nexxi-sselect__trigger:hover,
+.nexxi-sselect.is-open .nexxi-sselect__trigger {
+  background: #ffffff;
+  border-color: #fd6a49;
+  box-shadow: 0 0 0 2px rgba(253, 106, 73, 0.18);
+}
+.nexxi-sselect__trigger.is-placeholder {
+  color: #767680;
+}
+.nexxi-sselect.is-locked .nexxi-sselect__trigger {
+  background: #efeeea;
+  border-style: dashed;
+  color: #767680;
+  cursor: not-allowed;
+}
+.nexxi-sselect__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #45464f;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.nexxi-sselect.is-open .nexxi-sselect__arrow {
+  transform: rotate(180deg);
+  color: #ae3115;
+}
+.nexxi-sselect__popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #ffffff;
+  border: 1px solid #e4e2de;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(3, 20, 68, 0.14);
+  overflow: hidden;
+}
+.nexxi-sselect.is-open .nexxi-sselect__popover {
+  display: block;
+}
+.nexxi-sselect__search-wrap {
+  padding: 10px 12px;
+  background: #fbf9f5;
+  border-bottom: 1px solid #e4e2de;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nexxi-sselect__search-icon {
+  color: #ae3115;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.nexxi-sselect__search {
+  width: 100% !important;
+  border: 1px solid #e4e2de !important;
+  background: #ffffff !important;
+  border-radius: 999px !important;
+  padding: 7px 14px !important;
+  min-height: 36px !important;
+  font-size: 13.5px !important;
+  color: #1b1c1a !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+.nexxi-sselect__search:focus {
+  border-color: #fd6a49 !important;
+  box-shadow: 0 0 0 2px rgba(253, 106, 73, 0.18) !important;
+}
+.nexxi-sselect__list {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+.nexxi-sselect__option {
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1b1c1a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.nexxi-sselect__option:hover,
+.nexxi-sselect__option.is-highlighted {
+  background: #ffdad2;
+  color: #3d0600;
+}
+.nexxi-sselect__option.is-selected {
+  background: #fd6a49;
+  color: #ffffff;
+  font-weight: 700;
+}
+.nexxi-sselect__empty {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #767680;
+}
+.nexxi-field-highlight-pulse {
+  animation: nexxiShake 0.4s ease;
+  box-shadow: 0 0 0 3px rgba(253, 106, 73, 0.45) !important;
+  border-color: #fd6a49 !important;
+}
+
+
 
