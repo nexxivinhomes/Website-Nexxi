@@ -2720,6 +2720,8 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 			$product->set_name( $prod_name );
 			$product->set_status( in_array( $opts['post_status'], array( 'publish', 'draft' ), true ) ? $opts['post_status'] : 'publish' );
+			$product->set_date_created( time() );
+			$product->set_menu_order( 0 );
 			if ( '' !== $parent_sku ) {
 				$owner = wc_get_product_id_by_sku( $parent_sku );
 				if ( ! $owner ) {
@@ -2737,6 +2739,8 @@ final class Nexxi_Pancake_Sync_Manager {
 				$product = $existing_prod;
 			}
 			$product->set_name( $prod_name );
+			$product->set_date_created( time() );
+			$product->set_menu_order( 0 );
 			if ( '' !== $parent_sku ) {
 				$owner = wc_get_product_id_by_sku( $parent_sku );
 				if ( ! $owner || (int) $owner === (int) $wc_id ) {
@@ -2970,9 +2974,29 @@ final class Nexxi_Pancake_Sync_Manager {
 
 		wp_defer_term_counting( false );
 
+		// Bump post_date & post_modified so newly synced/updated Pancake products immediately sort first under 'Newest'
+		$now_local = current_time( 'mysql' );
+		$now_gmt   = current_time( 'mysql', 1 );
+		$wpdb->update(
+			$wpdb->posts,
+			array(
+				'post_date'         => $now_local,
+				'post_date_gmt'     => $now_gmt,
+				'post_modified'     => $now_local,
+				'post_modified_gmt' => $now_gmt,
+				'menu_order'        => 0,
+			),
+			array( 'ID' => (int) $wc_id ),
+			array( '%s', '%s', '%s', '%s', '%d' ),
+			array( '%d' )
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		clean_post_cache( $wc_id );
+
 		if ( function_exists( 'wc_delete_product_transients' ) ) {
 			wc_delete_product_transients( $wc_id );
 		}
+		do_action( 'litespeed_purge_post', $wc_id );
+		do_action( 'litespeed_purge_all' );
 
 		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
