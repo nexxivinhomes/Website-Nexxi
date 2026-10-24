@@ -105,6 +105,14 @@ function nexxi_kids_loop_per_page() {
 }
 add_filter( 'loop_shop_per_page', 'nexxi_kids_loop_per_page', 999 );
 
+/** Default catalog ordering on the shop is newest products first ('date') to match the UI selector. */
+add_filter( 'woocommerce_default_catalog_orderby', static function ( $default ) {
+	if ( ! empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return $default;
+	}
+	return 'date';
+}, 999 );
+
 /** Legacy ?sort= links from the earlier build map to WooCommerce ?orderby=; also enforce 25 items per page on shop and apply ?cat_group= filter. */
 function nexxi_kids_legacy_sort( $query ) {
 	if ( empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -124,16 +132,25 @@ function nexxi_kids_legacy_sort( $query ) {
 			$query->set( 'tax_query', $tax_query );
 		}
 	}
-	if ( empty( $_GET['sort'] ) || ! empty( $_GET['orderby'] ) ) { return; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$map = array( 'price_asc' => 'price', 'price_desc' => 'price-desc', 'popular' => 'popularity' );
-	$sort = sanitize_key( wp_unslash( $_GET['sort'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	if ( isset( $map[ $sort ] ) ) {
-		$ordering = WC()->query->get_catalog_ordering_args( $map[ $sort ] );
-		$query->set( 'orderby', $ordering['orderby'] );
-		$query->set( 'order', $ordering['order'] );
+	$orderby_param = isset( $_GET['orderby'] ) ? sanitize_key( wp_unslash( $_GET['orderby'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$sort_param    = isset( $_GET['sort'] ) ? sanitize_key( wp_unslash( $_GET['sort'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+	if ( '' !== $sort_param && '' === $orderby_param ) {
+		$map = array( 'price_asc' => 'price', 'price_desc' => 'price-desc', 'popular' => 'popularity' );
+		if ( isset( $map[ $sort_param ] ) ) {
+			$ordering = WC()->query->get_catalog_ordering_args( $map[ $sort_param ] );
+			$query->set( 'orderby', $ordering['orderby'] );
+			$query->set( 'order', $ordering['order'] );
+			return;
+		}
+	}
+
+	if ( ( '' === $orderby_param || 'date' === $orderby_param ) && empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$query->set( 'orderby', array( 'date' => 'DESC', 'ID' => 'DESC' ) );
+		$query->set( 'order', 'DESC' );
 	}
 }
-add_action( 'woocommerce_product_query', 'nexxi_kids_legacy_sort' );
+add_action( 'woocommerce_product_query', 'nexxi_kids_legacy_sort', 999 );
 
 /** Price bounds of the catalogue, rounded to 50.000₫ steps. */
 function nexxi_kids_price_bounds() {
