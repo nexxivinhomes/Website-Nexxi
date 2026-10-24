@@ -207,7 +207,7 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 <button class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-secondary hover:bg-secondary hover:text-on-secondary transition-all flex items-center justify-center shadow-md" <?php echo nexxi_kids_wishlist_attrs( $product->get_id() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="material-symbols-outlined text-[20px]">favorite_border</span></button>
 <a class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center shadow-md" href="<?php echo esc_url( $main ); ?>" target="_blank" rel="noopener" data-nexxi-zoom aria-label="Phóng to ảnh"><span class="material-symbols-outlined text-[20px]">zoom_in</span></a>
 </div>
-<div class="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md px-space-md py-space-xs rounded-full text-on-surface-variant font-label-sm text-label-sm"><span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Ảnh thật chụp tại Studio NEXXI Baby</span><span class="text-outline"><?php echo count( $ids ) > 1 ? esc_html( count( $ids ) . ' ảnh' ) : 'Chạm để phóng to'; ?></span></div>
+<div class="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md px-space-md py-space-xs rounded-full text-on-surface-variant font-label-sm text-label-sm"><span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Hình ảnh sản phẩm thực tế từ NEXXI</span><span class="text-outline"><?php echo count( $ids ) > 1 ? esc_html( count( $ids ) . ' ảnh' ) : 'Chạm để phóng to'; ?></span></div>
 </div>
 <?php if ( count( $ids ) > 1 ) : ?>
 <div class="nexxi-thumb-carousel relative flex items-center" data-nexxi-thumb-carousel>
@@ -274,7 +274,7 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 <span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $prog['regular'] ) ); ?></span>
 <span class="bg-secondary-container text-on-secondary font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold ml-1<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
-<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Đã bao gồm VAT • Tặng kèm hộp quà xinh xắn</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Cam kết đúng mô tả • Hỗ trợ 15 ngày đổi hàng</p>
 </div>
 <?php if ( $fs_prog['on_sale'] && nexxi_kids_flash_end() > time() ) : ?>
 <div class="bg-surface-container-lowest px-space-md py-space-xs rounded-lg shadow-sm flex items-center gap-space-xs self-start sm:self-auto">
@@ -384,14 +384,14 @@ function nexxi_kids_pdp_tabs( WC_Product $product ) {
 <?php foreach ( $specs as $spec ) : ?><div class="bg-surface-container-low p-space-md rounded-lg"><span class="font-label-sm text-label-sm text-outline"><?php echo esc_html( $spec[0] ); ?></span><p class="font-title-md text-title-md text-primary"><?php echo esc_html( $spec[1] ); ?></p></div><?php endforeach; ?>
 </div><?php endif; ?>
 </div>
-<?php if ( $side_image ) : ?><div class="lg:col-span-5"><div class="relative rounded-xl overflow-hidden shadow-lg bg-surface-container"><img class="w-full h-80 object-cover" src="<?php echo esc_url( $side_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy"><div class="p-space-md bg-surface-container-low"><p class="font-label-md text-label-md text-primary">Từng đường may được NEXXI hoàn thiện tỉ mỉ</p><p class="font-body-sm text-body-sm text-on-surface-variant">Chất liệu chọn lọc, an toàn cho làn da nhạy cảm của bé.</p></div></div></div><?php endif; ?>
+<?php if ( $side_image ) : ?><div class="lg:col-span-5"><div class="relative rounded-xl overflow-hidden shadow-lg bg-surface-container"><img class="w-full h-80 object-cover" src="<?php echo esc_url( $side_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy"><div class="p-space-md bg-surface-container-low"><p class="font-label-md text-label-md text-primary">Từng đường may được NEXXI hoàn thiện tỉ mỉ</p><p class="font-body-sm text-body-sm text-on-surface-variant">Chất liệu mềm mại, phom dáng gọn gàng để bé thoải mái vận động.</p></div></div></div><?php endif; ?>
 </div>
 </div>
 <div class="hidden space-y-space-lg" id="tabContent-care">
 <div class="max-w-3xl space-y-space-md">
 <h3 class="font-headline-md text-headline-md text-primary">Bí quyết giữ đồ của bé luôn mềm mịn như mây</h3>
 <?php $care = get_post_meta( $product->get_id(), '_nexxi_care', true ); ?>
-<p class="font-body-md text-body-md text-on-surface-variant"><?php echo esc_html( $care ? $care : 'Chất liệu tự nhiên rất lành tính với bé và càng giặt càng mềm mại nếu mẹ chăm sóc đúng cách:' ); ?></p>
+<p class="font-body-md text-body-md text-on-surface-variant"><?php echo esc_html( $care ? $care : 'Để trang phục của bé luôn giữ được độ mềm mại, màu sắc tươi sáng và phom dáng chuẩn đẹp, ba mẹ lưu ý:' ); ?></p>
 <div class="grid grid-cols-1 md:grid-cols-3 gap-space-md pt-space-xs">
 <?php foreach ( array( array( 'wash', '1. Giặt nhẹ nhàng', 'Giặt tay với nước mát hoặc cho vào túi giặt, chọn chế độ đồ em bé.' ), array( 'wb_sunny', '2. Phơi bóng râm', 'Tránh nắng gắt trực tiếp để sợi vải giữ độ mềm và màu sắc tươi lâu.' ), array( 'iron', '3. Ủi hơi nước', 'Ủi ở nhiệt độ vừa khi vải còn hơi ẩm để giữ phom dáng đẹp.' ) ) as $tip ) : ?>
 <div class="bg-surface-container-low p-space-md rounded-xl space-y-space-xs"><div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $tip[0] ); ?></span></div><h4 class="font-title-md text-title-md text-primary"><?php echo esc_html( $tip[1] ); ?></h4><p class="font-body-sm text-body-sm text-on-surface-variant"><?php echo esc_html( $tip[2] ); ?></p></div>

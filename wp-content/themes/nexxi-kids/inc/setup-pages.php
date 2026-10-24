@@ -43,23 +43,22 @@ function nexxi_kids_default_pages() {
 			'title'   => 'Liên Hệ Với NEXXI',
 			'content' => '<h2>Câu hỏi thường gặp</h2>
 <h3>Bao lâu thì mẹ nhận được hàng?</h3><p>Nội thành Hà Nội và TP.HCM 1–2 ngày, các tỉnh thành khác 2–4 ngày làm việc.</p>
-<h3>Bé mặc không vừa thì làm sao?</h3><p>Mẹ được đổi size hoặc đổi mẫu miễn phí trong 30 ngày, sản phẩm còn nguyên tem mác.</p>
-<h3>NEXXI có kiểm hàng trước khi thanh toán không?</h3><p>Có, mẹ được mở hộp kiểm tra sản phẩm trước khi thanh toán cho shipper.</p>',
+<h3>Bé mặc không vừa thì làm sao?</h3><p>Ba mẹ được hỗ trợ đổi size hoặc đổi mẫu trong vòng 15 ngày kể từ khi nhận hàng, sản phẩm còn nguyên tem mác.</p>
+<h3>NEXXI có kiểm hàng trước khi thanh toán không?</h3><p>Có, ba mẹ được mở kiện hàng kiểm tra sản phẩm trước khi thanh toán cho shipper.</p>',
 		),
 		'doi-tra' => array(
-			'title'   => 'Chính Sách Đổi Trả & Bảo Hành',
-			'content' => '<h2>Đổi size, đổi mẫu miễn phí trong 30 ngày</h2>
-<p>Kể từ ngày nhận hàng, mẹ có 30 ngày để đổi size hoặc đổi sang mẫu khác cùng giá trị. NEXXI hỗ trợ phí vận chuyển cho lần đổi đầu tiên.</p>
+			'title'   => 'Chính Sách Đổi Hàng 15 Ngày',
+			'content' => '<h2>Hỗ trợ đổi size, đổi mẫu trong vòng 15 ngày</h2>
+<p>Kể từ ngày nhận hàng, ba mẹ có 15 ngày để đổi size hoặc đổi sang mẫu khác. NEXXI cam kết hoàn tiền 100% nếu sản phẩm nhận được không giống với mô tả.</p>
 <h3>Điều kiện đổi hàng</h3><ul><li>Sản phẩm còn nguyên tem mác, chưa qua giặt tẩy.</li><li>Không có mùi lạ, vết bẩn hoặc hư hỏng do sử dụng.</li><li>Kèm hóa đơn hoặc mã đơn hàng.</li></ul>
-<h3>Quy trình</h3><ol><li>Liên hệ hotline hoặc gửi lời nhắn tại trang Liên hệ.</li><li>Đóng gói sản phẩm, NEXXI gửi shipper đến nhận tận nhà.</li><li>Nhận sản phẩm mới trong 2–4 ngày làm việc.</li></ol>
-<h2 id="bao-hanh">Bảo hành an toàn</h2><p>NEXXI bảo hành đường may và cúc bấm trong 90 ngày. Nếu sản phẩm bung chỉ, tuột cúc do lỗi sản xuất, chúng tôi sửa hoặc đổi mới miễn phí.</p>',
+<h3>Quy trình</h3><ol><li>Liên hệ hotline/Zalo 0942 958 091 hoặc gửi lời nhắn tại trang Liên hệ.</li><li>Đóng gói sản phẩm cần đổi theo hướng dẫn của tư vấn viên NEXXI.</li><li>Nhận sản phẩm đổi mới trong 2–4 ngày làm việc.</li></ol>',
 		),
 		'van-chuyen' => array(
 			'title'   => 'Chính Sách Vận Chuyển',
 			'content' => '<h2>Phí giao hàng</h2>
 <table><thead><tr><th>Giá trị đơn hàng</th><th>Phí giao hàng</th></tr></thead><tbody><tr><td>Từ 299.000₫</td><td>Miễn phí toàn quốc</td></tr><tr><td>Dưới 299.000₫</td><td>30.000₫</td></tr></tbody></table>
 <h2>Thời gian giao hàng</h2><ul><li>Nội thành Hà Nội, TP.HCM: 1–2 ngày làm việc.</li><li>Các tỉnh thành khác: 2–4 ngày làm việc.</li></ul>
-<h2>Đóng gói</h2><p>Mỗi đơn hàng được gói trong hộp quà NEXXI kèm thiệp viết tay — sẵn sàng làm quà tặng cho bé.</p>',
+<h2>Đóng gói</h2><p>Mỗi đơn hàng đều được NEXXI kiểm tra kỹ lưỡng và đóng gói chỉn chu trước khi giao đến tay ba mẹ và bé yêu.</p>',
 		),
 		'yeu-thich' => array(
 			'title'   => 'Danh Sách Yêu Thích',

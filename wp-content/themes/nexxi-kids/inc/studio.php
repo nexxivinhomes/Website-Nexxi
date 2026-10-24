@@ -98,10 +98,10 @@ function nexxi_studio_manual_fields() {
 		'home-reviews__t2'     => array( 'r' => 'home-reviews', 't' => 'text', 'd' => 'Mẹ Nói Gì Về Thời Trang NEXXI?', 'l' => 'Tiêu đề khu vực', 'g' => '' ),
 	);
 	$items = array(
-		array( 'eco', '100% Vải Organic', 'Nâng niu làn da non nớt của bé.' ),
-		array( 'autorenew', 'Đổi Mẫu 30 Ngày', 'Đổi size và mẫu thật nhẹ nhàng.' ),
-		array( 'local_shipping', 'Giao Nhanh Siêu Tốc', 'Đóng gói cẩn thận gửi đến bé yêu.' ),
-		array( 'verified', 'Chứng Nhận Chuẩn', 'Chất liệu được chọn lọc kỹ lưỡng.' ),
+		array( 'directions_run', 'Chất Liệu Mềm Mại', 'Thoải mái vận động và vui chơi mỗi ngày.' ),
+		array( 'autorenew', 'Hỗ Trợ 15 Ngày Đổi Hàng', 'Đổi size và mẫu thuận tiện trong 15 ngày.' ),
+		array( 'local_shipping', 'Miễn Ship Từ 299K', 'Giao hàng bán lẻ và bán sỉ toàn quốc.' ),
+		array( 'verified', 'Hoàn Tiền 100%', 'Nếu sản phẩm không giống với mô tả.' ),
 	);
 	foreach ( $items as $n => $item ) {
 		$g = 'Cam kết ' . ( $n + 1 );
@@ -202,6 +202,9 @@ function nexxi_studio_changed( $key ) {
 		$norm = preg_replace( '~\R~u', "\n", $value );
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
 		if ( $norm === $legacy_ticker ) { return null; }
+	}
+	if ( preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
+		return null;
 	}
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;
 }

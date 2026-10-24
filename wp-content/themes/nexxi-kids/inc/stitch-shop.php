@@ -284,7 +284,7 @@ function nexxi_kids_shop_sidebar() {
 	$reset = nexxi_kids_shop_link( array_fill_keys( array_diff( array_keys( $state ), array( 's', 'post_type', 'on_sale' ) ), null ) );
 	$out = '<div class="nexxi-shop-filter-card bg-surface-container-lowest rounded-lg p-space-lg shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] space-y-space-lg"><div class="flex items-center justify-between pb-space-xs"><button type="button" class="nexxi-mobile-filter-btn flex items-center gap-space-xs text-primary font-title-md text-title-md text-left" data-nexxi-mobile-filter-toggle aria-expanded="false"><span class="material-symbols-outlined text-secondary">tune</span><span>Bộ Lọc Cho Mẹ</span><span class="nexxi-mobile-filter-chevron material-symbols-outlined text-[18px] text-outline lg:hidden">expand_more</span></button><a class="font-label-sm text-label-sm text-secondary hover:underline cursor-pointer" href="' . esc_url( $reset ) . '">Thiết lập lại</a></div><div class="nexxi-mobile-filter-body space-y-space-lg" data-nexxi-mobile-filter-body>';
 	$out .= nexxi_kids_filter_checks( 'size', 'Size & Cân Nặng Bé', 'straighten' );
-	$out .= nexxi_kids_filter_checks( 'chat-lieu', 'Chất Liệu An Toàn', 'eco' );
+	$out .= nexxi_kids_filter_checks( 'chat-lieu', 'Chất Liệu', 'checkroom' );
 
 	$colors = nexxi_kids_attribute_terms( 'mau-sac' );
 	if ( $colors ) {
