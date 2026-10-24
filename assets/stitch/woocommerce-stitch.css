@@ -534,7 +534,8 @@ body.nexxi-mob-drawer-open {
 @media (max-width: 1023px) {
   header[data-nexxi-shared-header="1"] + main,
   body > header + main {
-    padding-top: var(--nexxi-header-h, 5.375rem) !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
   }
   body > header > div:last-child > div {
     height: 3.75rem !important;
@@ -878,17 +879,35 @@ body.nexxi-mob-drawer-open {
 }
 
 /* ==========================================================================
-   Hero Background Banner Slideshow (5s/slide behind text & right photo frame)
+   Hero Pure Banner Slideshow (5s/slide, 0px gap under Header, no blur overlay)
    ========================================================================== */
-.nexxi-hero-section {
+.nexxi-hero-section,
+[data-nxr="home-hero"] {
   position: relative;
+  width: 100%;
+  height: clamp(540px, 38vw, 720px);
+  padding: 0 !important;
+  margin: 0 !important;
   overflow: hidden;
+  background: #f5f3ef;
+}
+@media (max-width: 1023px) {
+  .nexxi-hero-section,
+  [data-nxr="home-hero"] {
+    height: clamp(360px, 46vw, 500px);
+  }
+}
+@media (max-width: 767px) {
+  .nexxi-hero-section,
+  [data-nxr="home-hero"] {
+    height: clamp(230px, 56vw, 350px);
+  }
 }
 .nexxi-hero-bg {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  width: 100%;
+  height: 100%;
   z-index: 1;
-  pointer-events: none;
   overflow: hidden;
 }
 .nexxi-hero-bg__slides {
@@ -903,14 +922,12 @@ body.nexxi-mob-drawer-open {
   width: 100%;
   height: 100%;
   opacity: 0;
-  transform: scale(1.06);
-  transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1), transform 5.6s ease-out;
-  will-change: opacity, transform;
+  transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
   z-index: 1;
 }
 .nexxi-hero-bg__slide.is-active {
   opacity: 1;
-  transform: scale(1);
   z-index: 2;
 }
 .nexxi-hero-bg__slide.is-empty {
@@ -920,105 +937,46 @@ body.nexxi-mob-drawer-open {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 28%;
+  object-position: center center;
   display: block;
 }
 .nexxi-hero-bg__overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  background: linear-gradient(
-    90deg,
-    rgba(251, 249, 245, 0.84) 0%,
-    rgba(251, 249, 245, 0.70) 44%,
-    rgba(251, 249, 245, 0.28) 74%,
-    rgba(251, 249, 245, 0.14) 100%
-  );
-  transition: background 0.35s ease;
-}
-.nexxi-hero-bg[data-overlay="light"] .nexxi-hero-bg__overlay {
-  background: linear-gradient(
-    90deg,
-    rgba(251, 249, 245, 0.65) 0%,
-    rgba(251, 249, 245, 0.45) 45%,
-    rgba(251, 249, 245, 0.12) 78%,
-    rgba(251, 249, 245, 0.05) 100%
-  );
-}
-.nexxi-hero-bg[data-overlay="clear"] .nexxi-hero-bg__overlay {
-  background: transparent;
-}
-.nexxi-hero-bg[data-overlay="strong"] .nexxi-hero-bg__overlay {
-  background: linear-gradient(
-    90deg,
-    rgba(251, 249, 245, 0.92) 0%,
-    rgba(251, 249, 245, 0.82) 50%,
-    rgba(251, 249, 245, 0.48) 82%,
-    rgba(251, 249, 245, 0.32) 100%
-  );
-}
-@media (max-width: 1023px) {
-  .nexxi-hero-bg__overlay {
-    background: linear-gradient(
-      180deg,
-      rgba(251, 249, 245, 0.84) 0%,
-      rgba(251, 249, 245, 0.72) 55%,
-      rgba(251, 249, 245, 0.32) 100%
-    );
-  }
-  .nexxi-hero-bg[data-overlay="light"] .nexxi-hero-bg__overlay {
-    background: linear-gradient(
-      180deg,
-      rgba(251, 249, 245, 0.66) 0%,
-      rgba(251, 249, 245, 0.48) 55%,
-      rgba(251, 249, 245, 0.16) 100%
-    );
-  }
-  .nexxi-hero-bg[data-overlay="clear"] .nexxi-hero-bg__overlay {
-    background: transparent;
-  }
-}
-.nexxi-hero-section h1 {
-  text-shadow: 0 2px 16px rgba(255, 255, 255, 0.9);
-}
-.nexxi-hero-section [data-nxe="home-hero__t7"] {
-  text-shadow: 0 1px 10px rgba(255, 255, 255, 0.92);
-  color: #25262e;
-  font-weight: 500;
-}
-.nexxi-hero-section [data-nxe="home-hero__t12"] {
-  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.9);
+  display: none !important;
 }
 .nexxi-hero-bg__nav {
-  position: relative;
+  position: absolute;
+  bottom: 18px;
+  left: 0;
+  right: 0;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding-top: 14px;
+  padding: 0;
+  pointer-events: auto;
 }
 .nexxi-hero-bg__dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(3, 20, 68, 0.22);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(3, 20, 68, 0.25);
   padding: 0;
   cursor: pointer;
   position: relative;
   overflow: hidden;
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
-  box-shadow: 0 2px 6px rgba(3, 20, 68, 0.12);
+  box-shadow: 0 2px 8px rgba(3, 20, 68, 0.18);
 }
 .nexxi-hero-bg__dot:hover {
   transform: scale(1.12);
   background: #ffffff;
 }
 .nexxi-hero-bg__dot.is-active {
-  width: 36px;
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(174, 49, 21, 0.45);
+  width: 38px;
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(174, 49, 21, 0.5);
 }
 .nexxi-hero-bg__dot.is-active::after {
   content: "";
