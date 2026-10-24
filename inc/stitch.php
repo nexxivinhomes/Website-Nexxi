@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_bct_footer_v1';
+	$purge_ver = '20261024_mobile_ui_v1';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		do_action( 'litespeed_purge_all' );
@@ -214,7 +214,175 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 		$header = substr( $header, 0, $search['start'] ) . $open . substr( $header, $search['open_end'] );
 	}
 
+	// Inject Mobile Search Toggle + Hamburger Menu Button into the right header actions bar, plus a horizontal scrollable quick-nav bar for <1024px screens.
+	$mobile_btns = '<button type="button" class="nexxi-mob-icon-btn md:hidden w-9 h-9 rounded-full bg-surface-container-low hover:bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-secondary transition-all shrink-0" data-nexxi-mob-search-open aria-label="Tìm kiếm sản phẩm"><span class="material-symbols-outlined text-[20px]">search</span></button>'
+		. '<button type="button" class="nexxi-mob-icon-btn lg:hidden w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm transition-all shrink-0" data-nexxi-mob-menu-open aria-label="Mở menu điều hướng" aria-expanded="false"><span class="material-symbols-outlined text-[20px]">menu</span></button>';
+
+	$actions_pos = strpos( $header, '<div class="flex items-center gap-space-sm' );
+	if ( false !== $actions_pos ) {
+		$actions_el = nexxi_dom_locate( $header, '<div class="flex items-center gap-space-sm' );
+		if ( $actions_el ) {
+			$header = substr( $header, 0, $actions_el['inner_end'] ) . $mobile_btns . substr( $header, $actions_el['inner_end'] );
+		}
+	}
+
+	$mob_nav_items = array(
+		'trang-chu'        => array( 'Trang Chủ', $routes['trang-chu'], '' ),
+		'san-pham'         => array( 'Sản Phẩm', $routes['san-pham'], '<span class="text-[9px] bg-tertiary-fixed text-on-tertiary-fixed px-1.5 py-0.5 rounded-full font-bold ml-1">Bé Yêu</span>' ),
+		'flash-sale'       => array( 'Flash Sale', $routes['flash-sale'], '<span class="text-[9px] bg-secondary text-on-secondary px-1.5 py-0.5 rounded-full font-bold ml-1">⚡Hot</span>' ),
+		'gioi-thieu'       => array( 'Giới Thiệu', $routes['gioi-thieu'], '' ),
+		'bang-size-cho-be' => array( 'Bảng Size', $routes['bang-size-cho-be'], '' ),
+		'lien-he'          => array( 'Liên Hệ', $routes['lien-he'], '' ),
+	);
+	$mob_ribbon = '<div class="nexxi-mobile-quicknav lg:hidden w-full bg-surface-container-lowest/95 border-t border-surface-container-high px-3 py-1.5 overflow-x-auto"><div class="flex items-center gap-1.5 w-max">';
+	foreach ( $mob_nav_items as $m_key => $m_item ) {
+		$is_act = ( $m_key === $active_path );
+		$cls    = $is_act
+			? 'bg-secondary-fixed text-on-secondary-fixed font-bold shadow-sm'
+			: 'bg-surface-container-low text-on-surface-variant hover:text-primary';
+		$mob_ribbon .= '<a href="' . esc_url( $m_item[1] ) . '" class="inline-flex items-center whitespace-nowrap px-3 py-1 rounded-full text-[12px] font-label-md transition-all ' . $cls . '">' . esc_html( $m_item[0] ) . $m_item[2] . '</a>';
+	}
+	$mob_ribbon .= '</div></div>';
+	$header = preg_replace( '~</header>\s*$~i', $mob_ribbon . '</header>', $header, 1 );
+
 	return substr( $html, 0, $el['start'] ) . $header . substr( $html, $el['end'] );
+}
+
+/** Mobile Drawer (Search + Navigation + Contact) and Sticky Bottom Tab Bar for phones/tablets. */
+function nexxi_kids_mobile_shell_ui( $screen ) {
+	if ( 'login' === $screen ) {
+		return '';
+	}
+	$active_path = nexxi_kids_active_nav( $screen );
+	$home_url    = home_url( '/' );
+	$shop_url    = nexxi_kids_shop_url();
+	$flash_url   = nexxi_kids_flash_url();
+	$about_url   = nexxi_kids_page_url( 'gioi-thieu' );
+	$size_url    = home_url( '/#size-guide' );
+	$contact_url = nexxi_kids_page_url( 'lien-he' );
+	$wish_url    = nexxi_kids_page_url( 'yeu-thich' );
+	$cart_url    = nexxi_kids_stitch_url( 'cart.html' );
+	$acct_url    = nexxi_kids_stitch_url( 'account.html' );
+	$hotline     = nexxi_kids_setting( 'nexxi_kids_hotline' );
+	$chat_url    = nexxi_kids_setting( 'nexxi_kids_chat_url' );
+	$cart_cnt    = nexxi_kids_cart_count();
+	$wish_cnt    = nexxi_kids_wishlist_count();
+	$logo_url    = get_template_directory_uri() . '/assets/stitch/images/logo.jpg';
+
+	ob_start();
+	?>
+	<!-- NEXXI MOBILE NAVIGATION & SEARCH DRAWER -->
+	<div id="nexxi-mobile-drawer" class="nexxi-mobile-drawer" aria-hidden="true">
+		<div class="nexxi-mobile-drawer__backdrop" data-nexxi-mob-close></div>
+		<div class="nexxi-mobile-drawer__panel" role="dialog" aria-label="Menu điều hướng NEXXI Kids">
+			<div class="nexxi-mobile-drawer__head">
+				<a href="<?php echo esc_url( $home_url ); ?>" class="flex items-center gap-2">
+					<img src="<?php echo esc_url( $logo_url ); ?>" alt="NEXXI Kids" style="height:28px;width:auto;object-fit:contain;">
+					<span class="font-label-sm text-secondary bg-secondary-fixed px-2 py-0.5 rounded-full uppercase" style="font-size:10px;font-weight:700;">Kids FASHION</span>
+				</a>
+				<button type="button" class="nexxi-mobile-drawer__close" data-nexxi-mob-close aria-label="Đóng menu">
+					<span class="material-symbols-outlined">close</span>
+				</button>
+			</div>
+
+			<div class="nexxi-mobile-drawer__search">
+				<div class="nexxi-mobile-drawer__search-box">
+					<input type="search" data-nexxi-search data-nexxi-mob-search-input value="<?php echo esc_attr( get_search_query() ); ?>" placeholder="Mẹ muốn tìm đồ xinh cho bé..." aria-label="Tìm sản phẩm">
+					<button type="button" data-nexxi-search-btn aria-label="Tìm kiếm">
+						<span class="material-symbols-outlined text-[18px]">search</span>
+					</button>
+				</div>
+			</div>
+
+			<nav class="nexxi-mobile-drawer__nav" aria-label="Menu di động">
+				<a href="<?php echo esc_url( $home_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'trang-chu' === $active_path ? 'is-active' : ''; ?>">
+					<span class="material-symbols-outlined">home</span>
+					<span>Trang Chủ</span>
+				</a>
+				<a href="<?php echo esc_url( $shop_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'san-pham' === $active_path ? 'is-active' : ''; ?>">
+					<span class="material-symbols-outlined">checkroom</span>
+					<span>Sản Phẩm Bé Yêu</span>
+					<span class="nexxi-mobile-drawer__badge bg-tertiary-fixed text-on-tertiary-fixed">Mới</span>
+				</a>
+				<a href="<?php echo esc_url( $flash_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'flash-sale' === $active_path ? 'is-active' : ''; ?>">
+					<span class="material-symbols-outlined text-secondary">bolt</span>
+					<span>Flash Sale Giờ Vàng</span>
+					<span class="nexxi-mobile-drawer__badge bg-secondary text-on-secondary">⚡ Hot</span>
+				</a>
+				<a href="<?php echo esc_url( $about_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'gioi-thieu' === $active_path ? 'is-active' : ''; ?>">
+					<span class="material-symbols-outlined">auto_awesome</span>
+					<span>Giới Thiệu NEXXI</span>
+				</a>
+				<a href="<?php echo esc_url( $size_url ); ?>" class="nexxi-mobile-drawer__link" data-nexxi-mob-close>
+					<span class="material-symbols-outlined">straighten</span>
+					<span>Bảng Size Cho Bé (12–45kg)</span>
+				</a>
+				<a href="<?php echo esc_url( $contact_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'lien-he' === $active_path ? 'is-active' : ''; ?>">
+					<span class="material-symbols-outlined">support_agent</span>
+					<span>Liên Hệ &amp; Hỗ Trợ</span>
+				</a>
+				<div class="nexxi-mobile-drawer__divider"></div>
+				<a href="<?php echo esc_url( $wish_url ); ?>" class="nexxi-mobile-drawer__link">
+					<span class="material-symbols-outlined">favorite</span>
+					<span>Danh Sách Yêu Thích</span>
+					<span class="nexxi-mobile-drawer__badge bg-secondary-fixed text-on-secondary-fixed" data-nexxi-wishlist-count><?php echo (int) $wish_cnt; ?></span>
+				</a>
+				<a href="<?php echo esc_url( $cart_url ); ?>" class="nexxi-mobile-drawer__link">
+					<span class="material-symbols-outlined">shopping_bag</span>
+					<span>Giỏ Hàng Của Mẹ</span>
+					<span class="nexxi-mobile-drawer__badge bg-primary text-on-primary" data-nexxi-cart-count><?php echo (int) $cart_cnt; ?></span>
+				</a>
+				<a href="<?php echo esc_url( $acct_url ); ?>" class="nexxi-mobile-drawer__link">
+					<span class="material-symbols-outlined">person</span>
+					<span><?php echo esc_html( is_user_logged_in() ? 'Tài Khoản Của Mẹ' : 'Đăng Nhập / Đăng Ký' ); ?></span>
+				</a>
+			</nav>
+
+			<div class="nexxi-mobile-drawer__foot">
+				<?php if ( $chat_url ) : ?>
+					<a href="<?php echo esc_url( $chat_url ); ?>" target="_blank" rel="noopener" class="nexxi-mobile-drawer__cta nexxi-mobile-drawer__cta--zalo">
+						<span class="material-symbols-outlined text-[18px]">forum</span>
+						<span>Nhắn Zalo Tư Vấn Size</span>
+					</a>
+				<?php endif; ?>
+				<?php if ( $hotline ) : ?>
+					<a href="<?php echo esc_url( nexxi_kids_tel( $hotline ) ); ?>" class="nexxi-mobile-drawer__cta nexxi-mobile-drawer__cta--call">
+						<span class="material-symbols-outlined text-[18px]">call</span>
+						<span>Hotline: <?php echo esc_html( $hotline ); ?></span>
+					</a>
+				<?php endif; ?>
+			</div>
+		</div>
+	</div>
+
+	<!-- NEXXI MOBILE STICKY BOTTOM NAVIGATION BAR (<768px) -->
+	<nav id="nexxi-mobile-bottom-nav" class="nexxi-mobile-bottom-nav md:hidden" aria-label="Thanh điều hướng nhanh di động">
+		<a href="<?php echo esc_url( $home_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'index' === $screen ? 'is-active' : ''; ?>">
+			<span class="material-symbols-outlined">home</span>
+			<span>Trang chủ</span>
+		</a>
+		<a href="<?php echo esc_url( $shop_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'shop' === $screen || 'product' === $screen ? 'is-active' : ''; ?>">
+			<span class="material-symbols-outlined">storefront</span>
+			<span>Cửa hàng</span>
+		</a>
+		<a href="<?php echo esc_url( $flash_url ); ?>" class="nexxi-mobile-bottom-nav__item nexxi-mobile-bottom-nav__item--flash <?php echo 'flash-sale' === $screen ? 'is-active' : ''; ?>">
+			<span class="material-symbols-outlined">bolt</span>
+			<span>Flash Sale</span>
+		</a>
+		<a href="<?php echo esc_url( $cart_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'cart' === $screen ? 'is-active' : ''; ?>">
+			<span class="nexxi-mobile-bottom-nav__icon-wrap">
+				<span class="material-symbols-outlined">shopping_bag</span>
+				<span class="nexxi-mobile-bottom-nav__badge" data-nexxi-cart-count><?php echo (int) $cart_cnt; ?></span>
+			</span>
+			<span>Giỏ hàng</span>
+		</a>
+		<a href="<?php echo esc_url( $acct_url ); ?>" class="nexxi-mobile-bottom-nav__item <?php echo 'account' === $screen ? 'is-active' : ''; ?>">
+			<span class="material-symbols-outlined">person</span>
+			<span>Tài khoản</span>
+		</a>
+	</nav>
+	<?php
+	return ob_get_clean();
 }
 
 /** Footer links mapped by their visible label (the footer copy itself stays Stitch). */
@@ -486,6 +654,7 @@ function nexxi_kids_render_stitch( $screen ) {
 	$stitch_css = $asset_url . '/woocommerce-stitch.css?ver=' . filemtime( get_template_directory() . '/assets/stitch/woocommerce-stitch.css' );
 	echo nexxi_kids_stitch_compiled_tailwind_tag() . nexxi_studio_stylesheet_tag( $stitch_css, get_template_directory() . '/assets/stitch/woocommerce-stitch.css' ) . '<style id="nexxi-shared-header-style" data-no-optimize="1">@keyframes marqueeCute{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}.animate-marquee{display:flex;width:max-content;animation:marqueeCute 38s linear infinite}.animate-marquee:hover{animation-play-state:paused}.material-symbols-outlined{font-family:"Material Symbols Outlined"!important;font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-smoothing:antialiased;width:1em;height:1em;overflow:hidden;vertical-align:middle;flex-shrink:0}header img.h-8{height:2rem!important;width:auto!important;max-width:180px!important;object-fit:contain!important}h1 svg.w-8{width:2rem;height:2rem;display:inline-block;vertical-align:middle}header[data-nexxi-shared-header="1"]+main{padding-top:6.5rem!important}@media (min-width:1024px){body>header>div:nth-child(2)>div{height:4.5rem!important;flex-wrap:nowrap!important;gap:0.5rem!important}body>header nav{display:flex!important;flex-wrap:nowrap!important;white-space:nowrap!important;min-width:0!important;gap:0!important;padding:0.25rem!important}body>header nav>a{display:inline-flex!important;align-items:center!important;flex:0 0 auto!important;white-space:nowrap!important;line-height:1.1rem!important;padding:0.45rem 0.6rem!important}body>header nav>a span{white-space:nowrap!important}body>header [class*="md:flex"]{flex:0 1 13rem!important;width:13rem!important;min-width:9.5rem!important}body>header .flex.items-center.gap-space-sm{gap:0.5rem!important;flex-wrap:nowrap!important}body>header .w-10{width:2.25rem!important;height:2.25rem!important;flex:0 0 2.25rem!important}}</style></head>';
 	echo substr( $html, $head_end + 7, $body_end - $head_end - 7 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	echo nexxi_kids_mobile_shell_ui( $screen ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_footer();
 	$js = get_template_directory() . '/assets/stitch/stitch-interactions.js';
 	echo '<script data-no-optimize="1" data-no-defer="1">window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . ( is_readable( $js ) ? filemtime( $js ) : NEXXI_KIDS_VERSION ) ) . '"></script>';
