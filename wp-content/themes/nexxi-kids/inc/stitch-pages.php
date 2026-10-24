@@ -22,7 +22,26 @@ function nexxi_kids_page_shell( $title, $eyebrow, $body, $intro = '' ) {
 
 /** Rendered editor content of the current page. */
 function nexxi_kids_page_content( $post ) {
-	$content = apply_filters( 'the_content', get_post_field( 'post_content', $post ) ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	$post_obj = get_post( $post );
+	$raw      = get_post_field( 'post_content', $post );
+	if ( $post_obj instanceof WP_Post && function_exists( 'nexxi_kids_default_pages' ) ) {
+		$defs = nexxi_kids_default_pages();
+		$slug = $post_obj->post_name;
+		if ( isset( $defs[ $slug ] ) && ( false !== stripos( $raw, '30 ngày' ) || false !== stripos( $raw, 'hộp quà' ) || false !== stripos( $raw, '90 ngày' ) ) ) {
+			$raw = $defs[ $slug ]['content'];
+			wp_update_post( array(
+				'ID'           => $post_obj->ID,
+				'post_title'   => $defs[ $slug ]['title'],
+				'post_content' => $raw,
+			) );
+		}
+	}
+	$raw = str_ireplace(
+		array( 'đổi size hoặc đổi mẫu miễn phí trong 30 ngày', 'miễn phí trong 30 ngày', '30 ngày' ),
+		array( 'hỗ trợ đổi size hoặc đổi mẫu trong vòng 15 ngày', 'trong vòng 15 ngày', '15 ngày' ),
+		$raw
+	);
+	$content = apply_filters( 'the_content', $raw ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 	return trim( wp_strip_all_tags( $content ) ) ? '<div class="bg-surface-container-lowest rounded-xl p-space-lg md:p-space-xl shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] nexxi-prose">' . $content . '</div>' : '';
 }
 
@@ -35,6 +54,9 @@ function nexxi_kids_page_main( $post = null ) {
 	if ( ! $post ) { return ''; }
 	$kind = nexxi_kids_page_kind( $post );
 	$title = get_the_title( $post );
+	if ( 'doi-tra' === $post->post_name && ( false !== stripos( $title, '30' ) || false !== stripos( $title, 'bảo hành' ) ) ) {
+		$title = 'Chính Sách Đổi Hàng 15 Ngày';
+	}
 	$excerpt = has_excerpt( $post ) ? get_the_excerpt( $post ) : '';
 	switch ( $kind ) {
 		case 'contact':
@@ -330,7 +352,7 @@ function nexxi_kids_contact_body( $post ) {
 <label class="block"><span class="block font-label-md text-label-md text-primary mb-1">Số điện thoại *</span><input class="<?php echo esc_attr( $input ); ?>" type="tel" name="nexxi_phone" required maxlength="20" autocomplete="tel" inputmode="tel"></label>
 </div>
 <label class="block"><span class="block font-label-md text-label-md text-primary mb-1">Email</span><input class="<?php echo esc_attr( $input ); ?>" type="email" name="nexxi_email" maxlength="120" autocomplete="email"></label>
-<label class="block"><span class="block font-label-md text-label-md text-primary mb-1">Chủ đề</span><select class="<?php echo esc_attr( $input ); ?>" name="nexxi_topic"><option>Tư vấn chọn size</option><option>Đơn hàng &amp; giao hàng</option><option>Đổi trả &amp; bảo hành</option><option>Hợp tác</option><option>Khác</option></select></label>
+<label class="block"><span class="block font-label-md text-label-md text-primary mb-1">Chủ đề</span><select class="<?php echo esc_attr( $input ); ?>" name="nexxi_topic"><option>Tư vấn chọn size</option><option>Đơn hàng &amp; giao hàng</option><option>Hỗ trợ đổi hàng 15 ngày</option><option>Hợp tác</option><option>Khác</option></select></label>
 <label class="block"><span class="block font-label-md text-label-md text-primary mb-1">Lời nhắn *</span><textarea class="<?php echo esc_attr( $input ); ?>" name="nexxi_message" rows="5" required maxlength="3000" placeholder="Bé nhà mình 2 tuổi, nặng 13kg, cao 90cm..."></textarea></label>
 <label class="hidden" aria-hidden="true">Website<input type="text" name="nexxi_website" tabindex="-1" autocomplete="off"></label>
 <input type="hidden" name="action" value="nexxi_contact"><input type="hidden" name="nexxi_return" value="<?php echo esc_url( get_permalink( $post ) ); ?>">

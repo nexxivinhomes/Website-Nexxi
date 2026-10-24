@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_content_clean_v1';
+	$purge_ver = '20261024_content_clean_v2';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Clean up legacy 30-day & unverified claims in database pages and studio theme_mod.
@@ -53,14 +53,14 @@ add_action( 'init', static function () {
 				set_theme_mod( 'nexxi_studio', $saved );
 			}
 		}
-		if ( function_exists( 'nexxi_kids_required_pages' ) ) {
-			$defs = nexxi_kids_required_pages();
+		if ( function_exists( 'nexxi_kids_default_pages' ) ) {
+			$defs = nexxi_kids_default_pages();
 			foreach ( array( 'doi-tra', 'lien-he', 'van-chuyen' ) as $slug ) {
 				if ( ! isset( $defs[ $slug ] ) ) {
 					continue;
 				}
 				$page = get_page_by_path( $slug );
-				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) ) ) {
+				if ( $page instanceof WP_Post && ( false !== stripos( $page->post_content, '30 ngày' ) || false !== stripos( $page->post_content, 'hộp quà' ) || false !== stripos( $page->post_content, '90 ngày' ) ) ) {
 					wp_update_post( array(
 						'ID'           => $page->ID,
 						'post_title'   => $defs[ $slug ]['title'],
