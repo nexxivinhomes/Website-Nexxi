@@ -659,6 +659,99 @@
     btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   }));
 
+  /* ---------- Hero Background Banner Slideshow (5s/slide) ---------- */
+  const initHeroSlider = () => {
+    const slider = $('[data-nexxi-hero-slider]');
+    if (!slider) return;
+    const section = slider.closest('[data-nxr="home-hero"]') || slider.parentElement;
+    let dotsWrap = $('[data-nexxi-hero-dots]', section);
+    if (!dotsWrap && section) {
+      dotsWrap = document.createElement('div');
+      dotsWrap.className = 'nexxi-hero-bg__nav relative z-20 flex items-center justify-center gap-2 pt-space-md';
+      dotsWrap.setAttribute('data-nexxi-hero-dots', '');
+      dotsWrap.setAttribute('aria-label', 'Chuyển ảnh nền banner');
+      section.appendChild(dotsWrap);
+    }
+
+    const intervalMs = Number(slider.getAttribute('data-interval')) || 5000;
+    const allSlides = $$('.nexxi-hero-bg__slide', slider);
+    let activeSlides = [];
+    let currentIndex = 0;
+    let timer = null;
+
+    const getValidSlides = () => allSlides.filter(slide => {
+      const img = $('img', slide);
+      const src = (img?.getAttribute('src') || '').trim();
+      const valid = src !== '' && !src.endsWith('/');
+      slide.classList.toggle('is-empty', !valid);
+      if (!valid) slide.classList.remove('is-active');
+      return valid;
+    });
+
+    const goTo = (index, restartTimer = true) => {
+      if (!activeSlides.length) return;
+      currentIndex = ((index % activeSlides.length) + activeSlides.length) % activeSlides.length;
+      activeSlides.forEach((slide, idx) => {
+        slide.classList.toggle('is-active', idx === currentIndex);
+      });
+      if (dotsWrap) {
+        $$('.nexxi-hero-bg__dot', dotsWrap).forEach((dot, idx) => {
+          const isMatch = idx === currentIndex;
+          dot.classList.remove('is-active');
+          if (isMatch) {
+            void dot.offsetWidth; // Restart 5s CSS progress bar animation
+            dot.classList.add('is-active');
+          }
+          dot.setAttribute('aria-current', isMatch ? 'true' : 'false');
+        });
+      }
+      if (restartTimer) startTimer();
+    };
+
+    const startTimer = () => {
+      if (timer) clearInterval(timer);
+      if (activeSlides.length <= 1) return;
+      timer = setInterval(() => {
+        goTo(currentIndex + 1, false);
+      }, intervalMs);
+    };
+
+    const rebuild = (focusKey = null) => {
+      activeSlides = getValidSlides();
+      if (dotsWrap) {
+        dotsWrap.replaceChildren();
+        if (activeSlides.length > 1) {
+          activeSlides.forEach((slide, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'nexxi-hero-bg__dot' + (idx === 0 ? ' is-active' : '');
+            btn.setAttribute('aria-label', `Ảnh banner ${idx + 1}`);
+            btn.addEventListener('click', e => {
+              e.preventDefault();
+              goTo(idx, true);
+            });
+            dotsWrap.appendChild(btn);
+          });
+          dotsWrap.style.display = '';
+        } else {
+          dotsWrap.style.display = 'none';
+        }
+      }
+      let targetIdx = currentIndex < activeSlides.length ? currentIndex : 0;
+      if (focusKey) {
+        const foundIdx = activeSlides.findIndex(s => $('img', s)?.getAttribute('data-nxi') === focusKey);
+        if (foundIdx !== -1) targetIdx = foundIdx;
+      }
+      goTo(targetIdx, true);
+    };
+
+    rebuild();
+    document.addEventListener('nexxi:hero-slider-refresh', e => {
+      rebuild(e.detail?.key || null);
+    });
+  };
+
+  initHeroSlider();
   initCards();
   paintWishlist();
   renderWishlistPage();
