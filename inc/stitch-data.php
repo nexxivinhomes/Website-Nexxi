@@ -215,12 +215,27 @@ function nexxi_kids_normalize_variable_sale( WC_Product $product ) {
 	}
 }
 
+/** Reset per-request runtime caches for product prices and sale parent IDs after an admin update. */
+function nexxi_kids_reset_sale_runtime_cache( $product_id = 0 ) {
+	$pid = (int) $product_id;
+	if ( $pid > 0 && isset( $GLOBALS['nexxi_price_cache'][ $pid ] ) ) {
+		unset( $GLOBALS['nexxi_price_cache'][ $pid ] );
+	} else {
+		$GLOBALS['nexxi_price_cache'] = array();
+	}
+	$GLOBALS['nexxi_cached_fs_ids']  = null;
+	$GLOBALS['nexxi_cached_reg_ids'] = null;
+	$GLOBALS['nexxi_cached_all_ids'] = null;
+}
+
 /** Lowest / highest display prices (regular prices for strike-through), with fast per-request cache. */
 function nexxi_kids_price_range( WC_Product $product ) {
-	static $price_cache = array();
+	if ( ! isset( $GLOBALS['nexxi_price_cache'] ) || ! is_array( $GLOBALS['nexxi_price_cache'] ) ) {
+		$GLOBALS['nexxi_price_cache'] = array();
+	}
 	$pid = $product->get_id();
-	if ( isset( $price_cache[ $pid ] ) ) {
-		return $price_cache[ $pid ];
+	if ( isset( $GLOBALS['nexxi_price_cache'][ $pid ] ) ) {
+		return $GLOBALS['nexxi_price_cache'][ $pid ];
 	}
 
 	if ( $product->is_type( 'variable' ) ) {
@@ -230,8 +245,8 @@ function nexxi_kids_price_range( WC_Product $product ) {
 			$max     = (float) max( $prices['price'] );
 			$regular = ! empty( $prices['regular_price'] ) ? (float) max( $prices['regular_price'] ) : $min;
 			if ( $min > 0 ) {
-				$price_cache[ $pid ] = array( 'min' => $min, 'max' => $max, 'regular' => $regular > 0 ? $regular : $min );
-				return $price_cache[ $pid ];
+				$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => $min, 'max' => $max, 'regular' => $regular > 0 ? $regular : $min );
+				return $GLOBALS['nexxi_price_cache'][ $pid ];
 			}
 		}
 		$variations = class_exists( 'Nexxi_Kids_Catalog' ) ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
@@ -256,17 +271,23 @@ function nexxi_kids_price_range( WC_Product $product ) {
 				}
 			}
 			if ( null !== $min ) {
-				$price_cache[ $pid ] = array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
-				return $price_cache[ $pid ];
+				$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
+				return $GLOBALS['nexxi_price_cache'][ $pid ];
 			}
 		}
-		$price_cache[ $pid ] = array( 'min' => 0.0, 'max' => 0.0, 'regular' => 0.0 );
-		return $price_cache[ $pid ];
+		$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => 0.0, 'max' => 0.0, 'regular' => 0.0 );
+		return $GLOBALS['nexxi_price_cache'][ $pid ];
 	}
 	$price   = (float) wc_get_price_to_display( $product );
 	$regular = (float) wc_get_price_to_display( $product, array( 'price' => $product->get_regular_price() ) );
-	$price_cache[ $pid ] = array( 'min' => $price, 'max' => $price, 'regular' => $regular > 0 ? $regular : $price );
-	return $price_cache[ $pid ];
+	if ( $price <= 0 ) {
+		$price = (float) get_post_meta( $pid, '_price', true );
+	}
+	if ( $regular <= 0 ) {
+		$regular = (float) get_post_meta( $pid, '_regular_price', true );
+	}
+	$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => $price, 'max' => $price, 'regular' => $regular > 0 ? $regular : $price );
+	return $GLOBALS['nexxi_price_cache'][ $pid ];
 }
 
 /** Largest discount percentage across the product (0 when not on sale). */
@@ -317,16 +338,16 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 		$prod_pct   = 0;
 	}
 
-	// 2. Check Flash Sale Discount (⚡ Flash Sale)
-	$is_fs    = (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true );
-	if ( '' === $is_fs && ! $has_prod && $range['regular'] > 0 && $range['min'] > 0 && $range['min'] < $range['regular'] ) {
-		$is_fs = '1';
-	}
+	// 2. Check Flash Sale Discount (⚡ Flash Sale) — ONLY active when explicitly enabled on the product (_nexxi_is_flash_sale === '1')
+	$is_fs     = (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true );
 	$has_flash = ( '1' === $is_fs );
 	$fs_price  = $has_flash ? (float) get_post_meta( $pid, '_nexxi_fs_sale_price', true ) : 0.0;
 	$fs_pct    = $has_flash ? (int) get_post_meta( $pid, '_nexxi_fs_sale_pct', true ) : 0;
-	if ( $has_flash && $fs_price <= 0 && ! $has_prod && $range['min'] > 0 && $range['min'] < $reg ) {
-		$fs_price = (float) $range['min'];
+	if ( $has_flash && $fs_price <= 0 && $fs_pct > 0 && $fs_pct <= 95 && $reg > 0 ) {
+		$fs_price = round( $reg * ( 100 - $fs_pct ) / 100, -3 );
+		if ( $fs_price <= 0 || $fs_price >= $reg ) {
+			$fs_price = max( 1000, round( $reg * ( 100 - $fs_pct ) / 100 ) );
+		}
 	}
 	if ( $has_flash && $fs_price > 0 && $fs_price < $reg ) {
 		if ( $fs_pct <= 0 ) {
@@ -492,9 +513,8 @@ function nexxi_kids_flash_sale_parent_ids( $include_inactive_timer = false ) {
 	if ( ! $include_inactive_timer && ! nexxi_kids_is_flash_sale_live() ) {
 		return array();
 	}
-	static $cached_fs_ids = null;
-	if ( null !== $cached_fs_ids ) {
-		return $cached_fs_ids;
+	if ( isset( $GLOBALS['nexxi_cached_fs_ids'] ) && is_array( $GLOBALS['nexxi_cached_fs_ids'] ) ) {
+		return $GLOBALS['nexxi_cached_fs_ids'];
 	}
 	global $wpdb;
 	$fs_meta_ids = $wpdb->get_col(
@@ -502,17 +522,16 @@ function nexxi_kids_flash_sale_parent_ids( $include_inactive_timer = false ) {
 		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_is_flash_sale'
 		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	$cached_fs_ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $fs_meta_ids ) ) ) );
-	return $cached_fs_ids;
+	$GLOBALS['nexxi_cached_fs_ids'] = array_values( array_unique( array_filter( array_map( 'absint', (array) $fs_meta_ids ) ) ) );
+	return $GLOBALS['nexxi_cached_fs_ids'];
 }
 
 /**
  * Resolve parent product IDs that belong to the Regular Product Discount program (🏷️ Giảm Giá SP).
  */
 function nexxi_kids_regular_sale_parent_ids() {
-	static $cached_reg_ids = null;
-	if ( null !== $cached_reg_ids ) {
-		return $cached_reg_ids;
+	if ( isset( $GLOBALS['nexxi_cached_reg_ids'] ) && is_array( $GLOBALS['nexxi_cached_reg_ids'] ) ) {
+		return $GLOBALS['nexxi_cached_reg_ids'];
 	}
 	global $wpdb;
 	$meta_ids = $wpdb->get_col(
@@ -520,8 +539,8 @@ function nexxi_kids_regular_sale_parent_ids() {
 		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_has_prod_sale'
 		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-	$cached_reg_ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $meta_ids ) ) ) );
-	return $cached_reg_ids;
+	$GLOBALS['nexxi_cached_reg_ids'] = array_values( array_unique( array_filter( array_map( 'absint', (array) $meta_ids ) ) ) );
+	return $GLOBALS['nexxi_cached_reg_ids'];
 }
 
 /**
@@ -529,15 +548,14 @@ function nexxi_kids_regular_sale_parent_ids() {
  * either the product itself or any of its variations.
  */
 function nexxi_kids_all_sale_parent_ids() {
-	static $cached_all_ids = null;
-	if ( null !== $cached_all_ids ) {
-		return $cached_all_ids;
+	if ( isset( $GLOBALS['nexxi_cached_all_ids'] ) && is_array( $GLOBALS['nexxi_cached_all_ids'] ) ) {
+		return $GLOBALS['nexxi_cached_all_ids'];
 	}
 	$fs_ids  = nexxi_kids_flash_sale_parent_ids( true );
 	$reg_ids = nexxi_kids_regular_sale_parent_ids();
 	$wc_ids  = function_exists( 'wc_get_product_ids_on_sale' ) ? wc_get_product_ids_on_sale() : array();
-	$cached_all_ids = nexxi_kids_sale_parent_ids( array_merge( (array) $fs_ids, (array) $reg_ids, (array) $wc_ids ) );
-	return $cached_all_ids;
+	$GLOBALS['nexxi_cached_all_ids'] = nexxi_kids_sale_parent_ids( array_merge( (array) $fs_ids, (array) $reg_ids, (array) $wc_ids ) );
+	return $GLOBALS['nexxi_cached_all_ids'];
 }
 
 /** Map product/variation IDs to unique published parent product IDs. */

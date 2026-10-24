@@ -1075,16 +1075,16 @@ function nexxi_kids_bulk_discount_admin_page() {
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo $prog['regular'] > 0 ? (int) round( $prog['regular'] ) : ''; ?>" min="0" step="1000" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo $prog['regular'] > 0 ? (int) round( $prog['regular'] ) : ''; ?>" min="0" step="any" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
 								</td>
 								<td>
 									<div style="position:relative;display:flex;align-items:center;">
-										<input type="number" id="nx-bd-pct-<?php echo (int) $pid; ?>" name="row_pct[<?php echo (int) $pid; ?>]" value="<?php echo $pct > 0 ? (int) $pct : ''; ?>" min="0" max="95" step="1" placeholder="%" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:700;color:#ae3115;border-radius:6px;border:1px solid #d5d3ce;padding:0 20px 0 6px;">
+										<input type="number" id="nx-bd-pct-<?php echo (int) $pid; ?>" name="row_pct[<?php echo (int) $pid; ?>]" value="<?php echo $pct > 0 ? (int) $pct : ''; ?>" min="0" max="95" step="any" placeholder="%" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:700;color:#ae3115;border-radius:6px;border:1px solid #d5d3ce;padding:0 20px 0 6px;">
 										<span style="position:absolute;right:6px;font-size:11px;color:#888;pointer-events:none;">%</span>
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo $on_sale ? (int) round( $prog['sale'] ) : ''; ?>" min="0" step="1000" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo $on_sale ? (int) round( $prog['sale'] ) : ''; ?>" min="0" step="any" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
 								</td>
 								<td>
 									<?php if ( $on_sale ) : ?>

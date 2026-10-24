@@ -36,9 +36,21 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_home_3cats_v12';
+	$purge_ver = '20261024_flashsale_fix_v13';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		// Clean up any product that has _nexxi_is_flash_sale = '1' without a valid _nexxi_fs_sale_price
+		global $wpdb;
+		$fs_pids = $wpdb->get_col(
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_nexxi_is_flash_sale' AND meta_value = '1'"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		foreach ( (array) $fs_pids as $fpid ) {
+			$fpid = (int) $fpid;
+			$fsp  = (float) get_post_meta( $fpid, '_nexxi_fs_sale_price', true );
+			if ( $fsp <= 0 ) {
+				update_post_meta( $fpid, '_nexxi_is_flash_sale', '0' );
+			}
+		}
 		// Clean up legacy 30-day, 299k & unverified claims in database pages and studio theme_mod.
 		$saved = get_theme_mod( 'nexxi_studio', array() );
 		if ( is_array( $saved ) && $saved ) {
