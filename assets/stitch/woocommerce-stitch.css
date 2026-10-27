@@ -1310,12 +1310,36 @@ body.nexxi-mob-drawer-open {
 .nexxi-home-cats-grid > a {
   padding: 1.75rem 1.5rem !important;
 }
+.nexxi-home-cats-grid > a > div:first-child,
+.nexxi-home-cat-avatar {
+  width: 9.75rem !important;
+  height: 9.75rem !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+}
+.nexxi-home-cats-grid > a > div:first-child > img,
+.nexxi-home-cat-avatar > img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 9999px !important;
+  display: block !important;
+}
 @media (max-width: 1023px) {
   .nexxi-home-cats-grid {
     gap: 1.15rem !important;
   }
   .nexxi-home-cats-grid > a {
     padding: 1.35rem 1rem !important;
+  }
+  .nexxi-home-cats-grid > a > div:first-child,
+  .nexxi-home-cat-avatar {
+    width: 8.5rem !important;
+    height: 8.5rem !important;
   }
 }
 @media (max-width: 767px) {
