@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261027_remove_social_login_v17';
+	$purge_ver = '20261027_home_cat_avatar_v18';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Clean up any product that has _nexxi_is_flash_sale = '1' without a valid _nexxi_fs_sale_price

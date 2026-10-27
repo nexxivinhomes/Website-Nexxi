@@ -1202,48 +1202,61 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 		);
 
-		$urls_to_try = array();
-		if ( $cf_base ) {
-			$urls_to_try[] = sprintf(
-				'%s/api/pancake-live-products?shop_id=%s&api_key=%s&page_number=1&page_size=50&search=%s',
-				$cf_base,
+		$found = array();
+		for ( $page = 1; $page <= 3; $page++ ) {
+			$page_urls = array();
+			if ( $cf_base ) {
+				$page_urls[] = sprintf(
+					'%s/api/pancake-live-products?shop_id=%s&api_key=%s&page_number=%d&page_size=100&search=%s',
+					$cf_base,
+					rawurlencode( $shop_id ),
+					rawurlencode( $api_key ),
+					$page,
+					rawurlencode( $search_q )
+				);
+			}
+			$page_urls[] = sprintf(
+				'https://pos.pages.fm/api/v1/shops/%s/products?api_key=%s&page_number=%d&page_size=100&search=%s',
 				rawurlencode( $shop_id ),
 				rawurlencode( $api_key ),
+				$page,
 				rawurlencode( $search_q )
 			);
-		}
-		$urls_to_try[] = sprintf(
-			'https://pos.pages.fm/api/v1/shops/%s/products?api_key=%s&page_number=1&page_size=50&search=%s',
-			rawurlencode( $shop_id ),
-			rawurlencode( $api_key ),
-			rawurlencode( $search_q )
-		);
 
-		$found = array();
-		foreach ( $urls_to_try as $url ) {
-			$resp = wp_remote_get(
-				$url,
-				array(
-					'timeout'   => 15,
-					'sslverify' => false,
-					'headers'   => $req_headers,
-				)
-			);
-			if ( is_wp_error( $resp ) || 200 !== (int) wp_remote_retrieve_response_code( $resp ) ) {
-				continue;
-			}
-			$body  = json_decode( wp_remote_retrieve_body( $resp ), true );
-			$items = isset( $body['data'] ) && is_array( $body['data'] ) ? $body['data'] : ( isset( $body['products'] ) && is_array( $body['products'] ) ? $body['products'] : array() );
-			foreach ( $items as $raw_prod ) {
-				if ( ! is_array( $raw_prod ) ) {
+			$page_count = 0;
+			foreach ( $page_urls as $url ) {
+				$resp = wp_remote_get(
+					$url,
+					array(
+						'timeout'   => 10,
+						'sslverify' => false,
+						'headers'   => $req_headers,
+					)
+				);
+				if ( is_wp_error( $resp ) || 200 !== (int) wp_remote_retrieve_response_code( $resp ) ) {
+					unset( $resp );
 					continue;
 				}
-				$parsed = self::parse_pancake_pos_product( $raw_prod );
-				if ( $parsed ) {
-					$found[ $parsed['id'] ] = $parsed;
+				$body  = json_decode( wp_remote_retrieve_body( $resp ), true );
+				unset( $resp );
+				$items = isset( $body['data'] ) && is_array( $body['data'] ) ? $body['data'] : ( isset( $body['products'] ) && is_array( $body['products'] ) ? $body['products'] : array() );
+				unset( $body );
+				$page_count = count( $items );
+				foreach ( $items as $raw_prod ) {
+					if ( ! is_array( $raw_prod ) ) {
+						continue;
+					}
+					$parsed = self::parse_pancake_pos_product( $raw_prod );
+					if ( $parsed ) {
+						$found[ $parsed['id'] ] = $parsed;
+					}
+				}
+				unset( $items );
+				if ( $page_count > 0 ) {
+					break;
 				}
 			}
-			if ( ! empty( $found ) ) {
+			if ( $page_count < 80 ) {
 				break;
 			}
 		}
@@ -4514,12 +4527,14 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					}
 					if (!sku) sku = String(prod.display_id || '').trim();
 					const pImgs = collectRecordImages(prod);
+					const pName = String(prod.name || '').trim();
+					const codeMatch = pName.match(/^(\d{3,6}(?:\.\d+)?)/);
 					map[pid] = {
 						id: pid,
 						sku: sku,
 						display_id: String(prod.display_id || sku).trim(),
-						code: '',
-						name: String(prod.name || '').trim(),
+						code: codeMatch ? codeMatch[1] : '',
+						name: pName,
 						categories: Array.isArray(prod.categories) ? prod.categories.map(c => typeof c === 'string' ? c : (c?.name || '')).filter(Boolean) : [],
 						product_image: pImgs[0] || '',
 						all_images: [...pImgs],
@@ -5053,11 +5068,12 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			'disconnected'  => 0,
 		);
 
-		$all_categories   = array();
-		$filtered_items   = array();
-		$all_on_web_items = array();
-		$seen_on_web_skus = array();
-		$seen_wc_ids      = array();
+		$all_categories       = array();
+		$filtered_items       = array();
+		$all_on_web_items     = array();
+		$seen_on_web_skus     = array();
+		$seen_wc_ids          = array();
+		$total_search_matches = 0;
 
 		$warehouses_list  = self::get_pancake_warehouses();
 		$cur_wh_id        = isset( $settings['warehouse_id'] ) && '' !== trim( (string) $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
@@ -5120,47 +5136,7 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				$status_code = 'not_on_web';
 			}
 
-			// 1. Filter by Website sync status
-			if ( 'on_web' === $web_status && 'on_web' !== $status_code ) {
-				continue;
-			}
-			if ( 'not_on_web' === $web_status && 'not_on_web' !== $status_code ) {
-				continue;
-			}
-			if ( 'disconnected' === $web_status && 'disconnected' !== $status_code ) {
-				continue;
-			}
-
-			// 2. Filter by Pancake stock
-			if ( 'in_stock' === $stock_filter && $stock_qty <= 0 ) {
-				continue;
-			}
-			if ( 'out_of_stock' === $stock_filter && $stock_qty > 0 ) {
-				continue;
-			}
-
-			// 3. Filter by Pancake image / classification status
-			$img_count   = ! empty( $p['all_images'] ) && is_array( $p['all_images'] ) ? count( $p['all_images'] ) : 0;
-			$class_count = ! empty( $p['class_images'] ) && is_array( $p['class_images'] ) ? count( $p['class_images'] ) : 0;
-			if ( 'has_img' === $img_filter && $img_count <= 0 ) {
-				continue;
-			}
-			if ( 'has_class' === $img_filter && $class_count <= 0 ) {
-				continue;
-			}
-			if ( 'no_img' === $img_filter && $img_count > 0 ) {
-				continue;
-			}
-
-			// 4. Filter by Pancake category
-			if ( '' !== $cat_filter ) {
-				$p_cats = ! empty( $p['categories'] ) && is_array( $p['categories'] ) ? $p['categories'] : array();
-				if ( ! in_array( $cat_filter, $p_cats, true ) ) {
-					continue;
-				}
-			}
-
-			// 5. Filter by search query (SKU, Variation SKU, Leading Code, or Product Name)
+			// 1. Filter by search query first so we can count total keyword matches before secondary filters
 			if ( '' !== $search_q ) {
 				$q_low    = mb_strtolower( $search_q );
 				$var_skus = array();
@@ -5186,6 +5162,47 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					)
 				);
 				if ( false === mb_strpos( $haystack, $q_low ) ) {
+					continue;
+				}
+				$total_search_matches++;
+			}
+
+			// 2. Filter by Website sync status
+			if ( 'on_web' === $web_status && 'on_web' !== $status_code ) {
+				continue;
+			}
+			if ( 'not_on_web' === $web_status && 'not_on_web' !== $status_code ) {
+				continue;
+			}
+			if ( 'disconnected' === $web_status && 'disconnected' !== $status_code ) {
+				continue;
+			}
+
+			// 3. Filter by Pancake stock
+			if ( 'in_stock' === $stock_filter && $stock_qty <= 0 ) {
+				continue;
+			}
+			if ( 'out_of_stock' === $stock_filter && $stock_qty > 0 ) {
+				continue;
+			}
+
+			// 4. Filter by Pancake image / classification status
+			$img_count   = ! empty( $p['all_images'] ) && is_array( $p['all_images'] ) ? count( $p['all_images'] ) : 0;
+			$class_count = ! empty( $p['class_images'] ) && is_array( $p['class_images'] ) ? count( $p['class_images'] ) : 0;
+			if ( 'has_img' === $img_filter && $img_count <= 0 ) {
+				continue;
+			}
+			if ( 'has_class' === $img_filter && $class_count <= 0 ) {
+				continue;
+			}
+			if ( 'no_img' === $img_filter && $img_count > 0 ) {
+				continue;
+			}
+
+			// 5. Filter by Pancake category
+			if ( '' !== $cat_filter ) {
+				$p_cats = ! empty( $p['categories'] ) && is_array( $p['categories'] ) ? $p['categories'] : array();
+				if ( ! in_array( $cat_filter, $p_cats, true ) ) {
 					continue;
 				}
 			}
@@ -5419,6 +5436,25 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				Hiển thị <strong><?php echo count( $paged_items ); ?></strong> / <strong><?php echo (int) $total_filtered; ?></strong> SP Pancake
 			</div>
 		</form>
+		<?php if ( '' !== $search_q && $total_search_matches > $total_filtered ) :
+			$show_all_search_url = add_query_arg(
+				array(
+					'page' => self::MENU_SLUG,
+					'tab'  => 'products',
+					'q'    => $search_q,
+				),
+				admin_url( 'admin.php' )
+			);
+			?>
+			<div style="margin:-8px 0 14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:#92400e;">
+				<span>
+					💡 Tìm thấy tổng cộng <strong><?php echo (int) $total_search_matches; ?> sản phẩm</strong> chứa từ khóa <strong>"<?php echo esc_html( $search_q ); ?>"</strong>, nhưng các bộ lọc phụ đang chọn (Trạng thái Web / Tồn kho / <strong>Có ảnh trên Pancake</strong>) đã ẩn bớt <strong><?php echo (int) ( $total_search_matches - $total_filtered ); ?> sản phẩm</strong> (do nhiều SP 25/26 trên Pancake chưa có ảnh).
+				</span>
+				<a href="<?php echo esc_url( $show_all_search_url ); ?>" class="nxp-btn nxp-btn-sm nxp-btn-primary nxp-spa-page-link" data-target-tab="products">
+					👁️ Xem tất cả <?php echo (int) $total_search_matches; ?> SP chứa "<?php echo esc_html( $search_q ); ?>"
+				</a>
+			</div>
+		<?php endif; ?>
 
 		<!-- TAB 1 PANCAKE PRODUCTS MANAGEMENT TABLE -->
 		<table class="nxp-table">
@@ -6252,12 +6288,14 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				}
 				if (!sku) sku = String(prod.display_id || '').trim();
 				const pImgs = collectRecordImages(prod);
+				const pName = String(prod.name || '').trim();
+				const codeMatch = pName.match(/^(\d{3,6}(?:\.\d+)?)/);
 				map[pid] = {
 					id: pid,
 					sku: sku,
 					display_id: String(prod.display_id || sku).trim(),
-					code: '',
-					name: String(prod.name || '').trim(),
+					code: codeMatch ? codeMatch[1] : '',
+					name: pName,
 					categories: Array.isArray(prod.categories) ? prod.categories.map(c => typeof c === 'string' ? c : (c?.name || '')).filter(Boolean) : [],
 					product_image: pImgs[0] || '',
 					all_images: [...pImgs],
@@ -6371,7 +6409,6 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 							append: gi === 0 ? '0' : '1'
 						});
 						appendLog('✓ Đã lưu thêm ' + cnt + ' sản phẩm Pancake (Tổng cộng: ' + totalLoaded + ' SP).');
-						if (items.length < 500) break;
 					} catch (e) {
 						appendLog('✗ Lỗi tải chặng ' + grp, true);
 					}
