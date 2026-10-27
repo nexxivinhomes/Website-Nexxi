@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261024_flashsale_showmore_v15';
+	$purge_ver = '20261027_social_auth_google_zalo_v16';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Clean up any product that has _nexxi_is_flash_sale = '1' without a valid _nexxi_fs_sale_price
@@ -479,6 +479,16 @@ function nexxi_kids_stitch_login_forms( $html ) {
 	}
 	if ( $chat ) {
 		$html = preg_replace( '~(<a\b[^>]*data-nexxi-login-zalo[^>]*href=")[^"]*(")~s', '$1' . esc_url( $chat ) . '$2', $html );
+	}
+	// Strip any Apple login button if present and inject Google & Zalo Social Login modal & handlers.
+	$html = preg_replace( '~<!--\s*Apple\s*-->\s*<button\b[^>]*onclick="notifySocialLogin\(\'Apple[^\']*\'\)"[^>]*>.*?</button>~is', '', $html );
+	if ( function_exists( 'nexxi_kids_social_auth_login_widget_html' ) ) {
+		$widget = nexxi_kids_social_auth_login_widget_html();
+		if ( false !== stripos( $html, '</main>' ) ) {
+			$html = str_ireplace( '</main>', $widget . '</main>', $html );
+		} else {
+			$html .= $widget;
+		}
 	}
 	return $html;
 }
