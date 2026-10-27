@@ -119,12 +119,16 @@ final class Nexxi_Kids_Commerce {
 }
 
 require_once __DIR__ . '/includes/class-catalog.php';
-require_once __DIR__ . '/includes/class-pancake-sync.php';
+if ( ! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' ) ) {
+	require_once __DIR__ . '/includes/class-pancake-sync.php';
+}
 
 add_action( 'plugins_loaded', function() {
 	if ( class_exists( 'WooCommerce' ) ) {
 		new Nexxi_Kids_Commerce();
 		new Nexxi_Kids_Catalog();
-		Nexxi_Pancake_Sync_Manager::init();
+		if ( class_exists( 'Nexxi_Pancake_Sync_Manager', false ) ) {
+			Nexxi_Pancake_Sync_Manager::init();
+		}
 	}
 } );

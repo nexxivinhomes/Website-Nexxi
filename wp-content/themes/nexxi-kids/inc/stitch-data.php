@@ -70,6 +70,9 @@ function nexxi_kids_tel( $phone ) {
  * @return array{enabled:bool,raw:string,ts:int,is_live:bool,is_expired:bool}
  */
 function nexxi_kids_flash_timer_state() {
+	if ( isset( $GLOBALS['nexxi_cached_timer_state'] ) && is_array( $GLOBALS['nexxi_cached_timer_state'] ) ) {
+		return $GLOBALS['nexxi_cached_timer_state'];
+	}
 	$enabled = '0' !== (string) get_option( 'nexxi_flash_sale_enabled', '1' );
 	$raw     = trim( (string) get_option( 'nexxi_flash_sale_end', '' ) );
 	if ( '' === $raw ) {
@@ -87,13 +90,14 @@ function nexxi_kids_flash_timer_state() {
 	$now        = time();
 	$is_live    = $enabled && $ts > $now;
 	$is_expired = ( '' !== $raw && $ts > 0 && $ts <= $now );
-	return array(
+	$GLOBALS['nexxi_cached_timer_state'] = array(
 		'enabled'    => $enabled,
 		'raw'        => $raw,
 		'ts'         => $ts,
 		'is_live'    => $is_live,
 		'is_expired' => $is_expired,
 	);
+	return $GLOBALS['nexxi_cached_timer_state'];
 }
 
 /**
@@ -223,9 +227,10 @@ function nexxi_kids_reset_sale_runtime_cache( $product_id = 0 ) {
 	} else {
 		$GLOBALS['nexxi_price_cache'] = array();
 	}
-	$GLOBALS['nexxi_cached_fs_ids']  = null;
-	$GLOBALS['nexxi_cached_reg_ids'] = null;
-	$GLOBALS['nexxi_cached_all_ids'] = null;
+	$GLOBALS['nexxi_cached_timer_state'] = null;
+	$GLOBALS['nexxi_cached_fs_ids']      = null;
+	$GLOBALS['nexxi_cached_reg_ids']     = null;
+	$GLOBALS['nexxi_cached_all_ids']     = null;
 }
 
 /** Lowest / highest display prices (regular prices for strike-through), with fast per-request cache. */
@@ -249,7 +254,7 @@ function nexxi_kids_price_range( WC_Product $product ) {
 				return $GLOBALS['nexxi_price_cache'][ $pid ];
 			}
 		}
-		$variations = class_exists( 'Nexxi_Kids_Catalog' ) ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
+		$variations = nexxi_kids_fast_card_variations( $product );
 		if ( $variations ) {
 			$min     = null;
 			$max     = null;
@@ -300,7 +305,7 @@ function nexxi_kids_discount_percent( WC_Product $product ) {
 	if ( class_exists( 'Nexxi_Kids_Catalog' ) ) {
 		$best = max( $best, (int) Nexxi_Kids_Catalog::discount_percent( $product ) );
 		if ( $product->is_type( 'variable' ) ) {
-			foreach ( Nexxi_Kids_Catalog::variation_payload( $product ) as $row ) {
+			foreach ( nexxi_kids_fast_card_variations( $product ) as $row ) {
 				if ( $row['regular'] > 0 && $row['price'] > 0 && $row['price'] < $row['regular'] ) {
 					$best = max( $best, (int) round( ( 1 - $row['price'] / $row['regular'] ) * 100 ) );
 				}
@@ -437,28 +442,220 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 }
 
 /**
+ * Batch-prime postmeta, taxonomy terms, variation postmeta, and featured image attachments
+ * for a list of WC_Product objects in 1 batch so rendering 25-50 product cards executes 0 N+1 SQL queries.
+ */
+function nexxi_kids_prime_products_cache( array $products ) {
+	if ( empty( $products ) ) {
+		return;
+	}
+	$pids         = array();
+	$child_ids    = array();
+	$thumb_ids    = array();
+	foreach ( $products as $p ) {
+		if ( ! $p instanceof WC_Product ) {
+			continue;
+		}
+		$pid          = (int) $p->get_id();
+		$pids[ $pid ] = $pid;
+		$tid          = (int) $p->get_image_id();
+		if ( $tid > 0 ) {
+			$thumb_ids[ $tid ] = $tid;
+		}
+		if ( $p->is_type( 'variable' ) ) {
+			foreach ( (array) $p->get_children() as $cid ) {
+				$cid = absint( $cid );
+				if ( $cid > 0 ) {
+					$child_ids[ $cid ] = $cid;
+				}
+			}
+		}
+	}
+	if ( ! empty( $pids ) ) {
+		update_meta_cache( 'post', array_values( $pids ) );
+		update_object_term_cache( array_values( $pids ), 'product' );
+	}
+	if ( ! empty( $child_ids ) ) {
+		update_meta_cache( 'post', array_values( $child_ids ) );
+	}
+	if ( ! empty( $thumb_ids ) ) {
+		if ( function_exists( '_prime_post_caches' ) ) {
+			_prime_post_caches( array_values( $thumb_ids ), false, true );
+		} else {
+			update_meta_cache( 'post', array_values( $thumb_ids ) );
+		}
+	}
+}
+
+/**
+ * Ultra-fast variation & stock summary for storefront product cards (0 variation image lookups, 0 N+1 queries).
+ *
+ * @return array{variations:array,stock_left:int|null,sizes:array}
+ */
+function nexxi_kids_fast_card_variations( WC_Product $product ) {
+	static $cache = array();
+	$pid          = $product->get_id();
+	if ( isset( $cache[ $pid ] ) ) {
+		return $cache[ $pid ];
+	}
+
+	if ( ! $product->is_type( 'variable' ) ) {
+		$left = $product->managing_stock() ? (int) $product->get_stock_quantity() : null;
+		$sizes = array();
+		$terms = get_the_terms( $pid, 'pa_size' );
+		if ( is_array( $terms ) ) {
+			usort( $terms, static function ( $a, $b ) {
+				$na = preg_match( '~(\d+)~', (string) $a->slug, $ma ) ? (int) $ma[1] : 0;
+				$nb = preg_match( '~(\d+)~', (string) $b->slug, $mb ) ? (int) $mb[1] : 0;
+				return $na <=> $nb;
+			} );
+			foreach ( $terms as $t ) {
+				$num = preg_match( '~(\d+)~', (string) $t->slug, $m ) ? (int) $m[1] : 0;
+				$sizes[] = array( 'slug' => $t->slug, 'label' => $num . 'Y', 'name' => $t->name );
+			}
+		}
+		$cache[ $pid ] = array( 'variations' => array(), 'stock_left' => $left, 'sizes' => $sizes );
+		return $cache[ $pid ];
+	}
+
+	$children = array_values( array_filter( array_map( 'absint', (array) $product->get_children() ) ) );
+	if ( empty( $children ) ) {
+		$cache[ $pid ] = array( 'variations' => array(), 'stock_left' => null, 'sizes' => array() );
+		return $cache[ $pid ];
+	}
+
+	update_meta_cache( 'post', $children );
+
+	// Identify size and color attribute keys & options without wc_get_product_terms SQL queries
+	$defs  = array();
+	$taken = array();
+	$sizes = array();
+	foreach ( $product->get_attributes() as $attribute ) {
+		if ( ! $attribute instanceof WC_Product_Attribute || ! $attribute->get_variation() ) {
+			continue;
+		}
+		$name     = $attribute->get_name();
+		$label    = wc_attribute_label( $name, $product );
+		$haystack = '-' . sanitize_title( remove_accents( $name . ' ' . $label ) ) . '-';
+		$role     = '';
+		if ( preg_match( '~(size|kich-co|kich-thuoc|-co-)~', $haystack ) ) {
+			$role = 'size';
+		} elseif ( preg_match( '~(mau|color|colour)~', $haystack ) ) {
+			$role = 'color';
+		}
+		if ( $role && isset( $taken[ $role ] ) ) {
+			$role = '';
+		}
+		if ( $role ) {
+			$taken[ $role ] = true;
+		}
+		$is_tax = $attribute->is_taxonomy();
+		$defs[] = array(
+			'key'      => sanitize_title( $name ),
+			'role'     => $role,
+			'taxonomy' => $is_tax,
+		);
+		if ( 'size' === $role ) {
+			if ( $is_tax ) {
+				$terms = get_the_terms( $pid, $name );
+				if ( is_array( $terms ) ) {
+					foreach ( $terms as $t ) {
+						$num     = preg_match( '~(\d+)~', (string) $t->slug, $m ) ? (int) $m[1] : 0;
+						$sizes[] = array( 'slug' => $t->slug, 'label' => $num . 'Y', 'name' => $t->name, '_n' => $num );
+					}
+				}
+			} else {
+				foreach ( $attribute->get_options() as $opt ) {
+					$slug    = sanitize_title( (string) $opt );
+					$num     = preg_match( '~(\d+)~', (string) $opt, $m ) ? (int) $m[1] : 0;
+					$sizes[] = array( 'slug' => $slug, 'label' => $num . 'Y', 'name' => (string) $opt, '_n' => $num );
+				}
+			}
+			if ( ! empty( $sizes ) ) {
+				usort( $sizes, static function ( $a, $b ) { return $a['_n'] <=> $b['_n']; } );
+				foreach ( $sizes as &$s_item ) {
+					unset( $s_item['_n'] );
+				}
+				unset( $s_item );
+			}
+		}
+	}
+
+	$variations = array();
+	$total_left = null;
+
+	foreach ( $children as $child_id ) {
+		$price   = (float) get_post_meta( $child_id, '_price', true );
+		$regular = (float) get_post_meta( $child_id, '_regular_price', true );
+		if ( $price <= 0 && $regular > 0 ) {
+			$price = $regular;
+		}
+		if ( $price <= 0 ) {
+			continue;
+		}
+		$roles = array( 'size' => '', 'color' => '' );
+		$any   = false;
+		foreach ( $defs as $def ) {
+			$meta_key = 'attribute_' . $def['key'];
+			$raw      = (string) get_post_meta( $child_id, $meta_key, true );
+			if ( '' === $raw && 0 !== strpos( $def['key'], 'pa_' ) ) {
+				$raw = (string) get_post_meta( $child_id, 'attribute_pa_' . $def['key'], true );
+			}
+			$value = '' === $raw ? '' : ( $def['taxonomy'] ? $raw : sanitize_title( $raw ) );
+			if ( '' === $value ) {
+				$any = true;
+			}
+			if ( $def['role'] ) {
+				$roles[ $def['role'] ] = $value;
+			}
+		}
+
+		$manage_stock = 'yes' === (string) get_post_meta( $child_id, '_manage_stock', true );
+		$stock_qty    = $manage_stock ? (int) get_post_meta( $child_id, '_stock', true ) : null;
+		$stock_status = (string) get_post_meta( $child_id, '_stock_status', true );
+		$in_stock     = $manage_stock ? ( $stock_qty > 0 || 'notify' === get_post_meta( $child_id, '_backorders', true ) || 'yes' === get_post_meta( $child_id, '_backorders', true ) ) : ( 'outofstock' !== $stock_status );
+
+		if ( null !== $stock_qty ) {
+			$total_left = (int) $total_left + max( 0, $stock_qty );
+		}
+
+		$variations[] = array(
+			'id'      => $child_id,
+			'size'    => $roles['size'],
+			'color'   => $roles['color'],
+			'inStock' => $in_stock,
+			'any'     => $any,
+		);
+	}
+
+	$cache[ $pid ] = array(
+		'variations' => $variations,
+		'stock_left' => $total_left,
+		'sizes'      => $sizes,
+	);
+	return $cache[ $pid ];
+}
+
+/**
  * View-model for product cards. All values are plain data; markup lives in
  * stitch-components.php so every card stays identical to the Stitch design.
  */
 function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
-	$catalog    = class_exists( 'Nexxi_Kids_Catalog' );
 	$category   = nexxi_kids_product_category( $product );
 	$prog       = nexxi_kids_get_program_sale( $product, 'combined' );
 	$on_sale    = $prog['on_sale'];
 	$discount   = $prog['pct'];
 	$sale_price = $prog['sale'];
 	$reg_price  = $prog['regular'];
-	$sizes      = array();
-	if ( $catalog ) {
-		foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'size' ) as $term ) {
-			$sizes[] = array( 'slug' => $term->slug, 'label' => Nexxi_Kids_Catalog::size_number( $term->slug ) . 'Y', 'name' => $term->name );
-		}
-	}
+	$fast_var   = nexxi_kids_fast_card_variations( $product );
+	$sizes      = $fast_var['sizes'];
 	$image      = wp_get_attachment_image_url( $product->get_image_id(), 'large' );
 	$sold       = (int) $product->get_total_sales();
-	$left       = $catalog ? Nexxi_Kids_Catalog::stock_left( $product ) : null;
-	$variations = $catalog ? Nexxi_Kids_Catalog::variation_payload( $product ) : array();
+	$left       = $fast_var['stock_left'];
+	$variations = $fast_var['variations'];
 	$url        = 'flash' === $context ? add_query_arg( 'flash_sale', '1', $product->get_permalink() ) : $product->get_permalink();
+	$mat_terms  = get_the_terms( $product->get_id(), 'pa_chat-lieu' );
+	$material   = ( is_array( $mat_terms ) && ! empty( $mat_terms[0]->name ) ) ? $mat_terms[0]->name : '';
 	return array(
 		'id'           => $product->get_id(),
 		'type'         => $product->get_type(),
@@ -467,7 +664,7 @@ function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 		'image'        => $image ? $image : wc_placeholder_img_src( 'large' ),
 		'category'     => $category ? $category->name : 'NEXXI Kids',
 		'categorySlug' => $category ? $category->slug : '',
-		'material'     => implode( ', ', array_slice( nexxi_kids_product_attr_names( $product, 'chat-lieu' ), 0, 1 ) ),
+		'material'     => $material,
 		'price'        => nexxi_kids_money( $sale_price ),
 		'priceFrom'    => nexxi_kids_money( $sale_price ),
 		'regular'      => $on_sale ? nexxi_kids_money( $reg_price ) : '',
@@ -480,7 +677,7 @@ function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 		'soldPercent'  => null !== $left && ( $sold + $left ) > 0 ? (int) round( $sold / ( $sold + $left ) * 100 ) : 0,
 		'inStock'      => $product->is_in_stock(),
 		'sizes'        => $sizes,
-		'variations'   => array_map( static function ( $row ) { return array( 'id' => $row['id'], 'size' => $row['size'], 'color' => $row['color'], 'inStock' => $row['inStock'], 'any' => ! empty( $row['any'] ) ); }, $variations ),
+		'variations'   => $variations,
 		'isNew'        => $product->get_date_created() ? ( time() - (int) $product->get_date_created()->getTimestamp() ) < 30 * DAY_IN_SECONDS : false,
 	);
 }
@@ -494,8 +691,12 @@ function nexxi_kids_card_attrs( array $card ) {
 /** Products for a home/flash rail. */
 function nexxi_kids_query_products( $args ) {
 	if ( ! function_exists( 'wc_get_products' ) ) { return array(); }
-	$args = wp_parse_args( $args, array( 'status' => 'publish', 'limit' => 4, 'visibility' => 'catalog' ) );
-	return wc_get_products( $args );
+	$args     = wp_parse_args( $args, array( 'status' => 'publish', 'limit' => 4, 'visibility' => 'catalog' ) );
+	$products = wc_get_products( $args );
+	if ( is_array( $products ) && ! empty( $products ) ) {
+		nexxi_kids_prime_products_cache( $products );
+	}
+	return $products;
 }
 
 function nexxi_kids_sale_products( $limit = 4 ) {

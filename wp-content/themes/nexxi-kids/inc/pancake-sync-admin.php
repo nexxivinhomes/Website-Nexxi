@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 @error_reporting( error_reporting() & ~E_DEPRECATED & ~E_USER_DEPRECATED ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions,WordPress.PHP.DiscouragedPHPFunctions
 
-// Unhook any older plugin instance (v1.4.0 or v1.5.0-v2/v3 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
+// Unhook any older plugin instance (v1.4.0 or v1.5.0-v2/v3) if it loaded before the theme
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V4', false ) ) {
 	foreach ( array( 'Nexxi_Pancake_Sync_Manager_V3', 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' ) as $legacy_cls ) {
 		if ( class_exists( $legacy_cls, false ) && method_exists( $legacy_cls, 'init' ) ) {
@@ -41,28 +41,13 @@ if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V4', false ) ) {
 			}
 		}
 	}
-	if ( defined( 'WP_PLUGIN_DIR' ) ) {
-		$legacy_plugin_file = WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php';
-		if ( @is_file( $legacy_plugin_file ) && @is_writable( $legacy_plugin_file ) && realpath( $legacy_plugin_file ) !== realpath( __FILE__ ) ) {
-			@copy( __FILE__, $legacy_plugin_file );
-			if ( function_exists( 'opcache_invalidate' ) ) {
-				@opcache_invalidate( $legacy_plugin_file, true );
-			}
-		}
-	}
-	if ( function_exists( 'get_option' ) && function_exists( 'update_option' ) ) {
-		$active_plgs = get_option( 'active_plugins', array() );
-		if ( is_array( $active_plgs ) && in_array( 'nexxi-pancake-manager/nexxi-pancake-manager.php', $active_plgs, true ) ) {
-			update_option( 'active_plugins', array_values( array_diff( $active_plgs, array( 'nexxi-pancake-manager/nexxi-pancake-manager.php' ) ) ) );
-		}
-	}
 }
 
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ) :
 
 final class Nexxi_Pancake_Sync_Manager_V4 {
 
-	const VERSION              = '1.5.1';
+	const VERSION              = '1.5.2';
 	const MENU_SLUG            = 'nexxi-pancake-sync';
 	const CACHE_OPTION         = 'nexxi_pancake_catalog_cache_v4';
 	const CACHE_TIME_OPT       = 'nexxi_pancake_catalog_cache_time';
@@ -74,7 +59,9 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 	const DEFAULT_API_KEY      = '355cc43ff67827b8c0b1ceca53227b8c';
 	const DEFAULT_WAREHOUSE_ID = '35fa7b6a-3127-414b-96ad-3329f9dac77c'; // Kho mặc định (theo cấu hình đồng bộ POS -> WOO trên Pancake)
 
-	private static $instance = null;
+	private static $instance        = null;
+	private static $runtime_catalog = null;
+	private static $runtime_wc_rows = null;
 
 	public static function init() {
 		if ( null === self::$instance ) {
@@ -84,29 +71,32 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 	}
 
 	public function __construct() {
-		add_action( 'admin_menu', array( $this, 'register_menus' ), 25 );
-		add_action( 'admin_init', array( $this, 'handle_post_actions' ) );
+		if ( is_admin() || ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) ) {
+			add_action( 'admin_menu', array( $this, 'register_menus' ), 25 );
+			add_action( 'admin_init', array( $this, 'handle_post_actions' ) );
+			add_action( 'admin_init', array( $this, 'maybe_schedule_cron' ) );
+			add_action( 'admin_init', array( $this, 'maybe_auto_cleanup_duplicates' ), 20 );
 
-		// AJAX endpoints for fast, non-timeout batch processing & interactive classification mapping.
-		add_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $this, 'ajax_refresh_cache' ) );
-		add_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $this, 'ajax_push_browser_cache' ) );
-		add_action( 'wp_ajax_nexxi_pancake_sync_single', array( $this, 'ajax_sync_single' ) );
-		add_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $this, 'ajax_get_classifications' ) );
-		add_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $this, 'ajax_apply_classifications' ) );
-		add_action( 'wp_ajax_nexxi_pancake_link_sku', array( $this, 'ajax_link_sku' ) );
+			// AJAX endpoints for fast, non-timeout batch processing & interactive classification mapping.
+			add_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $this, 'ajax_refresh_cache' ) );
+			add_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $this, 'ajax_push_browser_cache' ) );
+			add_action( 'wp_ajax_nexxi_pancake_sync_single', array( $this, 'ajax_sync_single' ) );
+			add_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $this, 'ajax_get_classifications' ) );
+			add_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $this, 'ajax_apply_classifications' ) );
+			add_action( 'wp_ajax_nexxi_pancake_link_sku', array( $this, 'ajax_link_sku' ) );
 
-		// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake + Cleanup Duplicates + SPA Navigation.
-		add_action( 'wp_ajax_nexxi_pancake_import_product', array( $this, 'ajax_import_product' ) );
-		add_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $this, 'ajax_delete_disconnect' ) );
-		add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
-		add_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $this, 'ajax_set_warehouse' ) );
-		add_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $this, 'ajax_spa_nav' ) );
+			// Tab 1 AJAX endpoints: Sync/Import Pancake products to Website & Delete from Website + Disconnect Pancake + Cleanup Duplicates + SPA Navigation.
+			add_action( 'wp_ajax_nexxi_pancake_import_product', array( $this, 'ajax_import_product' ) );
+			add_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $this, 'ajax_delete_disconnect' ) );
+			add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
+			add_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $this, 'ajax_set_warehouse' ) );
+			add_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $this, 'ajax_spa_nav' ) );
+		}
 
-		// Background WP-Cron schedule for automatic Pancake image scanning & one-time duplicate product cleanup.
-		add_filter( 'cron_schedules', array( $this, 'register_cron_schedule' ) );
-		add_action( self::CRON_HOOK, array( $this, 'run_cron_auto_scan' ) );
-		add_action( 'init', array( $this, 'maybe_schedule_cron' ) );
-		add_action( 'init', array( $this, 'maybe_auto_cleanup_duplicates' ), 20 );
+		if ( is_admin() || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) ) {
+			add_filter( 'cron_schedules', array( $this, 'register_cron_schedule' ) );
+			add_action( self::CRON_HOOK, array( $this, 'run_cron_auto_scan' ) );
+		}
 	}
 
 	/**
@@ -629,9 +619,10 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		}
 		@ini_set( 'memory_limit', '512M' ); // phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed
 
-		$products_by_id = self::merge_catalog_entries_by_sku( $products_by_id );
-		$file           = self::get_cache_file_path();
-		$wrote_file     = false;
+		$products_by_id        = self::merge_catalog_entries_by_sku( $products_by_id );
+		self::$runtime_catalog = $products_by_id;
+		$file                  = self::get_cache_file_path();
+		$wrote_file            = false;
 		if ( $file ) {
 			$wrote_file = ( false !== file_put_contents( $file, wp_json_encode( $products_by_id ) ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		}
@@ -1193,6 +1184,12 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			return array();
 		}
 
+		$sq_cache_key = 'nexxi_psq_' . md5( mb_strtolower( $search_q ) );
+		if ( get_transient( $sq_cache_key ) ) {
+			return array();
+		}
+		set_transient( $sq_cache_key, 1, 5 * MINUTE_IN_SECONDS );
+
 		$settings    = self::get_settings();
 		$cf_base     = rtrim( $settings['cf_api_url'], '/' );
 		$shop_id     = trim( (string) $settings['shop_id'] ) ?: self::DEFAULT_SHOP_ID;
@@ -1474,6 +1471,9 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 	 * Only performs remote HTTP fetching when $force_refresh is explicitly true.
 	 */
 	public static function get_pancake_catalog( $force_refresh = false ) {
+		if ( ! $force_refresh && null !== self::$runtime_catalog ) {
+			return self::$runtime_catalog;
+		}
 		if ( function_exists( 'wp_raise_memory_limit' ) ) {
 			wp_raise_memory_limit( 'admin' );
 		}
@@ -1486,7 +1486,8 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				$dec = $raw ? json_decode( $raw, true ) : null;
 				unset( $raw );
 				if ( is_array( $dec ) && ! empty( $dec ) ) {
-					return self::merge_catalog_entries_by_sku( $dec );
+					self::$runtime_catalog = self::merge_catalog_entries_by_sku( $dec );
+					return self::$runtime_catalog;
 				}
 			}
 			// Fallback to legacy v3 JSON cache file if v4 hasn't been written yet
@@ -1497,18 +1498,22 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					$dec = $raw ? json_decode( $raw, true ) : null;
 					unset( $raw );
 					if ( is_array( $dec ) && ! empty( $dec ) ) {
-						return self::merge_catalog_entries_by_sku( $dec );
+						self::$runtime_catalog = self::merge_catalog_entries_by_sku( $dec );
+						return self::$runtime_catalog;
 					}
 				}
 			}
 			$cached = get_option( self::CACHE_OPTION, null );
 			if ( is_array( $cached ) && ! empty( $cached ) ) {
-				return self::merge_catalog_entries_by_sku( $cached );
+				self::$runtime_catalog = self::merge_catalog_entries_by_sku( $cached );
+				return self::$runtime_catalog;
 			}
 			$cached_v3 = get_option( 'nexxi_pancake_catalog_cache_v3', null );
 			if ( is_array( $cached_v3 ) && ! empty( $cached_v3 ) ) {
-				return self::merge_catalog_entries_by_sku( $cached_v3 );
+				self::$runtime_catalog = self::merge_catalog_entries_by_sku( $cached_v3 );
+				return self::$runtime_catalog;
 			}
+			self::$runtime_catalog = array();
 			return array();
 		}
 
@@ -1516,6 +1521,7 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		if ( is_wp_error( $res ) || empty( $res ) ) {
 			return array();
 		}
+		self::$runtime_catalog = $res;
 		return $res;
 	}
 
@@ -3786,11 +3792,6 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		$catalog    = self::get_pancake_catalog( false );
 		$cache_time = (int) get_option( self::CACHE_TIME_OPT, 0 );
 		$maps       = self::build_lookup_maps( $catalog );
-
-		// Automatically clean up duplicate products on initial page load (skipped during fast AJAX pagination)
-		if ( ! wp_doing_ajax() ) {
-			self::cleanup_duplicate_wc_products();
-		}
 
 		// Fast SQL load of all WooCommerce products, SKUs, thumbnails & variations (0 WC_Product object overhead)
 		$wc_products = self::get_fast_wc_catalog_rows();

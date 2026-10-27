@@ -24,7 +24,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  *   bot_info: array
  * }
  */
-function nexxi_kids_zalo_notify_settings() {
+function nexxi_kids_zalo_notify_settings( $force_refresh = false ) {
+	static $cached = null;
+	if ( null !== $cached && ! $force_refresh ) {
+		return $cached;
+	}
 	$secret = trim( (string) get_option( 'nexxi_zalo_bot_secret_token', '' ) );
 	if ( '' === $secret ) {
 		$secret = wp_generate_password( 24, false, false );
@@ -33,7 +37,7 @@ function nexxi_kids_zalo_notify_settings() {
 	$bot_info = get_option( 'nexxi_zalo_bot_info', array() );
 	$start    = trim( (string) get_option( 'nexxi_zalo_active_start_time', '08:00' ) );
 	$end      = trim( (string) get_option( 'nexxi_zalo_active_end_time', '17:30' ) );
-	return array(
+	$cached   = array(
 		'enabled'              => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
 		'bot_token'            => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
 		'chat_ids'             => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
@@ -47,6 +51,7 @@ function nexxi_kids_zalo_notify_settings() {
 		'secret_token'         => $secret,
 		'bot_info'             => is_array( $bot_info ) ? $bot_info : array(),
 	);
+	return $cached;
 }
 
 /**
@@ -1109,10 +1114,17 @@ add_action(
 
 /**
  * Ensure WP-Cron schedule is aligned to exact clock boundaries (e.g. 08:00, 08:30, 09:00, 09:30...),
- * and run a lightweight timestamp check on `wp_loaded` so scans happen right on schedule.
+ * and run a lightweight timestamp check on `wp_loaded` so scans happen right on schedule without blocking page loads.
+ *
+ * @param bool $force_update True when settings were just saved in Admin.
  */
-function nexxi_kids_sync_zalo_scan_cron() {
-	$cfg          = nexxi_kids_zalo_notify_settings();
+function nexxi_kids_sync_zalo_scan_cron( $force_update = false ) {
+	$existing_next = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+	if ( ! $force_update && $existing_next > 0 ) {
+		return;
+	}
+
+	$cfg          = nexxi_kids_zalo_notify_settings( (bool) $force_update );
 	$interval_min = (int) $cfg['scan_interval'];
 	$eff_min      = $interval_min > 0 ? $interval_min : 15;
 	$allowed      = array( 5, 15, 30, 60, 120, 180 );
@@ -1132,7 +1144,7 @@ function nexxi_kids_sync_zalo_scan_cron() {
 
 	if ( '1' === $cfg['enabled'] ) {
 		$current_sched = wp_get_schedule( $hook );
-		if ( $current_sched !== $sched_key ) {
+		if ( $current_sched !== $sched_key || $force_update ) {
 			wp_clear_scheduled_hook( $hook );
 			wp_schedule_event( $next_aligned, $sched_key, $hook );
 		}
@@ -1142,7 +1154,7 @@ function nexxi_kids_sync_zalo_scan_cron() {
 		}
 	}
 }
-add_action( 'init', 'nexxi_kids_sync_zalo_scan_cron', 20 );
+add_action( 'admin_init', 'nexxi_kids_sync_zalo_scan_cron', 20 );
 
 add_action(
 	'wp_loaded',
@@ -1159,9 +1171,26 @@ add_action(
 		if ( $next_ts <= 0 ) {
 			$next_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
 			update_option( 'nexxi_zalo_next_scan_ts', $next_ts, false );
+			return;
 		}
 		if ( $now_ts >= $next_ts ) {
-			nexxi_kids_run_zalo_order_scan( false );
+			// Immediately advance nexxi_zalo_next_scan_ts so concurrent page loads never stampede
+			$next_aligned = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
+			update_option( 'nexxi_zalo_next_scan_ts', $next_aligned, false );
+
+			// Run the Zalo scan in shutdown AFTER flushing the HTTP response to the browser (zero page load delay)
+			add_action(
+				'shutdown',
+				static function () {
+					if ( function_exists( 'litespeed_finish_request' ) ) {
+						@litespeed_finish_request(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					} elseif ( function_exists( 'fastcgi_finish_request' ) ) {
+						@fastcgi_finish_request(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					}
+					nexxi_kids_run_zalo_order_scan( false );
+				},
+				999
+			);
 		}
 	},
 	30
@@ -1219,7 +1248,7 @@ add_action(
 			update_option( 'nexxi_zalo_chat_ids', $chat_ids );
 		}
 
-		$cfg = nexxi_kids_zalo_notify_settings();
+		$cfg = nexxi_kids_zalo_notify_settings( true );
 
 		// 0. Lightweight poll for newly added Chat IDs (when Webhook auto-add is active).
 		if ( 'poll_saved_chats' === $sub_action ) {
@@ -1483,11 +1512,11 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 		update_option( 'nexxi_zalo_last_scan_ts', time(), false );
 		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
 
-		nexxi_kids_sync_zalo_scan_cron();
+		nexxi_kids_sync_zalo_scan_cron( true );
 		$saved = true;
 	}
 
-	$cfg           = nexxi_kids_zalo_notify_settings();
+	$cfg           = nexxi_kids_zalo_notify_settings( $saved );
 	$known_chats   = get_option( 'nexxi_zalo_known_chats', array() );
 	$known_chats   = is_array( $known_chats ) ? $known_chats : array();
 	$pending_cnt   = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
