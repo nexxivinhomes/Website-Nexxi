@@ -14,9 +14,45 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager' ) ) :
+// Unhook legacy plugin instance (v1.4.0 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
+if ( class_exists( 'Nexxi_Pancake_Sync_Manager', false ) && method_exists( 'Nexxi_Pancake_Sync_Manager', 'init' ) ) {
+	$legacy_pancake_inst = Nexxi_Pancake_Sync_Manager::init();
+	if ( is_object( $legacy_pancake_inst ) ) {
+		remove_action( 'admin_menu', array( $legacy_pancake_inst, 'register_menus' ), 25 );
+		remove_action( 'admin_init', array( $legacy_pancake_inst, 'handle_post_actions' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $legacy_pancake_inst, 'ajax_refresh_cache' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $legacy_pancake_inst, 'ajax_push_browser_cache' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_sync_single', array( $legacy_pancake_inst, 'ajax_sync_single' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $legacy_pancake_inst, 'ajax_get_classifications' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $legacy_pancake_inst, 'ajax_apply_classifications' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_link_sku', array( $legacy_pancake_inst, 'ajax_link_sku' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_import_product', array( $legacy_pancake_inst, 'ajax_import_product' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $legacy_pancake_inst, 'ajax_delete_disconnect' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $legacy_pancake_inst, 'ajax_cleanup_duplicates' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $legacy_pancake_inst, 'ajax_spa_nav' ) );
+		remove_action( 'nexxi_pancake_auto_scan_event', array( $legacy_pancake_inst, 'run_cron_auto_scan' ) );
+		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
+		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+	}
+	// Auto-sync & auto-deactivate old standalone plugin so it no longer shadows the theme's built-in module
+	if ( defined( 'WP_PLUGIN_DIR' ) ) {
+		$legacy_plugin_file = WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php';
+		if ( @is_file( $legacy_plugin_file ) && @is_writable( $legacy_plugin_file ) ) {
+			@copy( __FILE__, $legacy_plugin_file );
+		}
+	}
+	add_action( 'admin_init', function() {
+		if ( function_exists( 'deactivate_plugins' ) && function_exists( 'is_plugin_active' ) ) {
+			if ( is_plugin_active( 'nexxi-pancake-manager/nexxi-pancake-manager.php' ) ) {
+				deactivate_plugins( 'nexxi-pancake-manager/nexxi-pancake-manager.php', true );
+			}
+		}
+	}, 1 );
+}
 
-final class Nexxi_Pancake_Sync_Manager {
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V2' ) ) :
+
+final class Nexxi_Pancake_Sync_Manager_V2 {
 
 	const VERSION              = '1.5.0';
 	const MENU_SLUG            = 'nexxi-pancake-sync';
@@ -6175,5 +6211,9 @@ final class Nexxi_Pancake_Sync_Manager {
 
 endif;
 
-Nexxi_Pancake_Sync_Manager::init();
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager', false ) ) {
+	class_alias( 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' );
+}
+
+Nexxi_Pancake_Sync_Manager_V2::init();
 

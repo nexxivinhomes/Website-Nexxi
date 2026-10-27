@@ -14,20 +14,57 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager' ) ) :
+// Unhook legacy plugin instance (v1.4.0 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
+if ( class_exists( 'Nexxi_Pancake_Sync_Manager', false ) && method_exists( 'Nexxi_Pancake_Sync_Manager', 'init' ) ) {
+	$legacy_pancake_inst = Nexxi_Pancake_Sync_Manager::init();
+	if ( is_object( $legacy_pancake_inst ) ) {
+		remove_action( 'admin_menu', array( $legacy_pancake_inst, 'register_menus' ), 25 );
+		remove_action( 'admin_init', array( $legacy_pancake_inst, 'handle_post_actions' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $legacy_pancake_inst, 'ajax_refresh_cache' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $legacy_pancake_inst, 'ajax_push_browser_cache' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_sync_single', array( $legacy_pancake_inst, 'ajax_sync_single' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $legacy_pancake_inst, 'ajax_get_classifications' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $legacy_pancake_inst, 'ajax_apply_classifications' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_link_sku', array( $legacy_pancake_inst, 'ajax_link_sku' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_import_product', array( $legacy_pancake_inst, 'ajax_import_product' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $legacy_pancake_inst, 'ajax_delete_disconnect' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $legacy_pancake_inst, 'ajax_cleanup_duplicates' ) );
+		remove_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $legacy_pancake_inst, 'ajax_spa_nav' ) );
+		remove_action( 'nexxi_pancake_auto_scan_event', array( $legacy_pancake_inst, 'run_cron_auto_scan' ) );
+		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
+		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+	}
+	// Auto-sync & auto-deactivate old standalone plugin so it no longer shadows the theme's built-in module
+	if ( defined( 'WP_PLUGIN_DIR' ) ) {
+		$legacy_plugin_file = WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php';
+		if ( @is_file( $legacy_plugin_file ) && @is_writable( $legacy_plugin_file ) ) {
+			@copy( __FILE__, $legacy_plugin_file );
+		}
+	}
+	add_action( 'admin_init', function() {
+		if ( function_exists( 'deactivate_plugins' ) && function_exists( 'is_plugin_active' ) ) {
+			if ( is_plugin_active( 'nexxi-pancake-manager/nexxi-pancake-manager.php' ) ) {
+				deactivate_plugins( 'nexxi-pancake-manager/nexxi-pancake-manager.php', true );
+			}
+		}
+	}, 1 );
+}
 
-final class Nexxi_Pancake_Sync_Manager {
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V2' ) ) :
 
-	const VERSION          = '1.4.0';
-	const MENU_SLUG        = 'nexxi-pancake-sync';
-	const CACHE_OPTION     = 'nexxi_pancake_catalog_cache_v3';
-	const CACHE_TIME_OPT   = 'nexxi_pancake_catalog_cache_time';
-	const DISCONNECTED_OPT = 'nexxi_pancake_disconnected_skus';
-	const SETTINGS_OPT     = 'nexxi_pancake_sync_settings';
-	const CRON_HOOK        = 'nexxi_pancake_auto_scan_event';
-	const DEFAULT_CF_API   = 'https://nexxi-cloudflare-api.nexxivinhomes.workers.dev';
-	const DEFAULT_SHOP_ID  = '714396188';
-	const DEFAULT_API_KEY  = '355cc43ff67827b8c0b1ceca53227b8c';
+final class Nexxi_Pancake_Sync_Manager_V2 {
+
+	const VERSION              = '1.5.0';
+	const MENU_SLUG            = 'nexxi-pancake-sync';
+	const CACHE_OPTION         = 'nexxi_pancake_catalog_cache_v4';
+	const CACHE_TIME_OPT       = 'nexxi_pancake_catalog_cache_time';
+	const DISCONNECTED_OPT     = 'nexxi_pancake_disconnected_skus';
+	const SETTINGS_OPT         = 'nexxi_pancake_sync_settings';
+	const CRON_HOOK            = 'nexxi_pancake_auto_scan_event';
+	const DEFAULT_CF_API       = 'https://nexxi-cloudflare-api.nexxivinhomes.workers.dev';
+	const DEFAULT_SHOP_ID      = '714396188';
+	const DEFAULT_API_KEY      = '355cc43ff67827b8c0b1ceca53227b8c';
+	const DEFAULT_WAREHOUSE_ID = '35fa7b6a-3127-414b-96ad-3329f9dac77c'; // Kho mặc định (theo cấu hình đồng bộ POS -> WOO trên Pancake)
 
 	private static $instance = null;
 
@@ -54,6 +91,7 @@ final class Nexxi_Pancake_Sync_Manager {
 		add_action( 'wp_ajax_nexxi_pancake_import_product', array( $this, 'ajax_import_product' ) );
 		add_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $this, 'ajax_delete_disconnect' ) );
 		add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
+		add_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $this, 'ajax_set_warehouse' ) );
 		add_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $this, 'ajax_spa_nav' ) );
 
 		// Background WP-Cron schedule for automatic Pancake image scanning & one-time duplicate product cleanup.
@@ -97,18 +135,90 @@ final class Nexxi_Pancake_Sync_Manager {
 		if ( ! is_array( $saved ) ) {
 			$saved = array();
 		}
-		return wp_parse_args(
+		$parsed = wp_parse_args(
 			$saved,
 			array(
 				'cf_api_url'      => self::DEFAULT_CF_API,
 				'shop_id'         => self::DEFAULT_SHOP_ID,
 				'pancake_api_key' => '',
+				'warehouse_id'    => self::DEFAULT_WAREHOUSE_ID,
 				'auto_cron'       => 0,
 				'auto_set_sku'    => 1,
 				'auto_set_thumb'  => 1,
 				'auto_set_gallery'=> 1,
 				'auto_set_var_img'=> 1,
 			)
+		);
+		if ( '' === trim( (string) $parsed['warehouse_id'] ) ) {
+			$parsed['warehouse_id'] = self::DEFAULT_WAREHOUSE_ID;
+		}
+		return $parsed;
+	}
+
+	/**
+	 * Return the list of Pancake POS warehouses for the configured shop.
+	 */
+	public static function get_pancake_warehouses() {
+		return array(
+			self::DEFAULT_WAREHOUSE_ID             => 'Kho mặc định (Chuẩn cài đặt POS → WOO)',
+			'f43a438d-8476-4d44-a409-6334f9d10301' => 'Kho Tân Phú',
+			'all'                                  => 'Gộp tất cả các kho',
+		);
+	}
+
+	/**
+	 * Calculate the exact available stock (`Có thể bán` / `remain_quantity`) for a Pancake variation
+	 * strictly adhering to the configured Pancake warehouse (`warehouse_id`, default: `Kho mặc định`).
+	 *
+	 * @param array       $rv           Raw Pancake variation or cached variation entry.
+	 * @param string|null $warehouse_id Target Pancake warehouse ID (`35fa7b6a-3127-414b-96ad-3329f9dac77c` = Kho mặc định).
+	 * @return array{stock:int,warehouses:array<string,int>}
+	 */
+	public static function extract_variation_warehouse_stock( array $rv, $warehouse_id = null ) {
+		if ( null === $warehouse_id || '' === trim( (string) $warehouse_id ) ) {
+			$settings     = self::get_settings();
+			$warehouse_id = $settings['warehouse_id'];
+		}
+		$warehouse_id = trim( (string) $warehouse_id );
+
+		$wh_map = array();
+		if ( isset( $rv['warehouses'] ) && is_array( $rv['warehouses'] ) ) {
+			foreach ( $rv['warehouses'] as $wid => $wqty ) {
+				$wh_map[ trim( (string) $wid ) ] = max( 0, (int) $wqty );
+			}
+		} elseif ( isset( $rv['variations_warehouses'] ) && is_array( $rv['variations_warehouses'] ) ) {
+			foreach ( $rv['variations_warehouses'] as $wh ) {
+				if ( ! is_array( $wh ) || empty( $wh['warehouse_id'] ) ) {
+					continue;
+				}
+				$wid            = trim( (string) $wh['warehouse_id'] );
+				$wqty           = max( 0, (int) ( $wh['remain_quantity'] ?? $wh['actual_remain_quantity'] ?? 0 ) );
+				$wh_map[ $wid ] = ( $wh_map[ $wid ] ?? 0 ) + $wqty;
+			}
+		}
+
+		// If 'all' warehouses is explicitly chosen, sum across all warehouses or fallback to remain_quantity.
+		if ( 'all' === $warehouse_id ) {
+			$total = ! empty( $wh_map ) ? array_sum( $wh_map ) : max( 0, (int) ( $rv['remain_quantity'] ?? $rv['available_quantity'] ?? $rv['stock'] ?? 0 ) );
+			return array(
+				'stock'      => $total,
+				'warehouses' => $wh_map,
+			);
+		}
+
+		// Strict per-warehouse mode (e.g. Kho mặc định = 35fa7b6a-3127-414b-96ad-3329f9dac77c):
+		// Only count stock present in the configured warehouse(s). If the variation has no entry in that warehouse, stock is 0!
+		$allowed_ids = array_filter( array_map( 'trim', explode( ',', $warehouse_id ) ) );
+		$stock       = 0;
+		foreach ( $allowed_ids as $aid ) {
+			if ( isset( $wh_map[ $aid ] ) ) {
+				$stock += (int) $wh_map[ $aid ];
+			}
+		}
+
+		return array(
+			'stock'      => max( 0, $stock ),
+			'warehouses' => $wh_map,
 		);
 	}
 
@@ -156,6 +266,10 @@ final class Nexxi_Pancake_Sync_Manager {
 		}
 		if ( isset( $_POST['pancake_api_key'] ) ) {
 			$settings['pancake_api_key'] = sanitize_text_field( wp_unslash( $_POST['pancake_api_key'] ) );
+		}
+		if ( isset( $_POST['warehouse_id'] ) ) {
+			$wh_id = sanitize_text_field( wp_unslash( $_POST['warehouse_id'] ) );
+			$settings['warehouse_id'] = '' !== $wh_id ? $wh_id : self::DEFAULT_WAREHOUSE_ID;
 		}
 		$settings['auto_cron']        = ! empty( $_POST['auto_cron'] ) ? 1 : 0;
 		$settings['auto_set_sku']     = ! empty( $_POST['auto_set_sku'] ) ? 1 : 0;
@@ -319,26 +433,42 @@ final class Nexxi_Pancake_Sync_Manager {
 	public static function get_cache_file_path() {
 		$up = wp_upload_dir();
 		if ( ! empty( $up['basedir'] ) && is_writable( $up['basedir'] ) ) {
-			return trailingslashit( $up['basedir'] ) . 'nexxi-pancake-catalog-v3.json';
+			return trailingslashit( $up['basedir'] ) . 'nexxi-pancake-catalog-v4.json';
 		}
 		return '';
 	}
 
 	/**
-	 * Merge split product/variation stub entries ONLY when they share the exact same Parent SKU (`sku`).
-	 * NEVER merge by leading lot/date code (e.g. "2603.8"), because many different products share the same lot prefix!
+	 * Merge split product/variation stub entries ONLY when they share the exact same Parent SKU (`sku`),
+	 * and recalculate variation/product stock strictly for the configured Pancake warehouse (`Kho mặc định`).
 	 */
 	public static function merge_catalog_entries_by_sku( array $catalog ) {
 		if ( empty( $catalog ) ) {
 			return array();
 		}
-		$merged     = array();
-		$sku_to_pid = array();
+		$settings     = self::get_settings();
+		$warehouse_id = $settings['warehouse_id'];
+		$merged       = array();
+		$sku_to_pid   = array();
 
 		foreach ( $catalog as $pid => $p ) {
 			if ( ! is_array( $p ) ) {
 				continue;
 			}
+			// Recalculate stock strictly according to the active Pancake warehouse if per-warehouse data is present
+			if ( ! empty( $p['variations'] ) && is_array( $p['variations'] ) ) {
+				$recalc_total = 0;
+				foreach ( $p['variations'] as &$pv ) {
+					if ( isset( $pv['warehouses'] ) && is_array( $pv['warehouses'] ) ) {
+						$wh_res      = self::extract_variation_warehouse_stock( $pv, $warehouse_id );
+						$pv['stock'] = $wh_res['stock'];
+					}
+					$recalc_total += max( 0, (int) ( $pv['stock'] ?? 0 ) );
+				}
+				unset( $pv );
+				$p['total_stock'] = $recalc_total;
+			}
+
 			$sku  = strtoupper( trim( (string) ( $p['sku'] ?? '' ) ) );
 			$code = strtoupper( trim( (string) ( $p['code'] ?? self::extract_leading_code( $p['name'] ?? '' ) ) ) );
 			$p['code'] = $code ? $code : ( $p['code'] ?? '' );
@@ -632,16 +762,12 @@ final class Nexxi_Pancake_Sync_Manager {
 			if ( ! is_array( $rv ) || ! empty( $rv['is_removed'] ) ) {
 				continue;
 			}
-			$vsku  = trim( (string) ( $rv['display_id'] ?? $rv['sku'] ?? $rv['custom_id'] ?? '' ) );
-			$vimgs = self::extract_record_images( $rv );
-			$vimg  = ! empty( $vimgs[0] ) ? $vimgs[0] : '';
-			$price = (float) ( $rv['retail_price'] ?? $rv['price'] ?? 0 );
-			$qty   = (int) ( $rv['remain_quantity'] ?? $rv['available_quantity'] ?? 0 );
-			if ( 0 === $qty && ! empty( $rv['variations_warehouses'] ) && is_array( $rv['variations_warehouses'] ) ) {
-				foreach ( $rv['variations_warehouses'] as $wh ) {
-					$qty += (int) ( $wh['remain_quantity'] ?? $wh['actual_remain_quantity'] ?? 0 );
-				}
-			}
+			$vsku     = trim( (string) ( $rv['display_id'] ?? $rv['sku'] ?? $rv['custom_id'] ?? '' ) );
+			$vimgs    = self::extract_record_images( $rv );
+			$vimg     = ! empty( $vimgs[0] ) ? $vimgs[0] : '';
+			$price    = (float) ( $rv['retail_price'] ?? $rv['price'] ?? 0 );
+			$wh_stock = self::extract_variation_warehouse_stock( $rv );
+			$qty      = $wh_stock['stock'];
 
 			$cs        = self::extract_variation_color_and_size( $rv, $vsku );
 			$color_val = $cs['color'];
@@ -692,13 +818,14 @@ final class Nexxi_Pancake_Sync_Manager {
 				}
 			}
 			$item['variations'][] = array(
-				'sku'       => $vsku,
-				'color_raw' => $color_val,
-				'color_key' => $class_key,
-				'size'      => $size_val,
-				'image'     => $vimg,
-				'price'     => $price,
-				'stock'     => max( 0, $qty ),
+				'sku'        => $vsku,
+				'color_raw'  => $color_val,
+				'color_key'  => $class_key,
+				'size'       => $size_val,
+				'image'      => $vimg,
+				'price'      => $price,
+				'stock'      => max( 0, $qty ),
+				'warehouses' => $wh_stock['warehouses'],
 			);
 		}
 
@@ -2868,8 +2995,10 @@ final class Nexxi_Pancake_Sync_Manager {
 				$existing_children_by_cs[ $c_ckey . '__' . $c_size ] = $c_obj;
 			}
 
-			$c_attr_key = sanitize_title( $color_attr_slug );
-			$s_attr_key = sanitize_title( $size_attr_slug );
+			$c_attr_key         = sanitize_title( $color_attr_slug );
+			$s_attr_key         = sanitize_title( $size_attr_slug );
+			$matched_wc_var_ids = array();
+			$total_var_stock    = 0;
 
 			foreach ( $p_vars as $pv ) {
 				$vsku  = trim( (string) ( $pv['sku'] ?? '' ) );
@@ -2917,14 +3046,30 @@ final class Nexxi_Pancake_Sync_Manager {
 				}
 
 				if ( $opts['sync_stock'] ) {
-					$qty = max( 0, (int) ( $pv['stock'] ?? 0 ) );
+					$qty              = max( 0, (int) ( $pv['stock'] ?? 0 ) );
+					$total_var_stock += $qty;
 					$var_obj->set_manage_stock( true );
 					$var_obj->set_stock_quantity( $qty );
 					$var_obj->set_stock_status( $qty > 0 ? 'instock' : 'outofstock' );
 				}
 
-				$var_obj->save();
+				$saved_vid            = $var_obj->save();
+				$matched_wc_var_ids[] = (int) $saved_vid;
 				$variations_synced++;
+			}
+
+			// Zero out stock on any stale Website variations that are no longer in Pancake's active variations
+			if ( $opts['sync_stock'] ) {
+				foreach ( $product->get_children() as $child_id ) {
+					if ( ! in_array( (int) $child_id, $matched_wc_var_ids, true ) ) {
+						update_post_meta( (int) $child_id, '_manage_stock', 'yes' );
+						wc_update_product_stock( (int) $child_id, 0, 'set' );
+						update_post_meta( (int) $child_id, '_stock_status', 'outofstock' );
+					}
+				}
+				update_post_meta( $wc_id, '_manage_stock', 'no' );
+				delete_post_meta( $wc_id, '_stock' );
+				update_post_meta( $wc_id, '_stock_status', $total_var_stock > 0 ? 'instock' : 'outofstock' );
 			}
 
 			if ( class_exists( 'WC_Product_Variable' ) ) {
@@ -2995,6 +3140,9 @@ final class Nexxi_Pancake_Sync_Manager {
 		if ( function_exists( 'wc_delete_product_transients' ) ) {
 			wc_delete_product_transients( $wc_id );
 		}
+		if ( function_exists( 'wc_update_product_lookup_tables_column' ) ) {
+			wc_delete_product_transients( $wc_id );
+		}
 		do_action( 'litespeed_purge_post', $wc_id );
 		do_action( 'litespeed_purge_all' );
 
@@ -3010,6 +3158,8 @@ final class Nexxi_Pancake_Sync_Manager {
 			'created_new'        => $created_new,
 			'skipped_duplicate'  => false,
 			'variations_synced'  => $variations_synced,
+			'total_stock'        => (int) ( $pancake_item['total_stock'] ?? 0 ),
+			'min_price'          => (float) ( $pancake_item['min_price'] ?? 0 ),
 			'downloaded_urls'    => (int) ( $img_res['downloaded_urls'] ?? 0 ),
 			'variations_img_set' => (int) ( $img_res['variations_img_set'] ?? 0 ),
 			'edit_url'           => get_edit_post_link( $wc_id, 'raw' ),
@@ -3091,6 +3241,33 @@ final class Nexxi_Pancake_Sync_Manager {
 	}
 
 	/**
+	 * AJAX: Change active Pancake Warehouse for POS -> WOO stock sync and recalculate catalog stock immediately.
+	 */
+	public function ajax_set_warehouse() {
+		check_ajax_referer( 'nexxi_pancake_ajax', 'nonce' );
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => 'Không có quyền thực hiện.' ) );
+		}
+		$wh_id    = isset( $_POST['warehouse_id'] ) ? sanitize_text_field( wp_unslash( $_POST['warehouse_id'] ) ) : self::DEFAULT_WAREHOUSE_ID;
+		$settings = self::get_settings();
+		$settings['warehouse_id'] = '' !== $wh_id ? $wh_id : self::DEFAULT_WAREHOUSE_ID;
+		update_option( self::SETTINGS_OPT, $settings );
+
+		// Re-save catalog cache so per-warehouse stock is immediately recalculated
+		$catalog = self::get_pancake_catalog( false );
+		if ( ! empty( $catalog ) ) {
+			self::save_catalog_cache( $catalog );
+		}
+
+		wp_send_json_success(
+			array(
+				'warehouse_id' => $settings['warehouse_id'],
+				'message'      => 'Đã chuyển kho đồng bộ tồn POS → WOO thành công!',
+			)
+		);
+	}
+
+	/**
 	 * AJAX (Tab 1): Import / Sync a single Pancake product to the Website by `pancake_id` or `pancake_sku`.
 	 */
 	public function ajax_import_product() {
@@ -3101,21 +3278,28 @@ final class Nexxi_Pancake_Sync_Manager {
 
 		$pancake_id  = isset( $_POST['pancake_id'] ) ? sanitize_text_field( wp_unslash( $_POST['pancake_id'] ) ) : '';
 		$pancake_sku = isset( $_POST['pancake_sku'] ) ? strtoupper( trim( sanitize_text_field( wp_unslash( $_POST['pancake_sku'] ) ) ) ) : '';
+		$live_query  = ! empty( $_POST['live_query'] ) && '1' === (string) $_POST['live_query'];
 
-		$catalog = self::get_pancake_catalog( false );
-		$maps    = self::build_lookup_maps( $catalog );
-		$p_item  = null;
+		$p_item = null;
+		if ( $live_query && '' !== $pancake_sku ) {
+			$p_item = self::query_pancake_product_by_sku( $pancake_sku, true );
+		}
 
-		if ( '' !== $pancake_id && isset( $maps['by_id'][ $pancake_id ] ) ) {
-			$p_item = $maps['by_id'][ $pancake_id ];
-		} elseif ( '' !== $pancake_sku && isset( $maps['by_sku'][ $pancake_sku ] ) ) {
-			$p_item = $maps['by_sku'][ $pancake_sku ];
-		} elseif ( '' !== $pancake_sku && isset( $maps['by_var_sku'][ $pancake_sku ] ) ) {
-			$p_item = $maps['by_var_sku'][ $pancake_sku ];
+		if ( ! $p_item ) {
+			$catalog = self::get_pancake_catalog( false );
+			$maps    = self::build_lookup_maps( $catalog );
+
+			if ( '' !== $pancake_id && isset( $maps['by_id'][ $pancake_id ] ) ) {
+				$p_item = $maps['by_id'][ $pancake_id ];
+			} elseif ( '' !== $pancake_sku && isset( $maps['by_sku'][ $pancake_sku ] ) ) {
+				$p_item = $maps['by_sku'][ $pancake_sku ];
+			} elseif ( '' !== $pancake_sku && isset( $maps['by_var_sku'][ $pancake_sku ] ) ) {
+				$p_item = $maps['by_var_sku'][ $pancake_sku ];
+			}
 		}
 
 		if ( ! $p_item && '' !== $pancake_sku ) {
-			$p_item = self::query_pancake_product_by_sku( $pancake_sku );
+			$p_item = self::query_pancake_product_by_sku( $pancake_sku, true );
 		}
 
 		if ( ! $p_item ) {
@@ -3803,6 +3987,21 @@ final class Nexxi_Pancake_Sync_Manager {
 								<label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:4px;">Pancake POS API Key (Lấy tại Cấu hình &rarr; Thẻ API):</label>
 								<input type="password" name="pancake_api_key" value="<?php echo esc_attr( $settings['pancake_api_key'] ); ?>" placeholder="Dán API Key từ pos.pancake.vn (Cấu hình -> Thẻ API)" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;">
 							</div>
+							<div style="grid-column:1 / -1;">
+								<label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:4px;">Kho hàng đồng bộ tồn POS &rarr; WOO (Tuân thủ cài đặt Kênh bán Website trên Pancake):</label>
+								<?php
+								$warehouses_list = self::get_pancake_warehouses();
+								$cur_wh_id       = isset( $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
+								?>
+								<select name="warehouse_id" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;font-weight:600;color:#1b2a59;">
+									<?php foreach ( $warehouses_list as $wh_id => $wh_info ) : ?>
+										<option value="<?php echo esc_attr( $wh_id ); ?>" <?php selected( $cur_wh_id, $wh_id ); ?>>
+											📦 <?php echo esc_html( $wh_info['name'] ); ?><?php echo ! empty( $wh_info['address'] ) ? ' (' . esc_html( $wh_info['address'] ) . ')' : ''; ?>
+										</option>
+									<?php endforeach; ?>
+									<option value="all" <?php selected( $cur_wh_id, 'all' ); ?>>🌐 Gộp tổng tồn kho của tất cả các kho</option>
+								</select>
+							</div>
 						</div>
 						<div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;font-size:12.5px;display:flex;flex-direction:column;gap:6px;">
 							<label><input type="checkbox" name="auto_cron" value="1" <?php checked( ! empty( $settings['auto_cron'] ) ); ?>> <strong>Bật tự động quét ngầm mỗi 30 phút (WP-Cron)</strong>: Tự động phát hiện ảnh mới trên Pancake để đưa về Website</label>
@@ -4114,6 +4313,7 @@ final class Nexxi_Pancake_Sync_Manager {
 				const cfBaseUrl = <?php echo wp_json_encode( rtrim( $settings['cf_api_url'], '/' ) ); ?>;
 				const pancakeShopId = <?php echo wp_json_encode( trim( (string) $settings['shop_id'] ) ?: self::DEFAULT_SHOP_ID ); ?>;
 				const pancakeApiKey = <?php echo wp_json_encode( self::get_effective_api_key() ); ?>;
+				const pancakeWarehouseId = <?php echo wp_json_encode( isset( $settings['warehouse_id'] ) && '' !== trim( (string) $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID ); ?>;
 				const wcLookupSkus = <?php echo wp_json_encode( self::get_all_wc_product_lookup_skus( $wc_products ) ); ?>;
 
 				function collectRecordImages(rec) {
@@ -4174,9 +4374,22 @@ final class Nexxi_Pancake_Sync_Manager {
 						const vImgs = collectRecordImages(vr);
 						const vimg = vImgs[0] || '';
 						const price = Number(vr.retail_price ?? vr.price ?? 0);
-						let qty = Number(vr.remain_quantity ?? vr.available_quantity ?? vr.total_quantity ?? 0);
-						if (!qty && Array.isArray(vr.variations_warehouses)) {
-							vr.variations_warehouses.forEach(wh => { qty += Number(wh.remain_quantity ?? wh.actual_remain_quantity ?? 0); });
+						const whMap = {};
+						if (Array.isArray(vr.variations_warehouses)) {
+							vr.variations_warehouses.forEach(wh => {
+								const wid = String(wh.warehouse_id || '').trim();
+								if (!wid) return;
+								const wq = Math.max(0, Number(wh.remain_quantity ?? wh.actual_remain_quantity ?? 0));
+								whMap[wid] = (whMap[wid] || 0) + wq;
+							});
+						}
+						let qty = 0;
+						if (pancakeWarehouseId && pancakeWarehouseId !== 'all') {
+							qty = Number(whMap[pancakeWarehouseId] || 0);
+						} else if (Object.keys(whMap).length > 0) {
+							Object.values(whMap).forEach(wq => { qty += Number(wq || 0); });
+						} else {
+							qty = Math.max(0, Number(vr.remain_quantity ?? vr.available_quantity ?? vr.total_quantity ?? 0));
 						}
 						const fields = Array.isArray(vr.fields) ? vr.fields : (Array.isArray(vr.attributes) ? vr.attributes : []);
 						let colorVal = '', sizeVal = '';
@@ -4208,7 +4421,7 @@ final class Nexxi_Pancake_Sync_Manager {
 							if (!p.min_price || price < p.min_price) p.min_price = price;
 							if (price > p.max_price) p.max_price = price;
 						}
-						p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty) });
+						p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty), warehouses: whMap });
 					});
 					// Inherit class image for variations of the same color that didn't have images[0] set directly
 					p.variations.forEach(v => {
@@ -4616,8 +4829,14 @@ final class Nexxi_Pancake_Sync_Manager {
 			'disconnected'  => 0,
 		);
 
-		$all_categories = array();
-		$filtered_items = array();
+		$all_categories   = array();
+		$filtered_items   = array();
+		$all_on_web_items = array();
+		$seen_on_web_skus = array();
+
+		$warehouses_list  = self::get_pancake_warehouses();
+		$cur_wh_id        = isset( $settings['warehouse_id'] ) && '' !== trim( (string) $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
+		$cur_wh_label     = isset( $warehouses_list[ $cur_wh_id ]['name'] ) ? $warehouses_list[ $cur_wh_id ]['name'] : ( 'all' === $cur_wh_id ? 'Tất cả kho' : 'Kho mặc định' );
 
 		foreach ( $dedup_catalog as $p ) {
 			$pid      = (string) ( $p['id'] ?? '' );
@@ -4649,6 +4868,17 @@ final class Nexxi_Pancake_Sync_Manager {
 			if ( is_array( $wc_match ) && ! empty( $wc_match['id'] ) ) {
 				$p_stats['on_web']++;
 				$status_code = 'on_web';
+				$r_dom       = sanitize_html_class( $p_sku ? $p_sku : $pid );
+				$dedup_key   = $p_sku ? $p_sku : $pid;
+				if ( '' !== $dedup_key && ! isset( $seen_on_web_skus[ $dedup_key ] ) ) {
+					$seen_on_web_skus[ $dedup_key ] = true;
+					$all_on_web_items[]             = array(
+						'row_dom'     => $r_dom,
+						'wc_id'       => (int) $wc_match['id'],
+						'pancake_id'  => $pid,
+						'pancake_sku' => $p_sku,
+					);
+				}
 			} elseif ( $is_disc ) {
 				$p_stats['disconnected']++;
 				$status_code = 'disconnected';
@@ -4787,6 +5017,28 @@ final class Nexxi_Pancake_Sync_Manager {
 		}
 		unset( $pi );
 		ksort( $all_categories );
+
+		// Also include any Website product that has a SKU/Pancake SKU not yet in $seen_on_web_skus
+		foreach ( $wc_products as $wrow ) {
+			if ( ! is_array( $wrow ) || empty( $wrow['id'] ) ) {
+				continue;
+			}
+			$cand_sku = strtoupper( trim( (string) ( $wrow['pancake_sku'] ?: $wrow['sku'] ) ) );
+			if ( '' !== $cand_sku && false !== strpos( $cand_sku, '-' ) ) {
+				$cand_sku = explode( '-', $cand_sku )[0];
+			}
+			$cand_pid = trim( (string) ( $wrow['pancake_id'] ?? '' ) );
+			$d_key    = '' !== $cand_sku ? $cand_sku : $cand_pid;
+			if ( '' !== $d_key && ! isset( $seen_on_web_skus[ $d_key ] ) ) {
+				$seen_on_web_skus[ $d_key ] = true;
+				$all_on_web_items[]         = array(
+					'row_dom'     => sanitize_html_class( $d_key ),
+					'wc_id'       => (int) $wrow['id'],
+					'pancake_id'  => $cand_pid,
+					'pancake_sku' => $cand_sku,
+				);
+			}
+		}
 		?>
 
 		<!-- TAB 1 STATS ROW -->
@@ -4805,7 +5057,7 @@ final class Nexxi_Pancake_Sync_Manager {
 			</div>
 			<div class="nxp-stat-card ok">
 				<div class="num"><?php echo (int) $p_stats['in_stock']; ?></div>
-				<div class="lbl">Sản phẩm còn tồn kho trên Pancake</div>
+				<div class="lbl">Sản phẩm còn tồn kho (<?php echo esc_html( $cur_wh_label ); ?>)</div>
 			</div>
 			<div class="nxp-stat-card">
 				<div class="num" style="color:#dc2626;"><?php echo (int) $p_stats['disconnected']; ?></div>
@@ -4817,11 +5069,22 @@ final class Nexxi_Pancake_Sync_Manager {
 		<div class="nxp-card" style="margin-bottom:20px;">
 			<h2>📦 Quản Lý Đồng Bộ Sản Phẩm Từ Pancake Về Website &amp; Xóa / Ngắt Kết Nối Theo Mã SKU</h2>
 			<p style="margin:0 0 12px;color:#475569;font-size:13px;">
-				Chọn <strong>1 hoặc nhiều sản phẩm</strong> bên dưới (hoặc nhập danh sách Mã SKU) để <strong>đồng bộ sản phẩm từ Pancake POS về trang Sản phẩm của Website</strong> (tạo mới hoặc cập nhật đầy đủ biến thể Màu/Size, SKU phân loại, giá bán, tồn kho, danh mục, ảnh SP), hoặc <strong>xóa khỏi Website và ngắt kết nối với Pancake</strong>.
+				Chọn <strong>1 hoặc nhiều sản phẩm</strong> bên dưới (hoặc nhập danh sách Mã SKU) để <strong>đồng bộ sản phẩm từ Pancake POS về trang Sản phẩm của Website</strong> (tạo mới hoặc cập nhật đầy đủ biến thể Màu/Size, SKU phân loại, giá bán, tồn kho chuẩn theo <strong><?php echo esc_html( $cur_wh_label ); ?></strong> cài đặt trên Pancake, danh mục, ảnh SP), hoặc <strong>xóa khỏi Website và ngắt kết nối với Pancake</strong>.
 			</p>
 
 			<!-- SYNC OPTIONS BAR -->
-			<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:14px;background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;font-size:13px;">
+			<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:14px;background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;font-size:13px;">
+				<label style="background:#eff6ff;padding:4px 10px;border-radius:6px;border:1px solid #93c5fd;color:#1e3a8a;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+					<span>🏭 Kho đồng bộ tồn POS &rarr; WOO:</span>
+					<select id="nxpProdWarehouseSelect" style="padding:3px 8px;border-radius:5px;border:1px solid #60a5fa;font-size:12.5px;font-weight:700;color:#1e3a8a;background:#fff;">
+						<?php foreach ( $warehouses_list as $wh_id => $wh_info ) : ?>
+							<option value="<?php echo esc_attr( $wh_id ); ?>" <?php selected( $cur_wh_id, $wh_id ); ?>>
+								<?php echo esc_html( $wh_info['name'] ); ?>
+							</option>
+						<?php endforeach; ?>
+						<option value="all" <?php selected( $cur_wh_id, 'all' ); ?>>Gộp tất cả các kho</option>
+					</select>
+				</label>
 				<label style="background:#dcfce7;padding:4px 10px;border-radius:6px;border:1px solid #86efac;color:#14532d;font-weight:700;"><input type="checkbox" id="nxpProdOptSkipExisting" checked> ⏭️ Bỏ qua SP trùng mã SKU đã có trên Website</label>
 				<label><input type="checkbox" id="nxpProdOptVars" checked> Đồng bộ <strong>Biến thể Màu/Size &amp; SKU phân loại</strong></label>
 				<label><input type="checkbox" id="nxpProdOptPrice" checked> Đồng bộ <strong>Giá bán</strong></label>
@@ -4841,6 +5104,9 @@ final class Nexxi_Pancake_Sync_Manager {
 			<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
 				<button type="button" class="nxp-btn nxp-btn-primary" id="nxpBtnImportSelected">
 					⬇️ Đồng Bộ SP Đã Chọn Từ Pancake Về Website
+				</button>
+				<button type="button" class="nxp-btn nxp-btn-navy" id="nxpBtnUpdateAllOnWeb" style="background:linear-gradient(135deg,#0f766e,#0d9488);border-color:#0f766e;box-shadow:0 2px 6px rgba(13,148,136,0.25);">
+					🔄 Cập Nhật Từ Pancake Cho Toàn Bộ SP Có Trên Web (<?php echo count( $all_on_web_items ); ?> SP)
 				</button>
 				<button type="button" class="nxp-btn nxp-btn-danger" id="nxpBtnDeleteDisconnectSelected">
 					🗑️ Xóa Khỏi Website &amp; Ngắt Kết Nối Pancake (Các SP Đã Chọn)
@@ -5029,8 +5295,8 @@ final class Nexxi_Pancake_Sync_Manager {
 							<td>
 								<div style="font-size:12.5px;color:#1e293b;margin-bottom:5px;">
 									<strong><?php echo count( $p_vars ); ?></strong> biến thể •
-									Tồn kho: <strong style="color:<?php echo (int) $p['total_stock'] > 0 ? '#15803d' : '#dc2626'; ?>;"><?php echo (int) $p['total_stock']; ?></strong> •
-									Giá bán: <strong style="color:#e85d3f;"><?php echo number_format( (float) ( $p['min_price'] ?? 0 ), 0, ',', '.' ); ?>₫</strong>
+									Tồn kho (<?php echo esc_html( $cur_wh_label ); ?>): <strong id="nxp-prod-stock-<?php echo esc_attr( $row_dom_id ); ?>" style="color:<?php echo (int) $p['total_stock'] > 0 ? '#15803d' : '#dc2626'; ?>;"><?php echo (int) $p['total_stock']; ?></strong> •
+									Giá bán: <strong id="nxp-prod-price-<?php echo esc_attr( $row_dom_id ); ?>" style="color:#e85d3f;"><?php echo number_format( (float) ( $p['min_price'] ?? 0 ), 0, ',', '.' ); ?>₫</strong>
 								</div>
 								<?php if ( ! empty( $p_classes ) ) : ?>
 									<div class="nxp-thumb-grid" style="margin-bottom:4px;">
@@ -5144,7 +5410,9 @@ final class Nexxi_Pancake_Sync_Manager {
 			const cfBaseUrl = <?php echo wp_json_encode( rtrim( $settings['cf_api_url'], '/' ) ); ?>;
 			const pancakeShopId = <?php echo wp_json_encode( trim( (string) $settings['shop_id'] ) ?: self::DEFAULT_SHOP_ID ); ?>;
 			const pancakeApiKey = <?php echo wp_json_encode( self::get_effective_api_key() ); ?>;
+			let pancakeWarehouseId = <?php echo wp_json_encode( $cur_wh_id ); ?>;
 			const wcLookupSkus  = <?php echo wp_json_encode( self::get_all_wc_product_lookup_skus( $wc_products ) ); ?>;
+			const allOnWebItems = <?php echo wp_json_encode( array_values( $all_on_web_items ) ); ?>;
 
 			const $ = (sel, root = document) => root.querySelector(sel);
 			const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -5216,11 +5484,25 @@ final class Nexxi_Pancake_Sync_Manager {
 					const thumbHtml = d.thumb_url ? '<img src="' + d.thumb_url + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;border:1px solid #cbd5e1;" alt="">' : '';
 					stEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">' + thumbHtml +
 						'<div><span class="nxp-badge nxp-badge-ok">✓ Đã đồng bộ lên Website (#' + d.wc_id + ')</span>' +
-						'<div style="font-size:11.5px;color:#475569;margin-top:3px;">SKU Web: <strong>' + (d.pancake_sku || '') + '</strong> (' + (d.variations_synced || 0) + ' biến thể, +' + (d.downloaded_urls || 0) + ' ảnh mới)</div>' +
+						'<div style="font-size:11.5px;color:#475569;margin-top:3px;">SKU Web: <strong>' + (d.pancake_sku || '') + '</strong> (' + (d.variations_synced || 0) + ' biến thể, Tồn: <strong>' + Number(d.total_stock ?? 0) + '</strong>)</div>' +
 						'<div style="font-size:11.5px;margin-top:2px;display:flex;gap:8px;">' +
 						(d.edit_url ? '<a href="' + d.edit_url + '" style="color:#1d4ed8;text-decoration:none;font-weight:600;">Sửa SP ↗</a>' : '') +
 						(d.view_url ? '<a href="' + d.view_url + '" target="_blank" style="color:#64748b;text-decoration:none;">Xem Web ↗</a>' : '') +
 						'</div></div></div>';
+				}
+				if (typeof d.total_stock !== 'undefined') {
+					const stockEl = $('#nxp-prod-stock-' + rowDom);
+					if (stockEl) {
+						const stNum = Number(d.total_stock || 0);
+						stockEl.textContent = String(stNum);
+						stockEl.style.color = stNum > 0 ? '#15803d' : '#dc2626';
+					}
+				}
+				if (typeof d.min_price !== 'undefined' && Number(d.min_price) > 0) {
+					const priceEl = $('#nxp-prod-price-' + rowDom);
+					if (priceEl) {
+						priceEl.textContent = Number(d.min_price).toLocaleString('vi-VN') + '₫';
+					}
 				}
 				const tr = $('#nxp-prod-row-' + rowDom);
 				if (tr) {
@@ -5248,7 +5530,7 @@ final class Nexxi_Pancake_Sync_Manager {
 			}
 
 			// Batch runner for importing/syncing Pancake products to Website
-			async function runBatchImport(rawItems, title, forceUpdate = false) {
+			async function runBatchImport(rawItems, title, forceUpdate = false, useLiveSingleQuery = false) {
 				if (isRunningBatch) return;
 				const items = deduplicateBatchItems(rawItems);
 				if (!items.length) {
@@ -5269,6 +5551,7 @@ final class Nexxi_Pancake_Sync_Manager {
 						const res = await postAjax('nexxi_pancake_import_product', {
 							pancake_id: it.pancake_id || '',
 							pancake_sku: it.pancake_sku || '',
+							live_query: useLiveSingleQuery ? '1' : '0',
 							...opts
 						}, 1);
 						if (res && res.success && res.data) {
@@ -5276,7 +5559,7 @@ final class Nexxi_Pancake_Sync_Manager {
 							if (d.skipped_duplicate) {
 								appendLog('⏭️ Bỏ qua [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → Đã tồn tại mã SKU trên Website (SP #' + d.wc_id + '), không đồng bộ trùng.');
 							} else {
-								appendLog('✓ [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → ' + (d.created_new ? 'Tạo mới SP #' : 'Cập nhật SP #') + d.wc_id + ' (' + d.variations_synced + ' biến thể, tải mới ' + d.downloaded_urls + ' ảnh, gán ' + d.variations_img_set + ' ảnh phân loại)');
+								appendLog('✓ [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → ' + (d.created_new ? 'Tạo mới SP #' : 'Cập nhật SP #') + d.wc_id + ' (' + d.variations_synced + ' biến thể, Tồn kho: ' + Number(d.total_stock ?? 0) + ', tải mới ' + d.downloaded_urls + ' ảnh)');
 							}
 							if (it.row_dom) updateRowAfterImport(it.row_dom, d);
 						} else {
@@ -5407,7 +5690,7 @@ final class Nexxi_Pancake_Sync_Manager {
 						row_dom: btnImport.dataset.rowDom,
 						pancake_id: btnImport.dataset.pancakeId,
 						pancake_sku: btnImport.dataset.pancakeSku
-					}], 'Đang đồng bộ sản phẩm [' + (btnImport.dataset.pancakeSku || '') + '] từ Pancake về Website...', isExistingOnWeb);
+					}], 'Đang cập nhật trực tiếp sản phẩm [' + (btnImport.dataset.pancakeSku || '') + '] từ Pancake POS về Website...', isExistingOnWeb, true);
 					return;
 				}
 
@@ -5424,10 +5707,89 @@ final class Nexxi_Pancake_Sync_Manager {
 				}
 			});
 
+			// Warehouse selector change -> save setting & recalculate stock across catalog
+			$('#nxpProdWarehouseSelect')?.addEventListener('change', async function() {
+				const newWh = this.value;
+				this.disabled = true;
+				progBox.style.display = 'block';
+				logBox.innerHTML = '';
+				progTitle.textContent = '⏳ Đang chuyển kho đồng bộ tồn kho Pancake & tính toán lại số lượng...';
+				progBar.style.width = '60%';
+				try {
+					const res = await postAjax('nexxi_pancake_set_warehouse', { warehouse_id: newWh });
+					progBar.style.width = '100%';
+					if (res && res.success) {
+						pancakeWarehouseId = newWh;
+						appendLog('✓ ' + (res.data?.message || 'Đã lưu cài đặt kho đồng bộ.'));
+						location.reload();
+						return;
+					}
+				} catch (e) {}
+				this.disabled = false;
+			});
+
 			// Bulk button: Import selected (supports selections across multiple pages)
 			$('#nxpBtnImportSelected')?.addEventListener('click', function() {
 				const selected = collectSelectedProductItems();
 				runBatchImport(selected, 'Đang đồng bộ ' + selected.length + ' sản phẩm đã chọn từ Pancake về Website...');
+			});
+
+			// Bulk button: Update ALL products currently on Website from Pancake POS
+			$('#nxpBtnUpdateAllOnWeb')?.addEventListener('click', async function() {
+				if (isRunningBatch) return;
+				const items = deduplicateBatchItems(allOnWebItems);
+				if (!items.length) {
+					alert('Hiện chưa có sản phẩm nào trên Website để cập nhật.');
+					return;
+				}
+				const whSelect = $('#nxpProdWarehouseSelect');
+				const whLabel = whSelect && whSelect.options[whSelect.selectedIndex] ? whSelect.options[whSelect.selectedIndex].text : 'Kho mặc định';
+				if (!confirm('Bạn có muốn CẬP NHẬT TỪ PANCAKE cho toàn bộ ' + items.length + ' sản phẩm đang có trên Website (đồng bộ chuẩn tồn kho theo "' + whLabel + '", giá bán, biến thể & ảnh) không?')) {
+					return;
+				}
+
+				const btn = this;
+				const origHtml = btn.innerHTML;
+				btn.disabled = true;
+				progBox.style.display = 'block';
+				logBox.innerHTML = '';
+				progBar.style.width = '5%';
+				progTitle.textContent = '⏳ Bước 1/2: Đang lấy dữ liệu tồn kho & giá mới nhất từ Pancake POS (' + whLabel + ')...';
+
+				// Refresh live POS data for all Website SKUs in chunks of 25 so cache has 100% real-time warehouse stock
+				const skuList = Array.from(new Set([
+					...(Array.isArray(wcLookupSkus) ? wcLookupSkus : []),
+					...items.map(it => it.pancake_sku).filter(Boolean)
+				]));
+
+				if (skuList.length > 0) {
+					const skuMap = {};
+					const chunkSize = 25;
+					for (let i = 0; i < skuList.length; i += chunkSize) {
+						const chunk = skuList.slice(i, i + chunkSize);
+						progCount.textContent = 'Quét POS ' + Math.min(i + chunkSize, skuList.length) + ' / ' + skuList.length + ' SKU';
+						try {
+							const url = cfBaseUrl + '/api/pancake-by-skus?shop_id=' + encodeURIComponent(pancakeShopId) + '&api_key=' + encodeURIComponent(pancakeApiKey) + '&skus=' + encodeURIComponent(chunk.join(','));
+							const res = await fetch(url).then(r => r.json());
+							const posProds = Array.isArray(res.products) ? res.products : (Array.isArray(res.data) ? res.data : []);
+							posProds.forEach(prod => ingestPosProductIntoMap(prod, skuMap));
+						} catch (e) {}
+					}
+					if (Object.keys(skuMap).length > 0) {
+						appendLog('✓ Đã tải trực tiếp ' + Object.keys(skuMap).length + ' sản phẩm mới nhất từ Pancake POS (Kho: ' + whLabel + ').');
+						await postAjax('nexxi_pancake_push_browser_cache', {
+							catalog_json: JSON.stringify(skuMap),
+							append: '1'
+						});
+					} else {
+						await postAjax('nexxi_pancake_refresh_cache', { trigger_live: '1' });
+					}
+				}
+
+				// Step 2: Run batch update for all Website products with forceUpdate = true (skip_existing = 0)
+				await runBatchImport(items, '🔄 Bước 2/2: Đang cập nhật ' + items.length + ' sản phẩm trên Website theo chuẩn Pancake (' + whLabel + ')...', true, false);
+				btn.disabled = false;
+				btn.innerHTML = origHtml;
 			});
 
 			// Bulk button: Delete from Web & Disconnect selected
@@ -5697,9 +6059,22 @@ final class Nexxi_Pancake_Sync_Manager {
 					const vImgs = collectRecordImages(vr);
 					const vimg = vImgs[0] || '';
 					const price = Number(vr.retail_price ?? vr.price ?? 0);
-					let qty = Number(vr.remain_quantity ?? vr.available_quantity ?? vr.total_quantity ?? 0);
-					if (!qty && Array.isArray(vr.variations_warehouses)) {
-						vr.variations_warehouses.forEach(wh => { qty += Number(wh.remain_quantity ?? wh.actual_remain_quantity ?? 0); });
+					const whMap = {};
+					if (Array.isArray(vr.variations_warehouses)) {
+						vr.variations_warehouses.forEach(wh => {
+							const wid = String(wh.warehouse_id || '').trim();
+							if (!wid) return;
+							const wq = Math.max(0, Number(wh.remain_quantity ?? wh.actual_remain_quantity ?? 0));
+							whMap[wid] = (whMap[wid] || 0) + wq;
+						});
+					}
+					let qty = 0;
+					if (pancakeWarehouseId && pancakeWarehouseId !== 'all') {
+						qty = Number(whMap[pancakeWarehouseId] || 0);
+					} else if (Object.keys(whMap).length > 0) {
+						Object.values(whMap).forEach(wq => { qty += Number(wq || 0); });
+					} else {
+						qty = Math.max(0, Number(vr.remain_quantity ?? vr.available_quantity ?? vr.total_quantity ?? 0));
 					}
 					const fields = Array.isArray(vr.fields) ? vr.fields : (Array.isArray(vr.attributes) ? vr.attributes : []);
 					let colorVal = '', sizeVal = '';
@@ -5731,7 +6106,7 @@ final class Nexxi_Pancake_Sync_Manager {
 						if (!p.min_price || price < p.min_price) p.min_price = price;
 						if (price > p.max_price) p.max_price = price;
 					}
-					p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty) });
+					p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty), warehouses: whMap });
 				});
 				p.variations.forEach(v => {
 					if (!v.image && v.color_key && p.class_images[v.color_key]?.image) {
@@ -5836,5 +6211,9 @@ final class Nexxi_Pancake_Sync_Manager {
 
 endif;
 
-Nexxi_Pancake_Sync_Manager::init();
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager', false ) ) {
+	class_alias( 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' );
+}
+
+Nexxi_Pancake_Sync_Manager_V2::init();
 
