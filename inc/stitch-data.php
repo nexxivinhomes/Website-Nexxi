@@ -245,23 +245,50 @@ function nexxi_kids_price_range( WC_Product $product ) {
 
 	if ( $product->is_type( 'variable' ) ) {
 		$prices = $product->get_variation_prices( true );
-		if ( ! empty( $prices['price'] ) ) {
-			$min     = (float) min( $prices['price'] );
-			$max     = (float) max( $prices['price'] );
-			$regular = ! empty( $prices['regular_price'] ) ? (float) max( $prices['regular_price'] ) : $min;
-			if ( $min > 0 ) {
-				$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => $min, 'max' => $max, 'regular' => $regular > 0 ? $regular : $min );
+		if ( ! empty( $prices['price'] ) && is_array( $prices['price'] ) ) {
+			$min     = null;
+			$max     = null;
+			$regular = 0.0;
+			foreach ( $prices['price'] as $vid => $raw_p ) {
+				$p = (float) $raw_p;
+				$r = isset( $prices['regular_price'][ $vid ] ) ? (float) $prices['regular_price'][ $vid ] : 0.0;
+				if ( $p <= 0 && $r > 0 ) {
+					$p = $r;
+				}
+				if ( $p <= 0 ) {
+					continue;
+				}
+				if ( $r <= 0 ) {
+					$r = $p;
+				}
+				if ( null === $min || $p < $min ) {
+					$min     = $p;
+					$regular = $r;
+				} elseif ( $p === $min && $r > $regular ) {
+					$regular = $r;
+				}
+				if ( null === $max || $p > $max ) {
+					$max = $p;
+				}
+			}
+			if ( null !== $min && $min > 0 ) {
+				$GLOBALS['nexxi_price_cache'][ $pid ] = array(
+					'min'     => (float) $min,
+					'max'     => (float) $max,
+					'regular' => $regular > 0 ? (float) $regular : (float) $min,
+				);
 				return $GLOBALS['nexxi_price_cache'][ $pid ];
 			}
 		}
-		$variations = nexxi_kids_fast_card_variations( $product );
+		$fast_var   = nexxi_kids_fast_card_variations( $product );
+		$variations = isset( $fast_var['variations'] ) && is_array( $fast_var['variations'] ) ? $fast_var['variations'] : array();
 		if ( $variations ) {
 			$min     = null;
 			$max     = null;
 			$regular = 0.0;
 			foreach ( $variations as $row ) {
-				$p = (float) $row['price'];
-				$r = (float) $row['regular'];
+				$p = isset( $row['price'] ) ? (float) $row['price'] : 0.0;
+				$r = isset( $row['regular'] ) ? (float) $row['regular'] : 0.0;
 				if ( $p <= 0 ) {
 					continue;
 				}
@@ -279,6 +306,20 @@ function nexxi_kids_price_range( WC_Product $product ) {
 				$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => (float) $min, 'max' => (float) $max, 'regular' => (float) $regular );
 				return $GLOBALS['nexxi_price_cache'][ $pid ];
 			}
+		}
+		// Final fallback: parent _regular_price / _price or Pancake catalog min_price if variations had no price meta yet
+		$parent_reg = (float) get_post_meta( $pid, '_regular_price', true );
+		$parent_p   = (float) get_post_meta( $pid, '_price', true );
+		if ( $parent_p <= 0 && $parent_reg > 0 ) {
+			$parent_p = $parent_reg;
+		}
+		if ( $parent_p > 0 ) {
+			$GLOBALS['nexxi_price_cache'][ $pid ] = array(
+				'min'     => $parent_p,
+				'max'     => $parent_p,
+				'regular' => $parent_reg > 0 ? $parent_reg : $parent_p,
+			);
+			return $GLOBALS['nexxi_price_cache'][ $pid ];
 		}
 		$GLOBALS['nexxi_price_cache'][ $pid ] = array( 'min' => 0.0, 'max' => 0.0, 'regular' => 0.0 );
 		return $GLOBALS['nexxi_price_cache'][ $pid ];
@@ -305,9 +346,13 @@ function nexxi_kids_discount_percent( WC_Product $product ) {
 	if ( class_exists( 'Nexxi_Kids_Catalog' ) ) {
 		$best = max( $best, (int) Nexxi_Kids_Catalog::discount_percent( $product ) );
 		if ( $product->is_type( 'variable' ) ) {
-			foreach ( nexxi_kids_fast_card_variations( $product ) as $row ) {
-				if ( $row['regular'] > 0 && $row['price'] > 0 && $row['price'] < $row['regular'] ) {
-					$best = max( $best, (int) round( ( 1 - $row['price'] / $row['regular'] ) * 100 ) );
+			$fast_var = nexxi_kids_fast_card_variations( $product );
+			$v_rows   = isset( $fast_var['variations'] ) && is_array( $fast_var['variations'] ) ? $fast_var['variations'] : array();
+			foreach ( $v_rows as $row ) {
+				$r_reg = isset( $row['regular'] ) ? (float) $row['regular'] : 0.0;
+				$r_pri = isset( $row['price'] ) ? (float) $row['price'] : 0.0;
+				if ( $r_reg > 0 && $r_pri > 0 && $r_pri < $r_reg ) {
+					$best = max( $best, (int) round( ( 1 - $r_pri / $r_reg ) * 100 ) );
 				}
 			}
 		}
@@ -623,6 +668,8 @@ function nexxi_kids_fast_card_variations( WC_Product $product ) {
 			'id'      => $child_id,
 			'size'    => $roles['size'],
 			'color'   => $roles['color'],
+			'price'   => $price,
+			'regular' => $regular > 0 ? $regular : $price,
 			'inStock' => $in_stock,
 			'any'     => $any,
 		);
