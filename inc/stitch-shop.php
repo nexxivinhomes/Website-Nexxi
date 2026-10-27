@@ -176,6 +176,9 @@ function nexxi_kids_loop_products() {
 		$product = wc_get_product( $post );
 		if ( $product && $product->is_visible() ) { $products[] = $product; }
 	}
+	if ( ! empty( $products ) && function_exists( 'nexxi_kids_prime_products_cache' ) ) {
+		nexxi_kids_prime_products_cache( $products );
+	}
 	return $products;
 }
 

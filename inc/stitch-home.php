@@ -37,7 +37,7 @@ function nexxi_kids_stitch_home( $html ) {
 	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'href', add_query_arg( 'cat_group', 'set-bo', nexxi_kids_shop_url() ) );
 
 	// Flash Sale rail: 5 products per row, max 2 rows, horizontal scroll with left/right arrows.
-	$sale  = nexxi_kids_sale_products( -1 );
+	$sale  = nexxi_kids_sale_products( 20 );
 	$flash = '';
 	if ( ! empty( $sale ) ) {
 		$row1_html = '';

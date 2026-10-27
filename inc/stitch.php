@@ -36,9 +36,33 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261027_home_cat_avatar_v18';
+	$purge_ver = '20261027_speed_opt_v19';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		// One-time sync of legacy plugin files on live server to prevent duplicate class/file loads
+		$theme_pancake_file = get_template_directory() . '/inc/pancake-sync-admin.php';
+		$legacy_mgr_file    = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php' : '';
+		if ( $legacy_mgr_file && file_exists( $legacy_mgr_file ) && is_writable( $legacy_mgr_file ) && file_exists( $theme_pancake_file ) ) {
+			@copy( $theme_pancake_file, $legacy_mgr_file );
+			if ( function_exists( 'opcache_invalidate' ) ) {
+				@opcache_invalidate( $legacy_mgr_file, true );
+			}
+		}
+		$commerce_main_file = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-kids-commerce/nexxi-kids-commerce.php' : '';
+		if ( $commerce_main_file && file_exists( $commerce_main_file ) && is_writable( $commerce_main_file ) ) {
+			$c_src = (string) @file_get_contents( $commerce_main_file );
+			if ( false !== strpos( $c_src, "require_once __DIR__ . '/includes/class-pancake-sync.php';" ) && false === strpos( $c_src, 'pancake-sync-admin.php' ) ) {
+				$c_src = str_replace(
+					"require_once __DIR__ . '/includes/class-pancake-sync.php';",
+					"if ( ! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' ) ) {\n\trequire_once __DIR__ . '/includes/class-pancake-sync.php';\n}",
+					$c_src
+				);
+				@file_put_contents( $commerce_main_file, $c_src );
+				if ( function_exists( 'opcache_invalidate' ) ) {
+					@opcache_invalidate( $commerce_main_file, true );
+				}
+			}
+		}
 		// Clean up any product that has _nexxi_is_flash_sale = '1' without a valid _nexxi_fs_sale_price
 		global $wpdb;
 		$fs_pids = $wpdb->get_col(
@@ -544,8 +568,12 @@ function nexxi_kids_render_stitch( $screen ) {
 	$shells = array( 'index' => 'index', 'shop' => 'shop', 'product' => 'product', 'flash-sale' => 'flash-sale', 'cart' => 'cart', 'checkout' => 'checkout', 'account' => 'account', 'login' => 'login', 'members' => 'members', 'page' => 'index' );
 	if ( ! isset( $shells[ $screen ] ) ) { return; }
 	if ( ! headers_sent() ) {
-		nocache_headers();
-		@header( 'X-LiteSpeed-Cache-Control: no-cache' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( in_array( $screen, array( 'cart', 'checkout', 'account', 'login', 'members' ), true ) || is_user_logged_in() ) {
+			nocache_headers();
+			@header( 'X-LiteSpeed-Cache-Control: no-cache' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		} else {
+			@header( 'X-LiteSpeed-Cache-Control: public,max-age=180' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
 	}
 	$file = get_template_directory() . '/assets/stitch/pages/' . $shells[ $screen ] . '.html';
 	if ( ! is_readable( $file ) ) { return; }
@@ -608,14 +636,46 @@ function nexxi_kids_render_stitch( $screen ) {
 	$html = nexxi_studio_apply_late( $html );
 	$html = nexxi_kids_stitch_countdown_digits( $html );
 
-	$asset_url = get_template_directory_uri() . '/assets/stitch';
-	$html = str_replace( '{{STITCH_ASSET}}', esc_url( $asset_url ), $html );
-	$html = str_replace(
-		'<script src="https://cdn.tailwindcss.com"></script>',
-		'<script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/tailwind-play.js' ) . '"></script>',
-		$html
-	);
-	$html = str_replace( 'https://cdn.tailwindcss.com', esc_url( $asset_url . '/tailwind-play.js' ), $html );
+	$asset_url     = get_template_directory_uri() . '/assets/stitch';
+	$compiled_tw   = nexxi_kids_stitch_compiled_tailwind_tag();
+	$html          = str_replace( '{{STITCH_ASSET}}', esc_url( $asset_url ), $html );
+	if ( '' !== $compiled_tw && ! is_customize_preview() ) {
+		// Pre-compiled Tailwind CSS is already inlined in <head>; strip the 407KB synchronous JIT compiler script for instant rendering.
+		$html = str_replace( '<script src="https://cdn.tailwindcss.com"></script>', '', $html );
+		$html = preg_replace( '~<script\b[^>]*src="https://cdn\.tailwindcss\.com[^"]*"[^>]*>\s*</script>~i', '', $html );
+		$html = preg_replace( '~<script id="tailwind-config">.*?</script>~s', '', $html );
+	} else {
+		$html = str_replace(
+			'<script src="https://cdn.tailwindcss.com"></script>',
+			'<script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/tailwind-play.js' ) . '"></script>',
+			$html
+		);
+		$html = str_replace( 'https://cdn.tailwindcss.com', esc_url( $asset_url . '/tailwind-play.js' ), $html );
+		$html = preg_replace_callback( '~(<script id="tailwind-config">)(.*?)(</script>)~s', static function ( $m ) {
+			$px_to_rem = array(
+				'"48px"' => '"2.75rem"',
+				'"56px"' => '"3.2rem"',
+				'"42px"' => '"2.625rem"',
+				'"40px"' => '"2.35rem"',
+				'"34px"' => '"2.125rem"',
+				'"32px"' => '"1.875rem"',
+				'"28px"' => '"1.65rem"',
+				'"26px"' => '"1.55rem"',
+				'"24px"' => '"1.45rem"',
+				'"22px"' => '"1.375rem"',
+				'"20px"' => '"1.2rem"',
+				'"18px"' => '"1.0625rem"',
+				'"16px"' => '"1rem"',
+				'"15px"' => '"0.9375rem"',
+				'"14px"' => '"0.875rem"',
+				'"13px"' => '"0.8125rem"',
+				'"12px"' => '"0.75rem"',
+				'"11px"' => '"0.6875rem"',
+			);
+			$body = strtr( $m[2], $px_to_rem );
+			return '<script id="tailwind-config" data-no-optimize="1" data-no-defer="1">window.tailwind=window.tailwind||{};' . $body . $m[3];
+		}, $html, 1 );
+	}
 	$html = str_replace(
 		'family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap',
 		'family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block',
@@ -624,31 +684,6 @@ function nexxi_kids_render_stitch( $screen ) {
 	$html = str_replace( array( '14 - 17kg', '14-17kg' ), array( '14 - 16kg', '14-16kg' ), $html );
 	// Remove overscroll-behavior:none and scrollbar hiding from Stitch base styles so vertical touch/mouse scrolling works smoothly everywhere.
 	$html = str_replace( array( 'body{overscroll-behavior:none;}', '::-webkit-scrollbar{display:none;}' ), '', $html );
-	// Convert Tailwind config fontSize definitions from fixed px to fluid rem and guard against LiteSpeed JS reorder/delay.
-	$html = preg_replace_callback( '~(<script id="tailwind-config">)(.*?)(</script>)~s', static function ( $m ) {
-		$px_to_rem = array(
-			'"48px"' => '"2.75rem"',
-			'"56px"' => '"3.2rem"',
-			'"42px"' => '"2.625rem"',
-			'"40px"' => '"2.35rem"',
-			'"34px"' => '"2.125rem"',
-			'"32px"' => '"1.875rem"',
-			'"28px"' => '"1.65rem"',
-			'"26px"' => '"1.55rem"',
-			'"24px"' => '"1.45rem"',
-			'"22px"' => '"1.375rem"',
-			'"20px"' => '"1.2rem"',
-			'"18px"' => '"1.0625rem"',
-			'"16px"' => '"1rem"',
-			'"15px"' => '"0.9375rem"',
-			'"14px"' => '"0.875rem"',
-			'"13px"' => '"0.8125rem"',
-			'"12px"' => '"0.75rem"',
-			'"11px"' => '"0.6875rem"',
-		);
-		$body = strtr( $m[2], $px_to_rem );
-		return '<script id="tailwind-config" data-no-optimize="1" data-no-defer="1">window.tailwind=window.tailwind||{};' . $body . $m[3];
-	}, $html, 1 );
 	// Protect all Stitch <link>, <style>, and <script> tags from LiteSpeed Cache defer/delay/combine mangling.
 	$html = preg_replace( '~<link\b(?![^>]*data-no-optimize)~i', '<link data-no-optimize="1"', $html );
 	$html = preg_replace( '~<style\b(?![^>]*data-no-optimize)~i', '<style data-no-optimize="1"', $html );
