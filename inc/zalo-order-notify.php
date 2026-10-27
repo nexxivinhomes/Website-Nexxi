@@ -32,13 +32,14 @@ function nexxi_kids_zalo_notify_settings() {
 	}
 	$bot_info = get_option( 'nexxi_zalo_bot_info', array() );
 	return array(
-		'enabled'      => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
-		'bot_token'    => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
-		'chat_ids'     => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
-		'send_photos'  => (string) get_option( 'nexxi_zalo_send_photos', '1' ),
-		'webhook_url'  => trim( (string) get_option( 'nexxi_zalo_webhook_url', '' ) ),
-		'secret_token' => $secret,
-		'bot_info'     => is_array( $bot_info ) ? $bot_info : array(),
+		'enabled'          => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
+		'bot_token'        => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
+		'chat_ids'         => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
+		'send_photos'      => (string) get_option( 'nexxi_zalo_send_photos', '1' ),
+		'webhook_url'      => trim( (string) get_option( 'nexxi_zalo_webhook_url', '' ) ),
+		'webhook_auto_add' => (string) get_option( 'nexxi_zalo_webhook_auto_add', '0' ),
+		'secret_token'     => $secret,
+		'bot_info'         => is_array( $bot_info ) ? $bot_info : array(),
 	);
 }
 
@@ -228,6 +229,11 @@ add_action(
 					}
 					if ( ! is_array( $body ) ) {
 						return new WP_REST_Response( array( 'ok' => true ), 200 );
+					}
+
+					$cfg = nexxi_kids_zalo_notify_settings();
+					if ( '1' !== $cfg['webhook_auto_add'] ) {
+						return new WP_REST_Response( array( 'ok' => true, 'ignored' => 'webhook_auto_add_disabled' ), 200 );
 					}
 
 					$extracted = nexxi_kids_zalo_extract_chat_from_update( $body );
@@ -618,6 +624,7 @@ add_action(
 		if ( 'scan_updates' === $sub_action ) {
 			// Delete webhook first so getUpdates is allowed by Zalo Bot API.
 			nexxi_kids_zalo_bot_request( 'deleteWebhook', array(), $cfg['bot_token'], 8 );
+			update_option( 'nexxi_zalo_webhook_auto_add', '0' );
 
 			$me_res = nexxi_kids_zalo_bot_request( 'getMe', array(), $cfg['bot_token'], 8 );
 			if ( is_array( $me_res ) && ! empty( $me_res['result'] ) ) {
@@ -656,21 +663,23 @@ add_action(
 			if ( ! empty( $found ) ) {
 				wp_send_json_success(
 					array(
-						'message'  => 'Đã tìm thấy và thêm tự động ' . count( $found ) . ' Chat ID: ' . implode( ', ', array_values( $found ) ),
-						'chat_ids' => $all_ids,
-						'known'    => get_option( 'nexxi_zalo_known_chats', array() ),
+						'message'          => 'Đã tìm thấy và thêm tự động ' . count( $found ) . ' Chat ID: ' . implode( ', ', array_values( $found ) ),
+						'chat_ids'         => $all_ids,
+						'known'            => get_option( 'nexxi_zalo_known_chats', array() ),
+						'webhook_auto_add' => '0',
 					)
 				);
 			}
 
 			wp_send_json_error(
 				array(
-					'message' => 'Chưa thấy tin nhắn mới nào chờ trong hàng đợi. Bạn hãy mở Zalo, nhắn 1 tin bất kỳ (ví dụ: "kho") vào Bot Zalo của bạn rồi bấm nút Quét lại ngay nhé! (Hoặc bật chế độ Webhook tự động bên cạnh).',
+					'message'          => 'Chưa thấy tin nhắn mới nào chờ trong hàng đợi. Bạn hãy mở Zalo, nhắn 1 tin bất kỳ (ví dụ: "kho") vào Bot Zalo của bạn rồi bấm nút Quét lại ngay nhé! (Hoặc bật chế độ Webhook tự động bên cạnh).',
+					'webhook_auto_add' => '0',
 				)
 			);
 		}
 
-		// 2. Enable Webhook mode (`setWebhook`) so anyone messaging the bot is auto-registered 24/7.
+		// 2. Toggle Webhook auto-add mode (`enable_webhook` / `disable_webhook`).
 		if ( 'enable_webhook' === $sub_action ) {
 			$webhook_endpoint = rest_url( 'nexxi/v1/zalo-bot-webhook' );
 			$res              = nexxi_kids_zalo_bot_request(
@@ -688,9 +697,30 @@ add_action(
 			if ( isset( $res['ok'] ) && false === $res['ok'] ) {
 				wp_send_json_error( array( 'message' => $res['description'] ?? 'Không thể đăng ký Webhook với Zalo.' ) );
 			}
+			update_option( 'nexxi_zalo_webhook_auto_add', '1' );
 			wp_send_json_success(
 				array(
-					'message' => 'Đã kích hoạt Webhook tự động thành công! Bây giờ bất kỳ nhân viên kho nào mở Zalo nhắn tin cho Bot (ví dụ: "xin chào"), Bot sẽ tự động lưu Chat ID của người đó vào danh sách nhận đơn và phản hồi ngay trên Zalo!',
+					'message'          => '🟢 Đã BẬT chế độ Webhook tự động thêm nhân viên kho! Bây giờ bất kỳ nhân viên kho nào mở Zalo nhắn tin cho Bot (ví dụ: "xin chào"), Bot sẽ tự động lưu Chat ID của người đó vào danh sách nhận đơn và phản hồi ngay trên Zalo.',
+					'webhook_auto_add' => '1',
+				)
+			);
+		}
+
+		if ( 'disable_webhook' === $sub_action ) {
+			$res = nexxi_kids_zalo_bot_request( 'deleteWebhook', array(), $cfg['bot_token'], 10 );
+			update_option( 'nexxi_zalo_webhook_auto_add', '0' );
+			if ( is_wp_error( $res ) ) {
+				wp_send_json_success(
+					array(
+						'message'          => '⚪ Đã TẮT chế độ Webhook tự động thêm nhân viên kho trên Website.',
+						'webhook_auto_add' => '0',
+					)
+				);
+			}
+			wp_send_json_success(
+				array(
+					'message'          => '⚪ Đã TẮT chế độ Webhook tự động thêm nhân viên kho! Người lạ nhắn tin cho Bot sẽ không bị thêm vào danh sách nhận đơn của Kho nữa.',
+					'webhook_auto_add' => '0',
 				)
 			);
 		}
@@ -833,12 +863,16 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 				<tr>
 					<th scope="row"><label for="nexxi_zalo_chat_ids">2. Danh sách Chat ID nhận thông báo Kho <span style="color:#d63638;">*</span></label></th>
 					<td>
-						<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+						<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;">
 							<button type="button" id="btn-nexxi-zalo-scan" class="button button-secondary" style="background:#eef4ff;border-color:#0068FF;color:#0068FF;font-weight:700;padding:4px 14px;border-radius:8px;">
 								🔍 Quét &amp; Lấy Chat ID tự động (từ tin nhắn mới gửi cho Bot)
 							</button>
-							<button type="button" id="btn-nexxi-zalo-webhook" class="button button-secondary" style="background:#f5f3ef;border-color:#031444;color:#031444;font-weight:600;padding:4px 14px;border-radius:8px;">
-								⚡ Bật chế độ Webhook tự động thêm nhân viên kho
+							<button type="button" id="btn-nexxi-zalo-webhook" data-webhook-active="<?php echo '1' === $cfg['webhook_auto_add'] ? '1' : '0'; ?>" class="button button-secondary" style="<?php echo '1' === $cfg['webhook_auto_add'] ? 'background:#e6f6ec;border-color:#1e8e3e;color:#0d5324;font-weight:700;padding:4px 14px;border-radius:8px;' : 'background:#f5f3ef;border-color:#031444;color:#031444;font-weight:600;padding:4px 14px;border-radius:8px;'; ?>">
+								<?php if ( '1' === $cfg['webhook_auto_add'] ) : ?>
+									🟢 Webhook tự động thêm nhân viên kho: ĐANG BẬT (Bấm để Tắt)
+								<?php else : ?>
+									⚪ Bật chế độ Webhook tự động thêm nhân viên kho (Đang Tắt)
+								<?php endif; ?>
 							</button>
 						</div>
 
@@ -906,6 +940,27 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 			noticeBox.textContent = msg;
 		}
 
+		const whBtn = document.getElementById('btn-nexxi-zalo-webhook');
+
+		function syncWebhookBtnUI(isActive) {
+			if (!whBtn) return;
+			const on = String(isActive) === '1';
+			whBtn.setAttribute('data-webhook-active', on ? '1' : '0');
+			if (on) {
+				whBtn.style.background = '#e6f6ec';
+				whBtn.style.borderColor = '#1e8e3e';
+				whBtn.style.color = '#0d5324';
+				whBtn.style.fontWeight = '700';
+				whBtn.innerHTML = '🟢 Webhook tự động thêm nhân viên kho: ĐANG BẬT (Bấm để Tắt)';
+			} else {
+				whBtn.style.background = '#f5f3ef';
+				whBtn.style.borderColor = '#031444';
+				whBtn.style.color = '#031444';
+				whBtn.style.fontWeight = '600';
+				whBtn.innerHTML = '⚪ Bật chế độ Webhook tự động thêm nhân viên kho (Đang Tắt)';
+			}
+		}
+
 		function runAction(subAction, btn, loadingText) {
 			const orig = btn.innerHTML;
 			btn.disabled = true;
@@ -927,6 +982,9 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 			.then(function(res) {
 				btn.disabled = false;
 				btn.innerHTML = orig;
+				if (res && res.data && typeof res.data.webhook_auto_add !== 'undefined') {
+					syncWebhookBtnUI(res.data.webhook_auto_add);
+				}
 				if (res && res.success && res.data) {
 					if (res.data.chat_ids && chatIdsInput) {
 						chatIdsInput.value = res.data.chat_ids;
@@ -950,10 +1008,14 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 			});
 		}
 
-		const whBtn = document.getElementById('btn-nexxi-zalo-webhook');
 		if (whBtn) {
 			whBtn.addEventListener('click', function() {
-				runAction('enable_webhook', whBtn, '⏳ Đang kích hoạt Webhook...');
+				const isCurrentlyOn = whBtn.getAttribute('data-webhook-active') === '1';
+				if (isCurrentlyOn) {
+					runAction('disable_webhook', whBtn, '⏳ Đang tắt chế độ Webhook...');
+				} else {
+					runAction('enable_webhook', whBtn, '⏳ Đang bật chế độ Webhook...');
+				}
 			});
 		}
 
