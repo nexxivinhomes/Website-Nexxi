@@ -14,45 +14,42 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Unhook legacy plugin instance (v1.4.0 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
-if ( class_exists( 'Nexxi_Pancake_Sync_Manager', false ) && method_exists( 'Nexxi_Pancake_Sync_Manager', 'init' ) ) {
-	$legacy_pancake_inst = Nexxi_Pancake_Sync_Manager::init();
-	if ( is_object( $legacy_pancake_inst ) ) {
-		remove_action( 'admin_menu', array( $legacy_pancake_inst, 'register_menus' ), 25 );
-		remove_action( 'admin_init', array( $legacy_pancake_inst, 'handle_post_actions' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $legacy_pancake_inst, 'ajax_refresh_cache' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $legacy_pancake_inst, 'ajax_push_browser_cache' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_sync_single', array( $legacy_pancake_inst, 'ajax_sync_single' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $legacy_pancake_inst, 'ajax_get_classifications' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $legacy_pancake_inst, 'ajax_apply_classifications' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_link_sku', array( $legacy_pancake_inst, 'ajax_link_sku' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_import_product', array( $legacy_pancake_inst, 'ajax_import_product' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $legacy_pancake_inst, 'ajax_delete_disconnect' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $legacy_pancake_inst, 'ajax_cleanup_duplicates' ) );
-		remove_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $legacy_pancake_inst, 'ajax_spa_nav' ) );
-		remove_action( 'nexxi_pancake_auto_scan_event', array( $legacy_pancake_inst, 'run_cron_auto_scan' ) );
-		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
-		remove_action( 'init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+// Unhook any older plugin instance (v1.4.0 or v1.5.0-v2 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V3', false ) ) {
+	foreach ( array( 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' ) as $legacy_cls ) {
+		if ( class_exists( $legacy_cls, false ) && method_exists( $legacy_cls, 'init' ) ) {
+			$legacy_pancake_inst = $legacy_cls::init();
+			if ( is_object( $legacy_pancake_inst ) ) {
+				remove_action( 'admin_menu', array( $legacy_pancake_inst, 'register_menus' ), 25 );
+				remove_action( 'admin_init', array( $legacy_pancake_inst, 'handle_post_actions' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $legacy_pancake_inst, 'ajax_refresh_cache' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $legacy_pancake_inst, 'ajax_push_browser_cache' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_sync_single', array( $legacy_pancake_inst, 'ajax_sync_single' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $legacy_pancake_inst, 'ajax_get_classifications' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $legacy_pancake_inst, 'ajax_apply_classifications' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_link_sku', array( $legacy_pancake_inst, 'ajax_link_sku' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_import_product', array( $legacy_pancake_inst, 'ajax_import_product' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $legacy_pancake_inst, 'ajax_delete_disconnect' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $legacy_pancake_inst, 'ajax_cleanup_duplicates' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $legacy_pancake_inst, 'ajax_set_warehouse' ) );
+				remove_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $legacy_pancake_inst, 'ajax_spa_nav' ) );
+				remove_action( 'nexxi_pancake_auto_scan_event', array( $legacy_pancake_inst, 'run_cron_auto_scan' ) );
+				remove_action( 'init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
+				remove_action( 'init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+			}
+		}
 	}
-	// Auto-sync & auto-deactivate old standalone plugin so it no longer shadows the theme's built-in module
 	if ( defined( 'WP_PLUGIN_DIR' ) ) {
 		$legacy_plugin_file = WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php';
-		if ( @is_file( $legacy_plugin_file ) && @is_writable( $legacy_plugin_file ) ) {
+		if ( @is_file( $legacy_plugin_file ) && @is_writable( $legacy_plugin_file ) && realpath( $legacy_plugin_file ) !== realpath( __FILE__ ) ) {
 			@copy( __FILE__, $legacy_plugin_file );
 		}
 	}
-	add_action( 'admin_init', function() {
-		if ( function_exists( 'deactivate_plugins' ) && function_exists( 'is_plugin_active' ) ) {
-			if ( is_plugin_active( 'nexxi-pancake-manager/nexxi-pancake-manager.php' ) ) {
-				deactivate_plugins( 'nexxi-pancake-manager/nexxi-pancake-manager.php', true );
-			}
-		}
-	}, 1 );
 }
 
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V2' ) ) :
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V3' ) ) :
 
-final class Nexxi_Pancake_Sync_Manager_V2 {
+final class Nexxi_Pancake_Sync_Manager_V3 {
 
 	const VERSION              = '1.5.0';
 	const MENU_SLUG            = 'nexxi-pancake-sync';
@@ -160,9 +157,14 @@ final class Nexxi_Pancake_Sync_Manager_V2 {
 	 */
 	public static function get_pancake_warehouses() {
 		return array(
-			self::DEFAULT_WAREHOUSE_ID             => 'Kho mặc định (Chuẩn cài đặt POS → WOO)',
-			'f43a438d-8476-4d44-a409-6334f9d10301' => 'Kho Tân Phú',
-			'all'                                  => 'Gộp tất cả các kho',
+			self::DEFAULT_WAREHOUSE_ID             => array(
+				'name'    => 'Kho mặc định (Chuẩn cài đặt POS → WOO)',
+				'address' => 'Vinhome Grandpark',
+			),
+			'f43a438d-8476-4d44-a409-6334f9d10301' => array(
+				'name'    => 'Kho Tân Phú',
+				'address' => '40 Phan Chu Trinh',
+			),
 		);
 	}
 
@@ -3994,9 +3996,12 @@ final class Nexxi_Pancake_Sync_Manager_V2 {
 								$cur_wh_id       = isset( $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
 								?>
 								<select name="warehouse_id" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid #cbd5e1;font-size:13px;font-weight:600;color:#1b2a59;">
-									<?php foreach ( $warehouses_list as $wh_id => $wh_info ) : ?>
+									<?php foreach ( $warehouses_list as $wh_id => $wh_info ) :
+										$wh_name = is_array( $wh_info ) ? ( $wh_info['name'] ?? $wh_id ) : (string) $wh_info;
+										$wh_addr = is_array( $wh_info ) ? ( $wh_info['address'] ?? '' ) : '';
+										?>
 										<option value="<?php echo esc_attr( $wh_id ); ?>" <?php selected( $cur_wh_id, $wh_id ); ?>>
-											📦 <?php echo esc_html( $wh_info['name'] ); ?><?php echo ! empty( $wh_info['address'] ) ? ' (' . esc_html( $wh_info['address'] ) . ')' : ''; ?>
+											📦 <?php echo esc_html( $wh_name ); ?><?php echo '' !== $wh_addr ? ' (' . esc_html( $wh_addr ) . ')' : ''; ?>
 										</option>
 									<?php endforeach; ?>
 									<option value="all" <?php selected( $cur_wh_id, 'all' ); ?>>🌐 Gộp tổng tồn kho của tất cả các kho</option>
@@ -4836,7 +4841,8 @@ final class Nexxi_Pancake_Sync_Manager_V2 {
 
 		$warehouses_list  = self::get_pancake_warehouses();
 		$cur_wh_id        = isset( $settings['warehouse_id'] ) && '' !== trim( (string) $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
-		$cur_wh_label     = isset( $warehouses_list[ $cur_wh_id ]['name'] ) ? $warehouses_list[ $cur_wh_id ]['name'] : ( 'all' === $cur_wh_id ? 'Tất cả kho' : 'Kho mặc định' );
+		$cur_wh_entry     = isset( $warehouses_list[ $cur_wh_id ] ) ? $warehouses_list[ $cur_wh_id ] : null;
+		$cur_wh_label     = is_array( $cur_wh_entry ) && ! empty( $cur_wh_entry['name'] ) ? $cur_wh_entry['name'] : ( is_string( $cur_wh_entry ) && '' !== $cur_wh_entry ? $cur_wh_entry : ( 'all' === $cur_wh_id ? 'Tất cả kho' : 'Kho mặc định' ) );
 
 		foreach ( $dedup_catalog as $p ) {
 			$pid      = (string) ( $p['id'] ?? '' );
@@ -5077,9 +5083,11 @@ final class Nexxi_Pancake_Sync_Manager_V2 {
 				<label style="background:#eff6ff;padding:4px 10px;border-radius:6px;border:1px solid #93c5fd;color:#1e3a8a;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
 					<span>🏭 Kho đồng bộ tồn POS &rarr; WOO:</span>
 					<select id="nxpProdWarehouseSelect" style="padding:3px 8px;border-radius:5px;border:1px solid #60a5fa;font-size:12.5px;font-weight:700;color:#1e3a8a;background:#fff;">
-						<?php foreach ( $warehouses_list as $wh_id => $wh_info ) : ?>
+						<?php foreach ( $warehouses_list as $wh_id => $wh_info ) :
+							$wh_name = is_array( $wh_info ) ? ( $wh_info['name'] ?? $wh_id ) : (string) $wh_info;
+							?>
 							<option value="<?php echo esc_attr( $wh_id ); ?>" <?php selected( $cur_wh_id, $wh_id ); ?>>
-								<?php echo esc_html( $wh_info['name'] ); ?>
+								<?php echo esc_html( $wh_name ); ?>
 							</option>
 						<?php endforeach; ?>
 						<option value="all" <?php selected( $cur_wh_id, 'all' ); ?>>Gộp tất cả các kho</option>
@@ -6212,8 +6220,8 @@ final class Nexxi_Pancake_Sync_Manager_V2 {
 endif;
 
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' );
+	class_alias( 'Nexxi_Pancake_Sync_Manager_V3', 'Nexxi_Pancake_Sync_Manager' );
 }
 
-Nexxi_Pancake_Sync_Manager_V2::init();
+Nexxi_Pancake_Sync_Manager_V3::init();
 
