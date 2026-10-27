@@ -91,6 +91,70 @@ function nexxi_kids_zalo_is_within_active_hours( $cfg = null ) {
 }
 
 /**
+ * Calculate the next clock-aligned scan timestamp (Unix timestamp).
+ *
+ * Examples when active hours = 08:00 -> 17:00 and scan_interval = 30 mins:
+ * - At 09:12 -> returns 09:30 today
+ * - At 09:30 -> returns 10:00 today
+ * - At 17:00 (or 21:00) -> returns 08:00 tomorrow (for single overnight summary at 08:00)
+ * - At 06:30 -> returns 08:00 today
+ *
+ * @param array|null $cfg    Settings array.
+ * @param int|null   $now_ts Reference Unix timestamp (defaults to current time).
+ * @return int Next scan Unix timestamp.
+ */
+function nexxi_kids_get_next_aligned_scan_timestamp( $cfg = null, $now_ts = null ) {
+	if ( ! is_array( $cfg ) ) {
+		$cfg = nexxi_kids_zalo_notify_settings();
+	}
+	if ( null === $now_ts ) {
+		$now_ts = time();
+	}
+
+	$tz           = wp_timezone();
+	$now_dt       = ( new DateTimeImmutable( '@' . $now_ts ) )->setTimezone( $tz );
+	$interval_min = max( 1, (int) $cfg['scan_interval'] > 0 ? (int) $cfg['scan_interval'] : 15 );
+	$step_sec     = $interval_min * MINUTE_IN_SECONDS;
+
+	if ( '1' === (string) $cfg['active_hours_enabled'] ) {
+		$start_min = nexxi_kids_zalo_time_to_minutes( $cfg['active_start_time'], 480 );
+		$end_min   = nexxi_kids_zalo_time_to_minutes( $cfg['active_end_time'], 1020 );
+
+		$start_h = (int) floor( $start_min / 60 );
+		$start_i = (int) ( $start_min % 60 );
+		$end_h   = (int) floor( $end_min / 60 );
+		$end_i   = (int) ( $end_min % 60 );
+
+		$today_start = $now_dt->setTime( $start_h, $start_i, 0 )->getTimestamp();
+		$today_end   = $now_dt->setTime( $end_h, $end_i, 0 )->getTimestamp();
+
+		if ( $today_end >= $today_start ) {
+			// Before today's active start time (e.g. 06:30 < 08:00) -> next scan is at 08:00 today.
+			if ( $now_ts < $today_start ) {
+				return $today_start;
+			}
+			// Within today's active hours -> next aligned slot from today_start.
+			if ( $now_ts < $today_end ) {
+				$elapsed = $now_ts - $today_start;
+				$slots   = (int) floor( $elapsed / $step_sec ) + 1;
+				$next_ts = $today_start + ( $slots * $step_sec );
+				if ( $next_ts <= $today_end ) {
+					return $next_ts;
+				}
+			}
+			// At or after today's active end time (e.g. >= 17:00) -> next scan is 08:00 tomorrow!
+			return $now_dt->modify( '+1 day' )->setTime( $start_h, $start_i, 0 )->getTimestamp();
+		}
+	}
+
+	// 24/24 mode: align to clock from 00:00 today.
+	$midnight_ts = $now_dt->setTime( 0, 0, 0 )->getTimestamp();
+	$elapsed     = max( 0, $now_ts - $midnight_ts );
+	$slots       = (int) floor( $elapsed / $step_sec ) + 1;
+	return $midnight_ts + ( $slots * $step_sec );
+}
+
+/**
  * Parse the saved Chat IDs string into a deduplicated array of IDs.
  *
  * @param string|null $raw Raw comma/newline-separated chat IDs.
@@ -600,40 +664,306 @@ function nexxi_kids_send_zalo_order_notification( $order_or_id, $force = false )
 }
 
 /**
- * Retrieve orders currently waiting in the queue to be notified via Zalo.
+ * Retrieve orders created since the last scan checkpoint (`$since_ts` -> `$until_ts`)
+ * that have not yet been notified to the Zalo Warehouse group.
  *
- * @param int $limit Max orders to fetch.
+ * Strictly only returns orders generated from the scan checkpoint onwards (never old historical orders).
+ *
+ * @param int      $limit    Max orders to fetch.
+ * @param int|null $since_ts Start Unix timestamp (defaults to `nexxi_zalo_last_scan_ts`).
+ * @param int|null $until_ts End Unix timestamp (defaults to current time).
  * @return WC_Order[]
  */
-function nexxi_kids_get_pending_zalo_orders( $limit = 30 ) {
+function nexxi_kids_get_pending_zalo_orders( $limit = 100, $since_ts = null, $until_ts = null ) {
 	if ( ! function_exists( 'wc_get_orders' ) ) {
 		return array();
 	}
+	if ( null === $since_ts ) {
+		$since_ts = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
+	}
+	if ( $since_ts <= 0 ) {
+		$since_ts = time();
+		update_option( 'nexxi_zalo_last_scan_ts', $since_ts, false );
+		return array();
+	}
+	if ( null === $until_ts ) {
+		$until_ts = time();
+	}
+	if ( $until_ts < $since_ts ) {
+		$until_ts = $since_ts;
+	}
+
 	$orders = wc_get_orders(
 		array(
-			'status'     => array( 'wc-pending', 'wc-processing', 'wc-on-hold', 'wc-completed' ),
-			'limit'      => max( 1, (int) $limit ),
-			'orderby'    => 'date',
-			'order'      => 'ASC',
-			'meta_key'   => '_nexxi_zalo_warehouse_pending',
-			'meta_value' => 'yes',
+			'status'       => array( 'wc-pending', 'wc-processing', 'wc-on-hold', 'wc-completed' ),
+			'limit'        => max( 1, (int) $limit ),
+			'orderby'      => 'date',
+			'order'        => 'ASC',
+			'date_created' => $since_ts . '...' . $until_ts,
 		)
 	);
+
 	$out = array();
 	foreach ( (array) $orders as $ord ) {
-		if ( $ord instanceof WC_Order && 'yes' !== (string) $ord->get_meta( '_nexxi_zalo_warehouse_notified' ) ) {
-			$out[] = $ord;
+		if ( ! $ord instanceof WC_Order ) {
+			continue;
 		}
+		if ( 'yes' === (string) $ord->get_meta( '_nexxi_zalo_warehouse_notified' ) ) {
+			continue;
+		}
+		$created_dt = $ord->get_date_created();
+		$created_ts = $created_dt ? $created_dt->getTimestamp() : 0;
+		if ( $created_ts > 0 && $created_ts < $since_ts ) {
+			continue;
+		}
+		$out[] = $ord;
 	}
 	return $out;
 }
 
 /**
- * Scan and send Zalo notifications for all pending orders in the queue.
- * Respects active hours unless `$force_manual` is true.
+ * Format a batch of newly generated orders within a scan window (`$from_ts` -> `$to_ts`)
+ * into a single consolidated Zalo group notification message.
+ *
+ * @param WC_Order[] $orders       Orders in this scan batch.
+ * @param int        $from_ts      Window start Unix timestamp.
+ * @param int        $to_ts        Window end Unix timestamp.
+ * @param bool       $is_overnight True when summarizing off-hours/overnight orders at active start time (e.g. 08:00 AM).
+ * @return array{text:string,payload:array}
+ */
+function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $to_ts, $is_overnight = false ) {
+	$order_count = count( $orders );
+	$display_from_ts = ( ! $is_overnight && ( $to_ts - $from_ts ) >= 120 && ( (int) wp_date( 'i', $from_ts ) % 5 === 0 ) )
+		? ( $from_ts + 60 )
+		: $from_ts;
+
+	$same_day = ( wp_date( 'Y-m-d', $display_from_ts ) === wp_date( 'Y-m-d', $to_ts ) );
+	if ( $same_day && ! $is_overnight ) {
+		$window_str = wp_date( 'H:i', $display_from_ts ) . ' ➔ ' . wp_date( 'H:i', $to_ts ) . ' (' . wp_date( 'd/m/Y', $to_ts ) . ')';
+	} else {
+		$window_str = wp_date( 'H:i d/m', $from_ts ) . ' ➔ ' . wp_date( 'H:i d/m/Y', $to_ts );
+	}
+
+	$total_items   = 0;
+	$total_revenue = 0.0;
+	$order_blocks  = array();
+	$orders_data   = array();
+	$max_detailed  = 20;
+	$idx           = 1;
+
+	foreach ( $orders as $order ) {
+		if ( ! $order instanceof WC_Order ) {
+			continue;
+		}
+		$order_number  = $order->get_order_number();
+		$created       = $order->get_date_created();
+		$order_time    = $created ? $created->setTimezone( wp_timezone() )->format( $same_day ? 'H:i' : 'H:i d/m' ) : wp_date( 'H:i' );
+		$order_total   = (float) $order->get_total();
+		$total_revenue += $order_total;
+
+		$recipient = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+		if ( '' === $recipient ) {
+			$recipient = trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() );
+		}
+		$phone = trim( (string) $order->get_billing_phone() );
+
+		$addr1 = trim( (string) $order->get_billing_address_1() );
+		$ward  = trim( (string) $order->get_meta( '_billing_ward' ) );
+		$city  = trim( (string) $order->get_billing_city() );
+		$addr_parts = array_filter( array( $addr1, $ward, $city ) );
+		if ( '' !== $ward && false !== stripos( $addr1, $ward ) ) {
+			$addr_parts = array_filter( array( $addr1, $city ) );
+		}
+		$full_addr = implode( ', ', $addr_parts );
+
+		$ord_qty    = 0;
+		$item_brief = array();
+		foreach ( $order->get_items() as $item ) {
+			if ( ! $item instanceof WC_Order_Item_Product ) {
+				continue;
+			}
+			$q            = (int) $item->get_quantity();
+			$ord_qty     += $q;
+			$total_items += $q;
+			$prod         = $item->get_product();
+			$sku          = $prod ? trim( (string) $prod->get_sku() ) : '';
+			$sku_prefix   = '' !== $sku ? '[' . $sku . '] ' : '';
+
+			$meta_parts = array();
+			foreach ( $item->get_formatted_meta_data( '_', true ) as $meta ) {
+				$v = trim( wp_strip_all_tags( (string) $meta->display_value ) );
+				if ( '' !== $v ) {
+					$meta_parts[] = $v;
+				}
+			}
+			$var_txt      = ! empty( $meta_parts ) ? ' (' . implode( '/', $meta_parts ) . ')' : '';
+			$item_brief[] = $sku_prefix . $item->get_name() . $var_txt . ' x' . $q;
+		}
+
+		if ( $idx <= $max_detailed ) {
+			$line_block  = $idx . '. Đơn #' . $order_number . ' (' . $order_time . ') — ' . ( '' !== $recipient ? $recipient : 'Khách lẻ' ) . ( '' !== $phone ? ' - ' . $phone : '' );
+			$line_block .= "\n   • SP (" . $ord_qty . ' món): ' . implode( '; ', $item_brief );
+			if ( '' !== $full_addr ) {
+				$line_block .= "\n   • Đ/c: " . $full_addr;
+			}
+			$line_block .= "\n   • Tổng: " . number_format( $order_total, 0, ',', '.' ) . 'đ (' . ( $order->get_payment_method_title() ?: 'COD' ) . ')';
+			$order_blocks[] = $line_block;
+		}
+
+		$orders_data[] = array(
+			'order_id'     => $order->get_id(),
+			'order_number' => $order_number,
+			'time'         => $order_time,
+			'customer'     => $recipient,
+			'phone'        => $phone,
+			'address'      => $full_addr,
+			'items_count'  => $ord_qty,
+			'items_text'   => implode( '; ', $item_brief ),
+			'total'        => $order_total,
+		);
+		++$idx;
+	}
+
+	if ( $order_count > $max_detailed ) {
+		$order_blocks[] = sprintf( '... và %d đơn hàng khác trong cùng khung giờ.', $order_count - $max_detailed );
+	}
+
+	$lines = array();
+	if ( $is_overnight ) {
+		$lines[] = '🌅 TỔNG HỢP ĐƠN HÀNG NGOÀI GIỜ HOẠT ĐỘNG';
+		$lines[] = '⏰ Khung giờ: ' . $window_str;
+		$lines[] = '📦 Phát sinh ngoài giờ: ' . $order_count . ' ĐƠN HÀNG MỚI';
+	} else {
+		$lines[] = '🔔 BÁO CÁO ĐƠN HÀNG MỚI ĐỢT QUÉT';
+		$lines[] = '⏰ Khung giờ quét: ' . $window_str;
+		$lines[] = '📦 Phát sinh mới: ' . $order_count . ' ĐƠN HÀNG';
+	}
+	$lines[] = '🛍️ Tổng SL cần nhặt: ' . $total_items . ' sản phẩm  |  💰 Tổng: ' . number_format( $total_revenue, 0, ',', '.' ) . 'đ';
+	$lines[] = '────────────────────';
+	$lines[] = implode( "\n\n", $order_blocks );
+	$lines[] = '────────────────────';
+	$lines[] = '👉 Kho vui lòng kiểm tra và xử lý đóng hàng cho ' . $order_count . ' đơn trên!';
+	$lines[] = '🔗 Quản lý đơn Web: ' . admin_url( 'edit.php?post_type=shop_order' );
+
+	$text = implode( "\n", $lines );
+
+	return array(
+		'text'    => $text,
+		'payload' => array(
+			'event'         => $is_overnight ? 'overnight_orders_summary' : 'batch_orders_scan',
+			'window_from'   => wp_date( 'Y-m-d H:i:s', $from_ts ),
+			'window_to'     => wp_date( 'Y-m-d H:i:s', $to_ts ),
+			'orders_count'  => $order_count,
+			'items_count'   => $total_items,
+			'total_revenue' => $total_revenue,
+			'orders'        => $orders_data,
+			'message_text'  => $text,
+		),
+	);
+}
+
+/**
+ * Send a single consolidated Zalo notification for a batch of orders scanned in `[$from_ts, $to_ts]`.
+ *
+ * @param WC_Order[] $orders       Orders in the batch.
+ * @param int        $from_ts      Start timestamp.
+ * @param int        $to_ts        End timestamp.
+ * @param bool       $is_overnight True if overnight summary scan.
+ * @return array{sent_channels:int,notified_orders:int,errors:string[]}
+ */
+function nexxi_kids_send_zalo_batch_orders_notification( array $orders, $from_ts, $to_ts, $is_overnight = false ) {
+	if ( empty( $orders ) ) {
+		return array(
+			'sent_channels'   => 0,
+			'notified_orders' => 0,
+			'errors'          => array(),
+		);
+	}
+
+	$cfg       = nexxi_kids_zalo_notify_settings();
+	$formatted = nexxi_kids_format_zalo_batch_orders_message( $orders, $from_ts, $to_ts, $is_overnight );
+	$chat_ids  = nexxi_kids_zalo_parse_chat_ids( $cfg['chat_ids'] );
+	$sent      = 0;
+	$errors    = array();
+
+	if ( '' !== $cfg['bot_token'] && ! empty( $chat_ids ) ) {
+		foreach ( $chat_ids as $chat_id ) {
+			$res = nexxi_kids_zalo_bot_request(
+				'sendMessage',
+				array(
+					'chat_id' => $chat_id,
+					'text'    => $formatted['text'],
+				),
+				$cfg['bot_token']
+			);
+
+			if ( is_wp_error( $res ) ) {
+				$errors[] = 'Chat ID ' . $chat_id . ': ' . $res->get_error_message();
+				continue;
+			}
+			if ( isset( $res['ok'] ) && false === $res['ok'] ) {
+				$errors[] = 'Chat ID ' . $chat_id . ': ' . ( $res['description'] ?? 'Lỗi gửi tin nhắn.' );
+				continue;
+			}
+			++$sent;
+		}
+	}
+
+	if ( '' !== $cfg['webhook_url'] && 0 === strpos( $cfg['webhook_url'], 'http' ) ) {
+		$wh_res = wp_remote_post(
+			$cfg['webhook_url'],
+			array(
+				'timeout' => 10,
+				'headers' => array( 'Content-Type' => 'application/json; charset=utf-8' ),
+				'body'    => wp_json_encode( $formatted['payload'] ),
+			)
+		);
+		if ( ! is_wp_error( $wh_res ) && wp_remote_retrieve_response_code( $wh_res ) < 400 ) {
+			++$sent;
+		} elseif ( is_wp_error( $wh_res ) ) {
+			$errors[] = 'Webhook: ' . $wh_res->get_error_message();
+		}
+	}
+
+	$notified_orders = 0;
+	if ( $sent > 0 ) {
+		$now_mysql = current_time( 'mysql' );
+		foreach ( $orders as $ord ) {
+			if ( ! $ord instanceof WC_Order ) {
+				continue;
+			}
+			$ord->update_meta_data( '_nexxi_zalo_warehouse_notified', 'yes' );
+			$ord->update_meta_data( '_nexxi_zalo_warehouse_pending', 'no' );
+			$ord->update_meta_data( '_nexxi_zalo_warehouse_notified_at', $now_mysql );
+			$ord->save_meta_data();
+			$ord->add_order_note(
+				sprintf(
+					'NEXXI Kho Zalo: Đã gửi thông báo tổng hợp đợt quét (%d đơn) tới %d kênh Zalo/Webhook.',
+					count( $orders ),
+					$sent
+				)
+			);
+			++$notified_orders;
+		}
+	}
+
+	return array(
+		'sent_channels'   => $sent,
+		'notified_orders' => $notified_orders,
+		'errors'          => $errors,
+	);
+}
+
+/**
+ * Scan and send a consolidated Zalo notification for all new orders generated since the previous scan checkpoint.
+ *
+ * - Example 1: Scan batch 09:01 -> 09:30 has 10 orders => sends 1 consolidated message reporting 10 orders.
+ * - Example 2: Scan batch 09:31 -> 10:00 has 2 orders  => sends 1 consolidated message reporting 2 orders.
+ * - Example 3: Outside active hours (e.g. after 17:00 until 08:00 next morning) => holds all off-hours orders
+ *   and sends 1 consolidated summary message at 08:00 AM the next day.
  *
  * @param bool $force_manual True when triggered manually by Admin button.
- * @return array{processed:int,sent_orders:int,skipped_hours:bool,errors:string[]}
+ * @return array{processed:int,sent_orders:int,skipped_hours:bool,window_str:string,errors:string[]}
  */
 function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
 	$cfg = nexxi_kids_zalo_notify_settings();
@@ -642,6 +972,7 @@ function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
 			'processed'     => 0,
 			'sent_orders'   => 0,
 			'skipped_hours' => false,
+			'window_str'    => '',
 			'errors'        => array(),
 		);
 	}
@@ -651,38 +982,61 @@ function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
 			'processed'     => 0,
 			'sent_orders'   => 0,
 			'skipped_hours' => true,
+			'window_str'    => '',
 			'errors'        => array(),
 		);
 	}
 
-	update_option( 'nexxi_zalo_last_scan_ts', time(), false );
-	update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
+	$now_ts  = time();
+	$from_ts = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
+	if ( $from_ts <= 0 ) {
+		$from_ts = $now_ts;
+		update_option( 'nexxi_zalo_last_scan_ts', $now_ts, false );
+	}
 
-	$pending     = nexxi_kids_get_pending_zalo_orders( 25 );
+	// Determine if this scan is the morning summary of overnight/off-hours orders (e.g. 08:00 AM).
+	$is_overnight = false;
+	if ( '1' === (string) $cfg['active_hours_enabled'] ) {
+		$tz          = wp_timezone();
+		$now_dt      = ( new DateTimeImmutable( '@' . $now_ts ) )->setTimezone( $tz );
+		$start_min   = nexxi_kids_zalo_time_to_minutes( $cfg['active_start_time'], 480 );
+		$today_start = $now_dt->setTime( (int) floor( $start_min / 60 ), (int) ( $start_min % 60 ), 0 )->getTimestamp();
+		if ( $from_ts < $today_start && $now_ts >= $today_start ) {
+			$is_overnight = true;
+		}
+	}
+
+	$pending     = nexxi_kids_get_pending_zalo_orders( 100, $from_ts, $now_ts );
+	$window_str  = wp_date( 'H:i', $from_ts ) . ' ➔ ' . wp_date( 'H:i - d/m/Y', $now_ts );
 	$sent_orders = 0;
 	$errors      = array();
 
-	foreach ( $pending as $order ) {
-		$res = nexxi_kids_send_zalo_order_notification( $order, $force_manual );
-		if ( ! empty( $res['sent'] ) && $res['sent'] > 0 ) {
-			++$sent_orders;
-		}
-		if ( ! empty( $res['errors'] ) ) {
-			$errors = array_merge( $errors, $res['errors'] );
-		}
+	if ( ! empty( $pending ) ) {
+		$batch_res   = nexxi_kids_send_zalo_batch_orders_notification( $pending, $from_ts, $now_ts, $is_overnight );
+		$sent_orders = (int) $batch_res['notified_orders'];
+		$errors      = $batch_res['errors'];
+	}
+
+	// Advance checkpoint to $now_ts if there were no orders or if the batch was sent successfully.
+	if ( empty( $pending ) || $sent_orders > 0 ) {
+		update_option( 'nexxi_zalo_last_scan_ts', $now_ts, false );
+		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y', $now_ts ), false );
+		$next_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
+		update_option( 'nexxi_zalo_next_scan_ts', $next_ts, false );
 	}
 
 	return array(
 		'processed'     => count( $pending ),
 		'sent_orders'   => $sent_orders,
 		'skipped_hours' => false,
+		'window_str'    => $window_str,
 		'errors'        => $errors,
 	);
 }
 
 /**
  * Queue a newly placed order and either send immediately (if interval=0 and within active hours)
- * or leave in queue for the scheduled scanner.
+ * or leave for the next scheduled batch scan / 08:00 AM overnight summary.
  *
  * @param int|WC_Order $order_or_id Order ID or WC_Order object.
  */
@@ -693,6 +1047,11 @@ function nexxi_kids_handle_new_order_zalo_queue( $order_or_id ) {
 	}
 	if ( 'yes' === (string) $order->get_meta( '_nexxi_zalo_warehouse_notified' ) ) {
 		return;
+	}
+
+	// Ensure scan checkpoint is initialized so this new order is included in the current window.
+	if ( (int) get_option( 'nexxi_zalo_last_scan_ts', 0 ) <= 0 ) {
+		update_option( 'nexxi_zalo_last_scan_ts', time() - 5, false );
 	}
 
 	$order->update_meta_data( '_nexxi_zalo_warehouse_pending', 'yes' );
@@ -711,9 +1070,9 @@ function nexxi_kids_handle_new_order_zalo_queue( $order_or_id ) {
 		nexxi_kids_send_zalo_order_notification( $order, false );
 	} else {
 		$reason = ! $in_hours
-			? sprintf( 'đặt ngoài khung giờ hoạt động (%s – %s)', $cfg['active_start_time'], $cfg['active_end_time'] )
-			: sprintf( 'chờ chu kỳ quét định kỳ (%d phút/lần)', $interval_min );
-		$order->add_order_note( 'NEXXI Kho Zalo: Đơn hàng đã được lưu vào hàng đợi (' . $reason . ') để gửi thông báo Zalo cho Kho.' );
+			? sprintf( 'đặt ngoài khung giờ hoạt động (%s – %s), sẽ tổng hợp báo lúc %s sáng kế tiếp', $cfg['active_start_time'], $cfg['active_end_time'], $cfg['active_start_time'] )
+			: sprintf( 'chờ tổng hợp ở đợt quét định kỳ (%d phút/lần)', $interval_min );
+		$order->add_order_note( 'NEXXI Kho Zalo: Đơn hàng đã ghi nhận (' . $reason . ').' );
 	}
 }
 
@@ -749,13 +1108,13 @@ add_action(
 );
 
 /**
- * Ensure WP-Cron schedule matches settings, and also run a lightweight timestamp check
- * on `wp_loaded` so scans happen reliably on schedule even when page cache is active.
+ * Ensure WP-Cron schedule is aligned to exact clock boundaries (e.g. 08:00, 08:30, 09:00, 09:30...),
+ * and run a lightweight timestamp check on `wp_loaded` so scans happen right on schedule.
  */
 function nexxi_kids_sync_zalo_scan_cron() {
 	$cfg          = nexxi_kids_zalo_notify_settings();
 	$interval_min = (int) $cfg['scan_interval'];
-	$eff_min      = $interval_min > 0 ? $interval_min : 15; // Even in instant mode, scan every 15m to flush overnight orders when active hours start.
+	$eff_min      = $interval_min > 0 ? $interval_min : 15;
 	$allowed      = array( 5, 15, 30, 60, 120, 180 );
 	if ( ! in_array( $eff_min, $allowed, true ) ) {
 		$eff_min = 15;
@@ -763,11 +1122,19 @@ function nexxi_kids_sync_zalo_scan_cron() {
 	$sched_key = 'nexxi_zalo_every_' . $eff_min . 'm';
 	$hook      = 'nexxi_zalo_order_scan_cron_event';
 
+	if ( (int) get_option( 'nexxi_zalo_last_scan_ts', 0 ) <= 0 ) {
+		update_option( 'nexxi_zalo_last_scan_ts', time(), false );
+		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
+	}
+
+	$next_aligned = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, time() );
+	update_option( 'nexxi_zalo_next_scan_ts', $next_aligned, false );
+
 	if ( '1' === $cfg['enabled'] ) {
 		$current_sched = wp_get_schedule( $hook );
 		if ( $current_sched !== $sched_key ) {
 			wp_clear_scheduled_hook( $hook );
-			wp_schedule_event( time() + 60, $sched_key, $hook );
+			wp_schedule_event( $next_aligned, $sched_key, $hook );
 		}
 	} else {
 		if ( wp_next_scheduled( $hook ) ) {
@@ -787,11 +1154,13 @@ add_action(
 		if ( '1' !== $cfg['enabled'] || ! nexxi_kids_zalo_is_within_active_hours( $cfg ) ) {
 			return;
 		}
-		$interval_min = (int) $cfg['scan_interval'];
-		$eff_sec      = ( $interval_min > 0 ? $interval_min : 15 ) * MINUTE_IN_SECONDS;
-		$last_ts      = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
-		if ( ( time() - $last_ts ) >= $eff_sec ) {
-			update_option( 'nexxi_zalo_last_scan_ts', time(), false );
+		$now_ts  = time();
+		$next_ts = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+		if ( $next_ts <= 0 ) {
+			$next_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
+			update_option( 'nexxi_zalo_next_scan_ts', $next_ts, false );
+		}
+		if ( $now_ts >= $next_ts ) {
 			nexxi_kids_run_zalo_order_scan( false );
 		}
 	},
@@ -1043,13 +1412,16 @@ add_action(
 			$scan_res  = nexxi_kids_run_zalo_order_scan( true );
 			$rem_count = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
 			$last_time = (string) get_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ) );
+			$next_ts   = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+			$next_time = $next_ts > 0 ? wp_date( 'H:i - d/m/Y', $next_ts ) : '';
 
 			if ( $scan_res['processed'] <= 0 ) {
 				wp_send_json_success(
 					array(
-						'message'       => '✔️ Đã quét kiểm tra: Hiện không có đơn hàng mới nào đang chờ gửi thông báo trong hàng đợi.',
+						'message'       => '✔️ Đã quét kiểm tra (' . ( $scan_res['window_str'] ?? '' ) . '): Không có đơn hàng mới phát sinh từ mốc quét trước.',
 						'pending_count' => $rem_count,
 						'last_scan'     => $last_time,
+						'next_scan'     => $next_time,
 					)
 				);
 			}
@@ -1057,9 +1429,10 @@ add_action(
 			if ( $scan_res['sent_orders'] > 0 ) {
 				wp_send_json_success(
 					array(
-						'message'       => sprintf( '🚀 Đã quét và gửi thông báo thành công cho %d/%d đơn hàng đang chờ vào Zalo Kho!', $scan_res['sent_orders'], $scan_res['processed'] ),
+						'message'       => sprintf( '🚀 Đã tổng hợp và gửi 1 bản tin báo cáo %d đơn hàng mới phát sinh (%s) vào Group Zalo Kho!', $scan_res['sent_orders'], $scan_res['window_str'] ?? '' ),
 						'pending_count' => $rem_count,
 						'last_scan'     => $last_time,
+						'next_scan'     => $next_time,
 					)
 				);
 			}
@@ -1069,6 +1442,7 @@ add_action(
 					'message'       => 'Không thể gửi thông báo cho đơn đang chờ. Chi tiết: ' . implode( '; ', $scan_res['errors'] ),
 					'pending_count' => $rem_count,
 					'last_scan'     => $last_time,
+					'next_scan'     => $next_time,
 				)
 			);
 		}
@@ -1105,6 +1479,10 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 		update_option( 'nexxi_zalo_active_start_time', preg_match( '/^\d{1,2}:\d{2}$/', $start_t ) ? $start_t : '08:00' );
 		update_option( 'nexxi_zalo_active_end_time', preg_match( '/^\d{1,2}:\d{2}$/', $end_t ) ? $end_t : '17:30' );
 
+		// Reset scan checkpoint to current time when saving so only orders generated from now onwards are scanned.
+		update_option( 'nexxi_zalo_last_scan_ts', time(), false );
+		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
+
 		nexxi_kids_sync_zalo_scan_cron();
 		$saved = true;
 	}
@@ -1114,6 +1492,11 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 	$known_chats   = is_array( $known_chats ) ? $known_chats : array();
 	$pending_cnt   = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
 	$last_scan_str = (string) get_option( 'nexxi_zalo_last_scan_time', 'Chưa quét lần nào' );
+	$next_scan_ts  = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+	if ( $next_scan_ts <= 0 ) {
+		$next_scan_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, time() );
+	}
+	$next_scan_str = wp_date( 'H:i - d/m/Y', $next_scan_ts );
 	$in_hours_now  = nexxi_kids_zalo_is_within_active_hours( $cfg );
 	$now_hm        = wp_date( 'H:i' );
 	$nonce         = wp_create_nonce( 'nexxi_zalo_admin_nonce' );
@@ -1224,9 +1607,10 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 								🔄 Quét &amp; Gửi Ngay Các Đơn Đang Chờ (<span id="nexxi-zalo-pending-cnt"><?php echo (int) $pending_cnt; ?></span> đơn)
 							</button>
 						</div>
-						<p class="description" style="margin-top:6px;">
-							Chọn chu kỳ hệ thống tự động quét các đơn hàng mới phát sinh để bắn thông báo vào Group Zalo Kho.
+						<p class="description" style="margin-top:6px;line-height:1.6;">
+							Chỉ thông báo những đơn hàng <strong>mới phát sinh kể từ thời điểm quét trước</strong> (VD: Đợt 1 từ <code>09:01 ➔ 09:30</code> có 10 đơn sẽ báo tổng hợp 10 đơn; Đợt 2 từ <code>09:31 ➔ 10:00</code> có 2 đơn sẽ báo tổng hợp 2 đơn).
 							<br/>• Lần quét gần nhất: <strong id="nexxi-zalo-last-scan"><?php echo esc_html( $last_scan_str ); ?></strong>
+							&nbsp;|&nbsp; • Đợt quét kế tiếp dự kiến: <strong id="nexxi-zalo-next-scan" style="color:#0068FF;"><?php echo esc_html( $next_scan_str ); ?></strong>
 						</p>
 					</td>
 				</tr>
@@ -1241,30 +1625,34 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 							</label>
 						</div>
 
-						<div id="nexxi-zalo-hours-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#f5f3ef;border-radius:10px;max-width:560px;<?php echo '1' === $cfg['active_hours_enabled'] ? '' : 'opacity:0.65;'; ?>">
+						<div id="nexxi-zalo-hours-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#f5f3ef;border-radius:10px;max-width:620px;<?php echo '1' === $cfg['active_hours_enabled'] ? '' : 'opacity:0.65;'; ?>">
 							<span style="font-weight:700;color:#031444;">Hoạt động từ:</span>
 							<input type="time" name="nexxi_zalo_active_start_time" id="nexxi_zalo_active_start_time" value="<?php echo esc_attr( $cfg['active_start_time'] ); ?>" style="padding:4px 10px;border-radius:8px;font-weight:700;color:#031444;" />
 							<span style="font-weight:700;color:#031444;">đến:</span>
 							<input type="time" name="nexxi_zalo_active_end_time" id="nexxi_zalo_active_end_time" value="<?php echo esc_attr( $cfg['active_end_time'] ); ?>" style="padding:4px 10px;border-radius:8px;font-weight:700;color:#031444;" />
 
-							<?php if ( '1' === $cfg['active_hours_enabled'] ) : ?>
-								<?php if ( $in_hours_now ) : ?>
-									<span style="background:#e6f6ec;color:#0d5324;border:1px solid #34a853;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
+							<span id="nexxi-zalo-hours-badge" data-now-hm="<?php echo esc_attr( $now_hm ); ?>" style="<?php
+								if ( '1' === $cfg['active_hours_enabled'] ) {
+									echo $in_hours_now
+										? 'background:#e6f6ec;color:#0d5324;border:1px solid #34a853;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;'
+										: 'background:#fff4e5;color:#8c4b00;border:1px solid #f59e0b;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;';
+								} else {
+									echo 'background:#eef4ff;color:#0068FF;border:1px solid #0068FF;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;';
+								}
+							?>">
+								<?php if ( '1' === $cfg['active_hours_enabled'] ) : ?>
+									<?php if ( $in_hours_now ) : ?>
 										🟢 Đang trong giờ hoạt động (Hiện tại: <?php echo esc_html( $now_hm ); ?>)
-									</span>
+									<?php else : ?>
+										🌙 Ngoài giờ hoạt động • Sẽ tổng hợp báo 1 lần lúc <?php echo esc_html( $cfg['active_start_time'] ); ?> sáng kế tiếp
+									<?php endif; ?>
 								<?php else : ?>
-									<span style="background:#fff4e5;color:#8c4b00;border:1px solid #f59e0b;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
-										🌙 Ngoài giờ hoạt động (Hiện tại: <?php echo esc_html( $now_hm ); ?>)
-									</span>
-								<?php endif; ?>
-							<?php else : ?>
-								<span style="background:#eef4ff;color:#0068FF;border:1px solid #0068FF;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
 									🌐 Đang hoạt động 24/24
-								</span>
-							<?php endif; ?>
+								<?php endif; ?>
+							</span>
 						</div>
 						<p class="description" style="margin-top:6px;">
-							Các đơn hàng khách đặt <strong>ngoài khung giờ hoạt động</strong> (ví dụ ban đêm) sẽ được hệ thống <strong>tự động lưu vào hàng đợi</strong> và gửi thông báo vào Group Zalo Kho ngay khi bắt đầu khung giờ hoạt động ngày hôm sau!
+							Các đơn hàng phát sinh <strong>ngoài khung giờ hoạt động</strong> sẽ được hệ thống <strong>tự động tổng hợp và thông báo 1 lần duy nhất vào lúc <?php echo esc_html( $cfg['active_start_time'] ); ?> sáng ngày kế tiếp</strong>!
 						</p>
 					</td>
 				</tr>
@@ -1372,6 +1760,10 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 						const lEl = document.getElementById('nexxi-zalo-last-scan');
 						if (lEl) lEl.textContent = res.data.last_scan;
 					}
+					if (res.data.next_scan) {
+						const nEl = document.getElementById('nexxi-zalo-next-scan');
+						if (nEl) nEl.textContent = res.data.next_scan;
+					}
 					showNotice(res.data.message || 'Thành công!', true);
 				} else {
 					showNotice((res && res.data && res.data.message) ? res.data.message : 'Có lỗi xảy ra.', false);
@@ -1418,11 +1810,55 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 
 		const hoursChk = document.getElementById('nexxi_zalo_active_hours_enabled');
 		const hoursWrap = document.getElementById('nexxi-zalo-hours-wrap');
-		if (hoursChk && hoursWrap) {
-			hoursChk.addEventListener('change', function() {
-				hoursWrap.style.opacity = hoursChk.checked ? '1' : '0.65';
-			});
+		const startInput = document.getElementById('nexxi_zalo_active_start_time');
+		const endInput = document.getElementById('nexxi_zalo_active_end_time');
+		const hoursBadge = document.getElementById('nexxi-zalo-hours-badge');
+
+		function toMin(hhmm, fallback) {
+			if (!hhmm || typeof hhmm !== 'string') return fallback;
+			const parts = hhmm.split(':');
+			if (parts.length < 2) return fallback;
+			return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
 		}
+
+		function syncHoursBadgeUI() {
+			if (!hoursChk || !hoursWrap || !hoursBadge) return;
+			const enabled = hoursChk.checked;
+			hoursWrap.style.opacity = enabled ? '1' : '0.65';
+			if (!enabled) {
+				hoursBadge.style.background = '#eef4ff';
+				hoursBadge.style.color = '#0068FF';
+				hoursBadge.style.border = '1px solid #0068FF';
+				hoursBadge.textContent = '🌐 Đang hoạt động 24/24';
+				return;
+			}
+			const nowHm = hoursBadge.getAttribute('data-now-hm') || '12:00';
+			const nowMin = toMin(nowHm, 720);
+			const startStr = (startInput && startInput.value) ? startInput.value : '08:00';
+			const endStr = (endInput && endInput.value) ? endInput.value : '17:00';
+			const startMin = toMin(startStr, 480);
+			const endMin = toMin(endStr, 1020);
+			const inHours = startMin <= endMin
+				? (nowMin >= startMin && nowMin <= endMin)
+				: (nowMin >= startMin || nowMin <= endMin);
+
+			if (inHours) {
+				hoursBadge.style.background = '#e6f6ec';
+				hoursBadge.style.color = '#0d5324';
+				hoursBadge.style.border = '1px solid #34a853';
+				hoursBadge.textContent = '🟢 Đang trong giờ hoạt động (' + startStr + ' – ' + endStr + ' | Hiện tại: ' + nowHm + ')';
+			} else {
+				hoursBadge.style.background = '#fff4e5';
+				hoursBadge.style.color = '#8c4b00';
+				hoursBadge.style.border = '1px solid #f59e0b';
+				hoursBadge.textContent = '🌙 Ngoài giờ hoạt động • Sẽ tổng hợp báo 1 lần lúc ' + startStr + ' sáng kế tiếp';
+			}
+		}
+
+		if (hoursChk) hoursChk.addEventListener('change', syncHoursBadgeUI);
+		if (startInput) startInput.addEventListener('change', syncHoursBadgeUI);
+		if (endInput) endInput.addEventListener('change', syncHoursBadgeUI);
+		syncHoursBadgeUI();
 
 		// Auto-poll every 3.5s while Webhook mode is ON so newly @mentioned Group/Staff Chat IDs appear in the box automatically!
 		setInterval(function() {
