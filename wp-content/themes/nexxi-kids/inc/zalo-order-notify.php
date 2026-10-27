@@ -158,52 +158,56 @@ function nexxi_kids_zalo_bot_request( $method, array $payload = array(), $bot_to
 
 /**
  * Extract chat_id and sender/chat display name from a single Zalo Bot update object.
+ * Supports both Zalo Bot Platform (`result.chat.id`, `result.sender.display_name`)
+ * and Telegram-style (`message.chat.id`, `message.from.display_name`) structures.
  *
  * @param array $update Update item from `getUpdates` or Webhook.
- * @return array{chat_id:string,name:string,text:string}|null
+ * @return array{chat_id:string,name:string,text:string,chat_type:string}|null
  */
 function nexxi_kids_zalo_extract_chat_from_update( array $update ) {
-	$msg = null;
-	if ( isset( $update['message'] ) && is_array( $update['message'] ) ) {
-		$msg = $update['message'];
-	} elseif ( isset( $update['result']['message'] ) && is_array( $update['result']['message'] ) ) {
-		$msg = $update['result']['message'];
-	} elseif ( isset( $update['chat'] ) || isset( $update['from'] ) ) {
-		$msg = $update;
-	}
-	if ( ! is_array( $msg ) ) {
-		return null;
-	}
+	$root = ( isset( $update['result'] ) && is_array( $update['result'] ) && ( isset( $update['result']['chat'] ) || isset( $update['result']['message'] ) || isset( $update['result']['sender'] ) ) )
+		? $update['result']
+		: $update;
+
+	$msg    = isset( $root['message'] ) && is_array( $root['message'] ) ? $root['message'] : $root;
+	$chat   = isset( $root['chat'] ) && is_array( $root['chat'] ) ? $root['chat'] : ( isset( $msg['chat'] ) && is_array( $msg['chat'] ) ? $msg['chat'] : array() );
+	$sender = isset( $root['sender'] ) && is_array( $root['sender'] ) ? $root['sender'] : ( isset( $root['from'] ) && is_array( $root['from'] ) ? $root['from'] : ( isset( $msg['from'] ) && is_array( $msg['from'] ) ? $msg['from'] : ( isset( $msg['sender'] ) && is_array( $msg['sender'] ) ? $msg['sender'] : array() ) ) );
 
 	$chat_id = '';
-	if ( ! empty( $msg['chat']['id'] ) ) {
-		$chat_id = (string) $msg['chat']['id'];
-	} elseif ( ! empty( $msg['from']['id'] ) ) {
-		$chat_id = (string) $msg['from']['id'];
-	} elseif ( ! empty( $msg['sender']['id'] ) ) {
-		$chat_id = (string) $msg['sender']['id'];
+	if ( ! empty( $chat['id'] ) ) {
+		$chat_id = (string) $chat['id'];
+	} elseif ( ! empty( $sender['id'] ) ) {
+		$chat_id = (string) $sender['id'];
 	}
 	if ( '' === $chat_id ) {
 		return null;
 	}
 
-	$name = '';
-	if ( ! empty( $msg['from']['display_name'] ) ) {
-		$name = (string) $msg['from']['display_name'];
-	} elseif ( ! empty( $msg['from']['name'] ) ) {
-		$name = (string) $msg['from']['name'];
-	} elseif ( ! empty( $msg['chat']['title'] ) ) {
-		$name = (string) $msg['chat']['title'];
-	} elseif ( ! empty( $msg['from']['first_name'] ) ) {
-		$name = trim( (string) $msg['from']['first_name'] . ' ' . (string) ( $msg['from']['last_name'] ?? '' ) );
+	$chat_type = ! empty( $chat['chat_type'] ) ? strtoupper( (string) $chat['chat_type'] ) : ( ! empty( $chat['type'] ) ? strtoupper( (string) $chat['type'] ) : '' );
+
+	$sender_name = '';
+	if ( ! empty( $sender['display_name'] ) ) {
+		$sender_name = (string) $sender['display_name'];
+	} elseif ( ! empty( $sender['name'] ) ) {
+		$sender_name = (string) $sender['name'];
+	} elseif ( ! empty( $sender['first_name'] ) ) {
+		$sender_name = trim( (string) $sender['first_name'] . ' ' . (string) ( $sender['last_name'] ?? '' ) );
+	}
+
+	$chat_title = ! empty( $chat['title'] ) ? (string) $chat['title'] : ( ! empty( $chat['name'] ) ? (string) $chat['name'] : '' );
+	if ( 'GROUP' === $chat_type ) {
+		$name = '' !== $chat_title ? 'Nhóm: ' . $chat_title : ( '' !== $sender_name ? 'Nhóm Zalo (qua ' . $sender_name . ')' : 'Nhóm Zalo Kho' );
+	} else {
+		$name = '' !== $sender_name ? $sender_name : $chat_title;
 	}
 
 	$text = isset( $msg['text'] ) ? trim( (string) $msg['text'] ) : '';
 
 	return array(
-		'chat_id' => $chat_id,
-		'name'    => $name,
-		'text'    => $text,
+		'chat_id'   => $chat_id,
+		'name'      => $name,
+		'text'      => $text,
+		'chat_type' => $chat_type,
 	);
 }
 
@@ -620,6 +624,17 @@ add_action(
 
 		$cfg = nexxi_kids_zalo_notify_settings();
 
+		// 0. Lightweight poll for newly added Chat IDs (when Webhook auto-add is active).
+		if ( 'poll_saved_chats' === $sub_action ) {
+			wp_send_json_success(
+				array(
+					'chat_ids'         => implode( "\n", nexxi_kids_zalo_parse_chat_ids() ),
+					'known'            => get_option( 'nexxi_zalo_known_chats', array() ),
+					'webhook_auto_add' => $cfg['webhook_auto_add'],
+				)
+			);
+		}
+
 		// 1. Scan latest messages via `getUpdates` to auto-discover Chat IDs.
 		if ( 'scan_updates' === $sub_action ) {
 			// Delete webhook first so getUpdates is allowed by Zalo Bot API.
@@ -633,9 +648,9 @@ add_action(
 
 			$up_res = nexxi_kids_zalo_bot_request(
 				'getUpdates',
-				array( 'timeout' => 3 ),
+				array( 'timeout' => 12 ),
 				$cfg['bot_token'],
-				10
+				16
 			);
 
 			if ( is_wp_error( $up_res ) ) {
@@ -645,7 +660,9 @@ add_action(
 			$found = array();
 			$list  = array();
 			if ( isset( $up_res['result'] ) && is_array( $up_res['result'] ) ) {
-				$list = isset( $up_res['result']['message'] ) ? array( $up_res['result'] ) : $up_res['result'];
+				$list = ( isset( $up_res['result']['chat'] ) || isset( $up_res['result']['message'] ) || isset( $up_res['result']['sender'] ) )
+					? array( $up_res['result'] )
+					: $up_res['result'];
 			}
 
 			foreach ( $list as $item ) {
@@ -656,6 +673,15 @@ add_action(
 				if ( $ext && '' !== $ext['chat_id'] ) {
 					nexxi_kids_zalo_add_chat_id( $ext['chat_id'], $ext['name'] );
 					$found[ $ext['chat_id'] ] = $ext['name'] ? $ext['name'] . ' (' . $ext['chat_id'] . ')' : $ext['chat_id'];
+					nexxi_kids_zalo_bot_request(
+						'sendMessage',
+						array(
+							'chat_id' => $ext['chat_id'],
+							'text'    => "✅ NEXXI Kids Kho: Đã kết nối nhận thông báo đơn hàng thành công!\n• Mã Chat ID: " . $ext['chat_id'],
+						),
+						$cfg['bot_token'],
+						8
+					);
 				}
 			}
 
@@ -663,7 +689,7 @@ add_action(
 			if ( ! empty( $found ) ) {
 				wp_send_json_success(
 					array(
-						'message'          => 'Đã tìm thấy và thêm tự động ' . count( $found ) . ' Chat ID: ' . implode( ', ', array_values( $found ) ),
+						'message'          => '🎉 Đã bắt được tin nhắn và tự động điền Chat ID vào khung: ' . implode( ', ', array_values( $found ) ) . '. Hãy bấm Lưu cài đặt nhé!',
 						'chat_ids'         => $all_ids,
 						'known'            => get_option( 'nexxi_zalo_known_chats', array() ),
 						'webhook_auto_add' => '0',
@@ -673,7 +699,7 @@ add_action(
 
 			wp_send_json_error(
 				array(
-					'message'          => 'Chưa thấy tin nhắn mới nào chờ trong hàng đợi. Bạn hãy mở Zalo, nhắn 1 tin bất kỳ (ví dụ: "kho") vào Bot Zalo của bạn rồi bấm nút Quét lại ngay nhé! (Hoặc bật chế độ Webhook tự động bên cạnh).',
+					'message'          => 'Chưa bắt được tin nhắn trong 12 giây vừa qua. Lưu ý: Trong Group Zalo, bạn phải gõ @Tên_Bot kèm nội dung (ví dụ: "@Tên_Bot kho") thì Bot mới nhận được tin nhắn nhé! (Cách nhanh nhất: Bật nút Webhook tự động bên cạnh rồi vào Group Zalo gõ @Tên_Bot kho).',
 					'webhook_auto_add' => '0',
 				)
 			);
@@ -828,11 +854,16 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 
 		<!-- 3-STEP QUICK GUIDE -->
 		<div style="background:#fff8f6;border:1.5px solid #ffdad2;border-radius:14px;padding:18px 22px;margin-bottom:20px;">
-			<h3 style="margin:0 0 10px;color:#ae3115;font-size:15px;">📋 Hướng dẫn 3 bước kết nối Bot Zalo bạn vừa tạo (chỉ mất 30 giây):</h3>
-			<ol style="margin:0;padding-left:20px;color:#1b1c1a;font-size:13.5px;line-height:1.7;">
-				<li><strong>Bước 1:</strong> Sao chép mã <strong>Bot Token</strong> của Bot Zalo bạn vừa tạo dán vào ô <strong>Zalo Bot Token</strong> bên dưới.</li>
-				<li><strong>Bước 2:</strong> Mở ứng dụng Zalo trên điện thoại/máy tính, tìm đến <strong>Bot Zalo của bạn</strong> (hoặc thêm Bot vào nhóm) và <strong>gửi 1 tin nhắn bất kỳ</strong> (ví dụ: <code>kho</code> hoặc <code>/start</code>).</li>
-				<li><strong>Bước 3:</strong> Bấm nút <strong>"🔍 Quét &amp; Lấy Chat ID tự động"</strong> bên dưới → Hệ thống sẽ tự động điền mã <code>Chat ID</code> của bạn/nhóm kho vào ô người nhận → Bấm <strong>"🚀 Gửi tin nhắn Test thử"</strong> là xong!</li>
+			<h3 style="margin:0 0 10px;color:#ae3115;font-size:15px;">📋 Cách lấy Chat ID của Group Zalo (hoặc Cá nhân) tự động vào khung:</h3>
+			<ol style="margin:0;padding-left:20px;color:#1b1c1a;font-size:13.5px;line-height:1.75;">
+				<li><strong>Bước 1:</strong> Dán mã <strong>Bot Token</strong> vào ô số 1 rồi bấm nút <strong>"⚪ Bật chế độ Webhook tự động thêm nhân viên kho"</strong> (để nút chuyển sang màu xanh lá <strong>🟢 ĐANG BẬT</strong>).</li>
+				<li><strong>Bước 2:</strong> Mở <strong>Group Zalo của Kho</strong> → Bấm <strong>Thêm thành viên</strong> để thêm con Bot Zalo của bạn vào Group.</li>
+				<li><strong>Bước 3 (Quan trọng):</strong> Trong Group Zalo, bạn gõ <strong><code>@Tên_Bot kho</code></strong> (bắt buộc phải tag <code>@Tên_Bot</code> thì Bot trong Group mới nhận được lệnh). Ngay lập tức:
+					<ul style="margin:4px 0 0;padding-left:18px;list-style:disc;">
+						<li>Bot sẽ trả lời ngay trong Group Zalo mã <strong>Chat ID của Group</strong>.</li>
+						<li>Và mã <strong>Chat ID của Group sẽ tự động nhảy vào khung số 2</strong> bên dưới (sau đó bạn có thể bấm Tắt chế độ Webhook và bấm <strong>💾 Lưu Cài Đặt</strong>).</li>
+					</ul>
+				</li>
 			</ol>
 		</div>
 
@@ -1025,6 +1056,27 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 				runAction('send_test', testBtn, '⏳ Đang gửi tin nhắn Test vào Zalo...');
 			});
 		}
+
+		// Auto-poll every 3.5s while Webhook mode is ON so newly @mentioned Group/Staff Chat IDs appear in the box automatically!
+		setInterval(function() {
+			if (!whBtn || whBtn.getAttribute('data-webhook-active') !== '1') return;
+			const fd = new FormData();
+			fd.append('action', 'nexxi_zalo_admin_action');
+			fd.append('nonce', nonce);
+			fd.append('sub_action', 'poll_saved_chats');
+			fetch(ajaxurl, { method: 'POST', credentials: 'same-origin', body: fd })
+				.then(function(r) { return r.json(); })
+				.then(function(res) {
+					if (res && res.success && res.data && typeof res.data.chat_ids === 'string' && chatIdsInput) {
+						const serverIds = res.data.chat_ids.trim();
+						if (serverIds !== '' && serverIds !== chatIdsInput.value.trim()) {
+							chatIdsInput.value = serverIds;
+							showNotice('🎉 Đã tự động nhận diện và điền Chat ID mới từ Zalo vào khung! Bạn hãy bấm Lưu cài đặt nhé.', true);
+						}
+					}
+				})
+				.catch(function() {});
+		}, 3500);
 	})();
 	</script>
 	<?php
