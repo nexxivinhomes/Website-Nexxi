@@ -14,6 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+@error_reporting( error_reporting() & ~E_DEPRECATED & ~E_USER_DEPRECATED ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions,WordPress.PHP.DiscouragedPHPFunctions
+
 // Unhook any older plugin instance (v1.4.0 or v1.5.0-v2/v3 from wp-content/plugins/nexxi-pancake-manager) if it loaded before the theme
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V4', false ) ) {
 	foreach ( array( 'Nexxi_Pancake_Sync_Manager_V3', 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' ) as $legacy_cls ) {
@@ -4909,6 +4911,60 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			}
 		}
 
+		// Ensure every Website product ($wc_products) is represented in $dedup_catalog so counts across Tab 1, Tab 2 & buttons match 100%
+		$pre_matched_wc_ids = array();
+		foreach ( $dedup_catalog as $dp ) {
+			$dp_id  = (string) ( $dp['id'] ?? '' );
+			$dp_sku = strtoupper( trim( (string) ( $dp['sku'] ?? '' ) ) );
+			if ( '' !== $dp_id && isset( $wc_by_pancake_id[ $dp_id ]['id'] ) ) {
+				$pre_matched_wc_ids[ (int) $wc_by_pancake_id[ $dp_id ]['id'] ] = true;
+			} elseif ( '' !== $dp_sku && isset( $wc_by_pancake_sku[ $dp_sku ]['id'] ) ) {
+				$pre_matched_wc_ids[ (int) $wc_by_pancake_sku[ $dp_sku ]['id'] ] = true;
+			}
+		}
+		foreach ( $wc_products as $wrow ) {
+			$wid = (int) ( $wrow['id'] ?? 0 );
+			if ( $wid <= 0 || isset( $pre_matched_wc_ids[ $wid ] ) ) {
+				continue;
+			}
+			$cand_sku = strtoupper( trim( (string) ( $wrow['pancake_sku'] ?: $wrow['sku'] ) ) );
+			if ( '' === $cand_sku && ! empty( $wrow['child_skus'][0] ) ) {
+				$cand_sku = strtoupper( trim( (string) $wrow['child_skus'][0] ) );
+			}
+			if ( '' !== $cand_sku && false !== strpos( $cand_sku, '-' ) ) {
+				$cand_sku = explode( '-', $cand_sku )[0];
+			}
+			$cand_pid = trim( (string) ( $wrow['pancake_id'] ?? '' ) );
+			if ( '' === $cand_pid ) {
+				$cand_pid = 'wc_' . $wid;
+			}
+			$dedup_k = '' !== $cand_sku ? 'SKU_' . $cand_sku : 'ID_' . $cand_pid;
+			if ( ! isset( $dedup_catalog[ $dedup_k ] ) ) {
+				$dedup_catalog[ $dedup_k ] = array(
+					'id'            => $cand_pid,
+					'sku'           => $cand_sku,
+					'display_id'    => $cand_sku,
+					'code'          => self::extract_leading_code( $wrow['name'] ?? '' ),
+					'name'          => (string) ( $wrow['name'] ?? '' ),
+					'categories'    => array(),
+					'product_image' => '',
+					'all_images'    => array(),
+					'class_images'  => array(),
+					'var_images'    => array(),
+					'variations'    => array(),
+					'total_stock'   => 0,
+					'min_price'     => 0,
+					'max_price'     => 0,
+				);
+			}
+			if ( '' !== $cand_pid && ! isset( $wc_by_pancake_id[ $cand_pid ] ) ) {
+				$wc_by_pancake_id[ $cand_pid ] = $wrow;
+			}
+			if ( '' !== $cand_sku && ! isset( $wc_by_pancake_sku[ $cand_sku ] ) ) {
+				$wc_by_pancake_sku[ $cand_sku ] = $wrow;
+			}
+		}
+
 		$p_stats = array(
 			'total_pancake' => count( $dedup_catalog ),
 			'on_web'        => 0,
@@ -4921,6 +4977,7 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		$filtered_items   = array();
 		$all_on_web_items = array();
 		$seen_on_web_skus = array();
+		$seen_wc_ids      = array();
 
 		$warehouses_list  = self::get_pancake_warehouses();
 		$cur_wh_id        = isset( $settings['warehouse_id'] ) && '' !== trim( (string) $settings['warehouse_id'] ) ? trim( (string) $settings['warehouse_id'] ) : self::DEFAULT_WAREHOUSE_ID;
@@ -4937,6 +4994,13 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				$wc_match = $wc_by_pancake_id[ $pid ];
 			} elseif ( '' !== $p_sku && isset( $wc_by_pancake_sku[ $p_sku ] ) ) {
 				$wc_match = $wc_by_pancake_sku[ $p_sku ];
+			}
+			// Strictly 1-to-1 match per Website product ID so 2 Pancake records never double-count 1 Website product
+			if ( is_array( $wc_match ) && ! empty( $wc_match['id'] ) ) {
+				$matched_wid = (int) $wc_match['id'];
+				if ( isset( $seen_wc_ids[ $matched_wid ] ) ) {
+					$wc_match = null;
+				}
 			}
 
 			// Collect distinct categories for filter dropdown
@@ -4955,19 +5019,19 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			}
 
 			if ( is_array( $wc_match ) && ! empty( $wc_match['id'] ) ) {
+				$matched_wid                  = (int) $wc_match['id'];
+				$seen_wc_ids[ $matched_wid ]  = true;
 				$p_stats['on_web']++;
-				$status_code = 'on_web';
-				$r_dom       = sanitize_html_class( $p_sku ? $p_sku : $pid );
-				$dedup_key   = $p_sku ? $p_sku : $pid;
-				if ( '' !== $dedup_key && ! isset( $seen_on_web_skus[ $dedup_key ] ) ) {
-					$seen_on_web_skus[ $dedup_key ] = true;
-					$all_on_web_items[]             = array(
-						'row_dom'     => $r_dom,
-						'wc_id'       => (int) $wc_match['id'],
-						'pancake_id'  => $pid,
-						'pancake_sku' => $p_sku,
-					);
-				}
+				$status_code                  = 'on_web';
+				$r_dom                        = sanitize_html_class( $p_sku ? $p_sku : $pid );
+				$dedup_key                    = $p_sku ? $p_sku : $pid;
+				$seen_on_web_skus[ $dedup_key ] = true;
+				$all_on_web_items[]           = array(
+					'row_dom'     => $r_dom,
+					'wc_id'       => $matched_wid,
+					'pancake_id'  => 0 === strpos( $pid, 'wc_' ) ? '' : $pid,
+					'pancake_sku' => $p_sku,
+				);
 			} elseif ( $is_disc ) {
 				$p_stats['disconnected']++;
 				$status_code = 'disconnected';
@@ -5106,28 +5170,7 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		}
 		unset( $pi );
 		ksort( $all_categories );
-
-		// Also include any Website product that has a SKU/Pancake SKU not yet in $seen_on_web_skus
-		foreach ( $wc_products as $wrow ) {
-			if ( ! is_array( $wrow ) || empty( $wrow['id'] ) ) {
-				continue;
-			}
-			$cand_sku = strtoupper( trim( (string) ( $wrow['pancake_sku'] ?: $wrow['sku'] ) ) );
-			if ( '' !== $cand_sku && false !== strpos( $cand_sku, '-' ) ) {
-				$cand_sku = explode( '-', $cand_sku )[0];
-			}
-			$cand_pid = trim( (string) ( $wrow['pancake_id'] ?? '' ) );
-			$d_key    = '' !== $cand_sku ? $cand_sku : $cand_pid;
-			if ( '' !== $d_key && ! isset( $seen_on_web_skus[ $d_key ] ) ) {
-				$seen_on_web_skus[ $d_key ] = true;
-				$all_on_web_items[]         = array(
-					'row_dom'     => sanitize_html_class( $d_key ),
-					'wc_id'       => (int) $wrow['id'],
-					'pancake_id'  => $cand_pid,
-					'pancake_sku' => $cand_sku,
-				);
-			}
-		}
+		$p_stats['on_web'] = count( $all_on_web_items );
 		?>
 
 		<!-- TAB 1 STATS ROW -->
@@ -5536,7 +5579,9 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 							body: body.toString()
 						});
 						const text = await res.text();
-						const json = JSON.parse(text);
+						const startIdx = text.indexOf('{');
+						const cleanText = startIdx > 0 ? text.slice(startIdx) : text;
+						const json = JSON.parse(cleanText);
 						return json;
 					} catch (err) {
 						if (attempt === retries) throw err;
@@ -5549,7 +5594,8 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				const seen = new Set();
 				const out = [];
 				for (const it of (items || [])) {
-					const key = String(it.pancake_sku || it.pancake_id || it.wc_id || '').trim().toUpperCase();
+					const wcKey = Number(it.wc_id || 0) > 0 ? ('WC_' + Number(it.wc_id)) : '';
+					const key = wcKey || String(it.pancake_sku || it.pancake_id || '').trim().toUpperCase();
 					if (!key || seen.has(key)) continue;
 					seen.add(key);
 					out.push(it);
