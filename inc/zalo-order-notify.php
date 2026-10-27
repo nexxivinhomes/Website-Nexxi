@@ -31,16 +31,63 @@ function nexxi_kids_zalo_notify_settings() {
 		update_option( 'nexxi_zalo_bot_secret_token', $secret, false );
 	}
 	$bot_info = get_option( 'nexxi_zalo_bot_info', array() );
+	$start    = trim( (string) get_option( 'nexxi_zalo_active_start_time', '08:00' ) );
+	$end      = trim( (string) get_option( 'nexxi_zalo_active_end_time', '17:30' ) );
 	return array(
-		'enabled'          => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
-		'bot_token'        => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
-		'chat_ids'         => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
-		'send_photos'      => (string) get_option( 'nexxi_zalo_send_photos', '1' ),
-		'webhook_url'      => trim( (string) get_option( 'nexxi_zalo_webhook_url', '' ) ),
-		'webhook_auto_add' => (string) get_option( 'nexxi_zalo_webhook_auto_add', '0' ),
-		'secret_token'     => $secret,
-		'bot_info'         => is_array( $bot_info ) ? $bot_info : array(),
+		'enabled'              => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
+		'bot_token'            => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
+		'chat_ids'             => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
+		'send_photos'          => (string) get_option( 'nexxi_zalo_send_photos', '1' ),
+		'webhook_url'          => trim( (string) get_option( 'nexxi_zalo_webhook_url', '' ) ),
+		'webhook_auto_add'     => (string) get_option( 'nexxi_zalo_webhook_auto_add', '0' ),
+		'scan_interval'        => (string) get_option( 'nexxi_zalo_scan_interval', '0' ),
+		'active_hours_enabled' => (string) get_option( 'nexxi_zalo_active_hours_enabled', '0' ),
+		'active_start_time'    => '' !== $start ? $start : '08:00',
+		'active_end_time'      => '' !== $end ? $end : '17:30',
+		'secret_token'         => $secret,
+		'bot_info'             => is_array( $bot_info ) ? $bot_info : array(),
 	);
+}
+
+/**
+ * Convert "HH:MM" time string to minutes from 00:00 (0..1439).
+ *
+ * @param string $hhmm Time string in HH:MM format.
+ * @param int    $default Fallback minutes.
+ * @return int
+ */
+function nexxi_kids_zalo_time_to_minutes( $hhmm, $default = 480 ) {
+	if ( preg_match( '/^(\d{1,2}):(\d{2})/', trim( (string) $hhmm ), $m ) ) {
+		$h = max( 0, min( 23, (int) $m[1] ) );
+		$i = max( 0, min( 59, (int) $m[2] ) );
+		return $h * 60 + $i;
+	}
+	return $default;
+}
+
+/**
+ * Check if the current local time (WordPress timezone) is within the configured active notification hours.
+ *
+ * @param array|null $cfg Optional settings array.
+ * @return bool
+ */
+function nexxi_kids_zalo_is_within_active_hours( $cfg = null ) {
+	if ( ! is_array( $cfg ) ) {
+		$cfg = nexxi_kids_zalo_notify_settings();
+	}
+	if ( '1' !== (string) $cfg['active_hours_enabled'] ) {
+		return true;
+	}
+	$now_str   = wp_date( 'H:i' );
+	$now_min   = nexxi_kids_zalo_time_to_minutes( $now_str, 0 );
+	$start_min = nexxi_kids_zalo_time_to_minutes( $cfg['active_start_time'], 480 );
+	$end_min   = nexxi_kids_zalo_time_to_minutes( $cfg['active_end_time'], 1050 );
+
+	if ( $start_min <= $end_min ) {
+		return ( $now_min >= $start_min && $now_min <= $end_min );
+	}
+	// Overnight window (e.g. 20:00 -> 06:00).
+	return ( $now_min >= $start_min || $now_min <= $end_min );
 }
 
 /**
@@ -540,6 +587,7 @@ function nexxi_kids_send_zalo_order_notification( $order_or_id, $force = false )
 
 	if ( $sent > 0 ) {
 		$order->update_meta_data( '_nexxi_zalo_warehouse_notified', 'yes' );
+		$order->update_meta_data( '_nexxi_zalo_warehouse_pending', 'no' );
 		$order->update_meta_data( '_nexxi_zalo_warehouse_notified_at', current_time( 'mysql' ) );
 		$order->save_meta_data();
 		$order->add_order_note( sprintf( 'NEXXI Kho Zalo: Đã gửi thông báo đóng hàng tới %d kênh Zalo/Webhook.', $sent ) );
@@ -551,23 +599,203 @@ function nexxi_kids_send_zalo_order_notification( $order_or_id, $force = false )
 	);
 }
 
+/**
+ * Retrieve orders currently waiting in the queue to be notified via Zalo.
+ *
+ * @param int $limit Max orders to fetch.
+ * @return WC_Order[]
+ */
+function nexxi_kids_get_pending_zalo_orders( $limit = 30 ) {
+	if ( ! function_exists( 'wc_get_orders' ) ) {
+		return array();
+	}
+	$orders = wc_get_orders(
+		array(
+			'status'     => array( 'wc-pending', 'wc-processing', 'wc-on-hold', 'wc-completed' ),
+			'limit'      => max( 1, (int) $limit ),
+			'orderby'    => 'date',
+			'order'      => 'ASC',
+			'meta_key'   => '_nexxi_zalo_warehouse_pending',
+			'meta_value' => 'yes',
+		)
+	);
+	$out = array();
+	foreach ( (array) $orders as $ord ) {
+		if ( $ord instanceof WC_Order && 'yes' !== (string) $ord->get_meta( '_nexxi_zalo_warehouse_notified' ) ) {
+			$out[] = $ord;
+		}
+	}
+	return $out;
+}
+
+/**
+ * Scan and send Zalo notifications for all pending orders in the queue.
+ * Respects active hours unless `$force_manual` is true.
+ *
+ * @param bool $force_manual True when triggered manually by Admin button.
+ * @return array{processed:int,sent_orders:int,skipped_hours:bool,errors:string[]}
+ */
+function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
+	$cfg = nexxi_kids_zalo_notify_settings();
+	if ( ! $force_manual && '1' !== $cfg['enabled'] ) {
+		return array(
+			'processed'     => 0,
+			'sent_orders'   => 0,
+			'skipped_hours' => false,
+			'errors'        => array(),
+		);
+	}
+
+	if ( ! $force_manual && ! nexxi_kids_zalo_is_within_active_hours( $cfg ) ) {
+		return array(
+			'processed'     => 0,
+			'sent_orders'   => 0,
+			'skipped_hours' => true,
+			'errors'        => array(),
+		);
+	}
+
+	update_option( 'nexxi_zalo_last_scan_ts', time(), false );
+	update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
+
+	$pending     = nexxi_kids_get_pending_zalo_orders( 25 );
+	$sent_orders = 0;
+	$errors      = array();
+
+	foreach ( $pending as $order ) {
+		$res = nexxi_kids_send_zalo_order_notification( $order, $force_manual );
+		if ( ! empty( $res['sent'] ) && $res['sent'] > 0 ) {
+			++$sent_orders;
+		}
+		if ( ! empty( $res['errors'] ) ) {
+			$errors = array_merge( $errors, $res['errors'] );
+		}
+	}
+
+	return array(
+		'processed'     => count( $pending ),
+		'sent_orders'   => $sent_orders,
+		'skipped_hours' => false,
+		'errors'        => $errors,
+	);
+}
+
+/**
+ * Queue a newly placed order and either send immediately (if interval=0 and within active hours)
+ * or leave in queue for the scheduled scanner.
+ *
+ * @param int|WC_Order $order_or_id Order ID or WC_Order object.
+ */
+function nexxi_kids_handle_new_order_zalo_queue( $order_or_id ) {
+	$order = $order_or_id instanceof WC_Order ? $order_or_id : wc_get_order( (int) $order_or_id );
+	if ( ! $order instanceof WC_Order ) {
+		return;
+	}
+	if ( 'yes' === (string) $order->get_meta( '_nexxi_zalo_warehouse_notified' ) ) {
+		return;
+	}
+
+	$order->update_meta_data( '_nexxi_zalo_warehouse_pending', 'yes' );
+	$order->save_meta_data();
+
+	$cfg = nexxi_kids_zalo_notify_settings();
+	if ( '1' !== $cfg['enabled'] ) {
+		return;
+	}
+
+	$interval_min = (int) $cfg['scan_interval'];
+	$in_hours     = nexxi_kids_zalo_is_within_active_hours( $cfg );
+
+	// Send immediately ONLY if interval is set to Instant (0) AND current time is within active hours.
+	if ( $interval_min <= 0 && $in_hours ) {
+		nexxi_kids_send_zalo_order_notification( $order, false );
+	} else {
+		$reason = ! $in_hours
+			? sprintf( 'đặt ngoài khung giờ hoạt động (%s – %s)', $cfg['active_start_time'], $cfg['active_end_time'] )
+			: sprintf( 'chờ chu kỳ quét định kỳ (%d phút/lần)', $interval_min );
+		$order->add_order_note( 'NEXXI Kho Zalo: Đơn hàng đã được lưu vào hàng đợi (' . $reason . ') để gửi thông báo Zalo cho Kho.' );
+	}
+}
+
 // Trigger automatically when a new order is placed on Checkout.
-add_action(
-	'woocommerce_checkout_order_processed',
-	static function ( $order_id ) {
-		nexxi_kids_send_zalo_order_notification( $order_id, false );
-	},
-	25,
-	1
+add_action( 'woocommerce_checkout_order_processed', 'nexxi_kids_handle_new_order_zalo_queue', 25, 1 );
+add_action( 'woocommerce_store_api_checkout_order_processed', 'nexxi_kids_handle_new_order_zalo_queue', 25, 1 );
+
+/**
+ * Register custom WP-Cron intervals & background scanner for Zalo order notifications.
+ */
+add_filter(
+	'cron_schedules',
+	static function ( $schedules ) {
+		$mins = array( 5, 15, 30, 60, 120, 180 );
+		foreach ( $mins as $m ) {
+			$key = 'nexxi_zalo_every_' . $m . 'm';
+			if ( ! isset( $schedules[ $key ] ) ) {
+				$schedules[ $key ] = array(
+					'interval' => $m * MINUTE_IN_SECONDS,
+					'display'  => sprintf( 'Mỗi %d phút (NEXXI Zalo Kho)', $m ),
+				);
+			}
+		}
+		return $schedules;
+	}
 );
 
 add_action(
-	'woocommerce_store_api_checkout_order_processed',
-	static function ( $order ) {
-		nexxi_kids_send_zalo_order_notification( $order, false );
+	'nexxi_zalo_order_scan_cron_event',
+	static function () {
+		nexxi_kids_run_zalo_order_scan( false );
+	}
+);
+
+/**
+ * Ensure WP-Cron schedule matches settings, and also run a lightweight timestamp check
+ * on `wp_loaded` so scans happen reliably on schedule even when page cache is active.
+ */
+function nexxi_kids_sync_zalo_scan_cron() {
+	$cfg          = nexxi_kids_zalo_notify_settings();
+	$interval_min = (int) $cfg['scan_interval'];
+	$eff_min      = $interval_min > 0 ? $interval_min : 15; // Even in instant mode, scan every 15m to flush overnight orders when active hours start.
+	$allowed      = array( 5, 15, 30, 60, 120, 180 );
+	if ( ! in_array( $eff_min, $allowed, true ) ) {
+		$eff_min = 15;
+	}
+	$sched_key = 'nexxi_zalo_every_' . $eff_min . 'm';
+	$hook      = 'nexxi_zalo_order_scan_cron_event';
+
+	if ( '1' === $cfg['enabled'] ) {
+		$current_sched = wp_get_schedule( $hook );
+		if ( $current_sched !== $sched_key ) {
+			wp_clear_scheduled_hook( $hook );
+			wp_schedule_event( time() + 60, $sched_key, $hook );
+		}
+	} else {
+		if ( wp_next_scheduled( $hook ) ) {
+			wp_clear_scheduled_hook( $hook );
+		}
+	}
+}
+add_action( 'init', 'nexxi_kids_sync_zalo_scan_cron', 20 );
+
+add_action(
+	'wp_loaded',
+	static function () {
+		if ( wp_doing_ajax() || wp_doing_cron() ) {
+			return;
+		}
+		$cfg = nexxi_kids_zalo_notify_settings();
+		if ( '1' !== $cfg['enabled'] || ! nexxi_kids_zalo_is_within_active_hours( $cfg ) ) {
+			return;
+		}
+		$interval_min = (int) $cfg['scan_interval'];
+		$eff_sec      = ( $interval_min > 0 ? $interval_min : 15 ) * MINUTE_IN_SECONDS;
+		$last_ts      = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
+		if ( ( time() - $last_ts ) >= $eff_sec ) {
+			update_option( 'nexxi_zalo_last_scan_ts', time(), false );
+			nexxi_kids_run_zalo_order_scan( false );
+		}
 	},
-	25,
-	1
+	30
 );
 
 /**
@@ -810,6 +1038,41 @@ add_action(
 			);
 		}
 
+		// 4. Manually scan & send all pending un-notified orders right now.
+		if ( 'scan_pending_orders' === $sub_action ) {
+			$scan_res  = nexxi_kids_run_zalo_order_scan( true );
+			$rem_count = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
+			$last_time = (string) get_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ) );
+
+			if ( $scan_res['processed'] <= 0 ) {
+				wp_send_json_success(
+					array(
+						'message'       => '✔️ Đã quét kiểm tra: Hiện không có đơn hàng mới nào đang chờ gửi thông báo trong hàng đợi.',
+						'pending_count' => $rem_count,
+						'last_scan'     => $last_time,
+					)
+				);
+			}
+
+			if ( $scan_res['sent_orders'] > 0 ) {
+				wp_send_json_success(
+					array(
+						'message'       => sprintf( '🚀 Đã quét và gửi thông báo thành công cho %d/%d đơn hàng đang chờ vào Zalo Kho!', $scan_res['sent_orders'], $scan_res['processed'] ),
+						'pending_count' => $rem_count,
+						'last_scan'     => $last_time,
+					)
+				);
+			}
+
+			wp_send_json_error(
+				array(
+					'message'       => 'Không thể gửi thông báo cho đơn đang chờ. Chi tiết: ' . implode( '; ', $scan_res['errors'] ),
+					'pending_count' => $rem_count,
+					'last_scan'     => $last_time,
+				)
+			);
+		}
+
 		wp_send_json_error( array( 'message' => 'Thao tác không hợp lệ.' ) );
 	}
 );
@@ -829,13 +1092,31 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 		update_option( 'nexxi_zalo_chat_ids', sanitize_textarea_field( wp_unslash( $_POST['nexxi_zalo_chat_ids'] ?? '' ) ) );
 		update_option( 'nexxi_zalo_send_photos', isset( $_POST['nexxi_zalo_send_photos'] ) ? '1' : '0' );
 		update_option( 'nexxi_zalo_webhook_url', esc_url_raw( wp_unslash( $_POST['nexxi_zalo_webhook_url'] ?? '' ) ) );
+
+		$interval_val = sanitize_text_field( wp_unslash( $_POST['nexxi_zalo_scan_interval'] ?? '0' ) );
+		if ( ! in_array( $interval_val, array( '0', '5', '15', '30', '60', '120', '180' ), true ) ) {
+			$interval_val = '0';
+		}
+		update_option( 'nexxi_zalo_scan_interval', $interval_val );
+
+		update_option( 'nexxi_zalo_active_hours_enabled', isset( $_POST['nexxi_zalo_active_hours_enabled'] ) ? '1' : '0' );
+		$start_t = sanitize_text_field( wp_unslash( $_POST['nexxi_zalo_active_start_time'] ?? '08:00' ) );
+		$end_t   = sanitize_text_field( wp_unslash( $_POST['nexxi_zalo_active_end_time'] ?? '17:30' ) );
+		update_option( 'nexxi_zalo_active_start_time', preg_match( '/^\d{1,2}:\d{2}$/', $start_t ) ? $start_t : '08:00' );
+		update_option( 'nexxi_zalo_active_end_time', preg_match( '/^\d{1,2}:\d{2}$/', $end_t ) ? $end_t : '17:30' );
+
+		nexxi_kids_sync_zalo_scan_cron();
 		$saved = true;
 	}
 
-	$cfg         = nexxi_kids_zalo_notify_settings();
-	$known_chats = get_option( 'nexxi_zalo_known_chats', array() );
-	$known_chats = is_array( $known_chats ) ? $known_chats : array();
-	$nonce       = wp_create_nonce( 'nexxi_zalo_admin_nonce' );
+	$cfg           = nexxi_kids_zalo_notify_settings();
+	$known_chats   = get_option( 'nexxi_zalo_known_chats', array() );
+	$known_chats   = is_array( $known_chats ) ? $known_chats : array();
+	$pending_cnt   = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
+	$last_scan_str = (string) get_option( 'nexxi_zalo_last_scan_time', 'Chưa quét lần nào' );
+	$in_hours_now  = nexxi_kids_zalo_is_within_active_hours( $cfg );
+	$now_hm        = wp_date( 'H:i' );
+	$nonce         = wp_create_nonce( 'nexxi_zalo_admin_nonce' );
 	?>
 	<div class="wrap" style="max-width:960px;margin-top:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 		<div style="background:linear-gradient(135deg,#031444 0%,#0068FF 100%);color:#fff;padding:24px 28px;border-radius:16px;box-shadow:0 10px 28px rgba(3,20,68,0.15);margin-bottom:20px;">
@@ -926,7 +1207,70 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 				</tr>
 
 				<tr>
-					<th scope="row">3. Gửi kèm ảnh sản phẩm</th>
+					<th scope="row"><label for="nexxi_zalo_scan_interval">3. Tần suất quét &amp; thông báo đơn hàng</label></th>
+					<td>
+						<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
+							<select name="nexxi_zalo_scan_interval" id="nexxi_zalo_scan_interval" style="min-width:300px;padding:6px 12px;border-radius:8px;font-weight:600;color:#031444;">
+								<option value="0" <?php selected( '0', $cfg['scan_interval'] ); ?>>⚡ Thông báo tức thì ngay khi khách đặt đơn (0 phút)</option>
+								<option value="5" <?php selected( '5', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 5 phút</option>
+								<option value="15" <?php selected( '15', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 15 phút</option>
+								<option value="30" <?php selected( '30', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 30 phút</option>
+								<option value="60" <?php selected( '60', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 1 giờ (60 phút)</option>
+								<option value="120" <?php selected( '120', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 2 giờ (120 phút)</option>
+								<option value="180" <?php selected( '180', $cfg['scan_interval'] ); ?>>⏱️ Quét &amp; thông báo mỗi 3 giờ (180 phút)</option>
+							</select>
+
+							<button type="button" id="btn-nexxi-zalo-scan-orders" class="button button-secondary" style="background:#fff4f0;border-color:#fd6a49;color:#ae3115;font-weight:700;padding:4px 14px;border-radius:8px;">
+								🔄 Quét &amp; Gửi Ngay Các Đơn Đang Chờ (<span id="nexxi-zalo-pending-cnt"><?php echo (int) $pending_cnt; ?></span> đơn)
+							</button>
+						</div>
+						<p class="description" style="margin-top:6px;">
+							Chọn chu kỳ hệ thống tự động quét các đơn hàng mới phát sinh để bắn thông báo vào Group Zalo Kho.
+							<br/>• Lần quét gần nhất: <strong id="nexxi-zalo-last-scan"><?php echo esc_html( $last_scan_str ); ?></strong>
+						</p>
+					</td>
+				</tr>
+
+				<tr>
+					<th scope="row">4. Thời gian hoạt động của thông báo</th>
+					<td>
+						<div style="margin-bottom:10px;">
+							<label style="font-weight:600;color:#031444;">
+								<input type="checkbox" name="nexxi_zalo_active_hours_enabled" id="nexxi_zalo_active_hours_enabled" value="1" <?php checked( '1', $cfg['active_hours_enabled'] ); ?> />
+								Bật giới hạn khung giờ hoạt động thông báo trong ngày (Tránh báo đơn làm phiền Kho vào ban đêm)
+							</label>
+						</div>
+
+						<div id="nexxi-zalo-hours-wrap" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#f5f3ef;border-radius:10px;max-width:560px;<?php echo '1' === $cfg['active_hours_enabled'] ? '' : 'opacity:0.65;'; ?>">
+							<span style="font-weight:700;color:#031444;">Hoạt động từ:</span>
+							<input type="time" name="nexxi_zalo_active_start_time" id="nexxi_zalo_active_start_time" value="<?php echo esc_attr( $cfg['active_start_time'] ); ?>" style="padding:4px 10px;border-radius:8px;font-weight:700;color:#031444;" />
+							<span style="font-weight:700;color:#031444;">đến:</span>
+							<input type="time" name="nexxi_zalo_active_end_time" id="nexxi_zalo_active_end_time" value="<?php echo esc_attr( $cfg['active_end_time'] ); ?>" style="padding:4px 10px;border-radius:8px;font-weight:700;color:#031444;" />
+
+							<?php if ( '1' === $cfg['active_hours_enabled'] ) : ?>
+								<?php if ( $in_hours_now ) : ?>
+									<span style="background:#e6f6ec;color:#0d5324;border:1px solid #34a853;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
+										🟢 Đang trong giờ hoạt động (Hiện tại: <?php echo esc_html( $now_hm ); ?>)
+									</span>
+								<?php else : ?>
+									<span style="background:#fff4e5;color:#8c4b00;border:1px solid #f59e0b;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
+										🌙 Ngoài giờ hoạt động (Hiện tại: <?php echo esc_html( $now_hm ); ?>)
+									</span>
+								<?php endif; ?>
+							<?php else : ?>
+								<span style="background:#eef4ff;color:#0068FF;border:1px solid #0068FF;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;">
+									🌐 Đang hoạt động 24/24
+								</span>
+							<?php endif; ?>
+						</div>
+						<p class="description" style="margin-top:6px;">
+							Các đơn hàng khách đặt <strong>ngoài khung giờ hoạt động</strong> (ví dụ ban đêm) sẽ được hệ thống <strong>tự động lưu vào hàng đợi</strong> và gửi thông báo vào Group Zalo Kho ngay khi bắt đầu khung giờ hoạt động ngày hôm sau!
+						</p>
+					</td>
+				</tr>
+
+				<tr>
+					<th scope="row">5. Gửi kèm ảnh sản phẩm</th>
 					<td>
 						<label style="font-weight:600;color:#031444;">
 							<input type="checkbox" name="nexxi_zalo_send_photos" value="1" <?php checked( '1', $cfg['send_photos'] ); ?> />
@@ -936,7 +1280,7 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 				</tr>
 
 				<tr>
-					<th scope="row"><label for="nexxi_zalo_webhook_url">4. Webhook phụ trợ (Tùy chọn)</label></th>
+					<th scope="row"><label for="nexxi_zalo_webhook_url">6. Webhook phụ trợ (Tùy chọn)</label></th>
 					<td>
 						<input name="nexxi_zalo_webhook_url" id="nexxi_zalo_webhook_url" type="url" value="<?php echo esc_attr( $cfg['webhook_url'] ); ?>" class="regular-text" style="width:100%;max-width:560px;" placeholder="https://... (nếu bạn dùng thêm n8n / Make / Google Sheet)" />
 						<p class="description">Để trống nếu bạn chỉ gửi trực tiếp qua Zalo Bot Token ở mục 1 &amp; 2.</p>
@@ -1020,6 +1364,14 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 					if (res.data.chat_ids && chatIdsInput) {
 						chatIdsInput.value = res.data.chat_ids;
 					}
+					if (typeof res.data.pending_count !== 'undefined') {
+						const pEl = document.getElementById('nexxi-zalo-pending-cnt');
+						if (pEl) pEl.textContent = res.data.pending_count;
+					}
+					if (res.data.last_scan) {
+						const lEl = document.getElementById('nexxi-zalo-last-scan');
+						if (lEl) lEl.textContent = res.data.last_scan;
+					}
 					showNotice(res.data.message || 'Thành công!', true);
 				} else {
 					showNotice((res && res.data && res.data.message) ? res.data.message : 'Có lỗi xảy ra.', false);
@@ -1054,6 +1406,21 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 		if (testBtn) {
 			testBtn.addEventListener('click', function() {
 				runAction('send_test', testBtn, '⏳ Đang gửi tin nhắn Test vào Zalo...');
+			});
+		}
+
+		const scanOrdersBtn = document.getElementById('btn-nexxi-zalo-scan-orders');
+		if (scanOrdersBtn) {
+			scanOrdersBtn.addEventListener('click', function() {
+				runAction('scan_pending_orders', scanOrdersBtn, '⏳ Đang quét & gửi các đơn chờ...');
+			});
+		}
+
+		const hoursChk = document.getElementById('nexxi_zalo_active_hours_enabled');
+		const hoursWrap = document.getElementById('nexxi-zalo-hours-wrap');
+		if (hoursChk && hoursWrap) {
+			hoursChk.addEventListener('change', function() {
+				hoursWrap.style.opacity = hoursChk.checked ? '1' : '0.65';
 			});
 		}
 
