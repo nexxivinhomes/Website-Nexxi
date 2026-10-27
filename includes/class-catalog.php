@@ -110,11 +110,14 @@ final class Nexxi_Kids_Catalog {
 			}
 		}
 		$taxonomy = wc_attribute_taxonomy_name( $slug );
-		$terms = wc_get_product_terms( $product->get_id(), $taxonomy, array( 'fields' => 'all' ) );
+		$terms = get_the_terms( $product->get_id(), $taxonomy );
+		if ( ! is_array( $terms ) ) {
+			return array();
+		}
 		if ( 'size' === $slug ) {
 			usort( $terms, static function ( $a, $b ) { return self::size_number( $a->slug ) <=> self::size_number( $b->slug ); } );
 		}
-		return is_array( $terms ) ? $terms : array();
+		return $terms;
 	}
 
 	/** 'size', 'color' or '' guessed from an attribute name / label (Vietnamese or English). */
@@ -149,8 +152,11 @@ final class Nexxi_Kids_Catalog {
 			if ( $role ) { $taken[ $role ] = true; }
 			$options = array();
 			if ( $attribute->is_taxonomy() ) {
-				foreach ( wc_get_product_terms( $product->get_id(), $name, array( 'fields' => 'all' ) ) as $term ) {
-					$options[] = array( 'value' => $term->slug, 'name' => $term->name, 'term_id' => $term->term_id, 'hex' => 'color' === $role ? self::color_hex( $term ) : '' );
+				$cached_terms = get_the_terms( $product->get_id(), $name );
+				if ( is_array( $cached_terms ) ) {
+					foreach ( $cached_terms as $term ) {
+						$options[] = array( 'value' => $term->slug, 'name' => $term->name, 'term_id' => $term->term_id, 'hex' => 'color' === $role ? self::color_hex( $term ) : '' );
+					}
 				}
 			} else {
 				foreach ( $attribute->get_options() as $option ) {
@@ -191,15 +197,18 @@ final class Nexxi_Kids_Catalog {
 	}
 
 	/** Compact variation payload consumed by the storefront scripts (fast postmeta batch read, 0 WC_Product_Variation instantiations). */
-	public static function variation_payload( WC_Product $product ) {
-		static $cache = array();
+	public static function variation_payload( WC_Product $product, $include_images = true ) {
+		static $cache_full  = array();
+		static $cache_light = array();
 		if ( ! $product->is_type( 'variable' ) ) { return array(); }
 		$pid = $product->get_id();
-		if ( isset( $cache[ $pid ] ) ) { return $cache[ $pid ]; }
+		if ( isset( $cache_full[ $pid ] ) ) { return $cache_full[ $pid ]; }
+		if ( ! $include_images && isset( $cache_light[ $pid ] ) ) { return $cache_light[ $pid ]; }
 
 		$children = array_values( array_filter( array_map( 'absint', (array) $product->get_children() ) ) );
 		if ( empty( $children ) ) {
-			$cache[ $pid ] = array();
+			$cache_full[ $pid ]  = array();
+			$cache_light[ $pid ] = array();
 			return array();
 		}
 
@@ -209,16 +218,18 @@ final class Nexxi_Kids_Catalog {
 		$defs = self::variation_attributes( $product );
 		$rows = array();
 
-		// Prime attachment meta cache for all variation thumbnails in 1 single SQL query
-		$thumb_ids = array();
-		foreach ( $children as $child_id ) {
-			$tid = (int) get_post_meta( $child_id, '_thumbnail_id', true );
-			if ( $tid > 0 ) {
-				$thumb_ids[ $tid ] = $tid;
+		// Only prime variation thumbnail attachment meta when full images are requested (Single Product Page)
+		if ( $include_images ) {
+			$thumb_ids = array();
+			foreach ( $children as $child_id ) {
+				$tid = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+				if ( $tid > 0 ) {
+					$thumb_ids[ $tid ] = $tid;
+				}
 			}
-		}
-		if ( ! empty( $thumb_ids ) ) {
-			update_meta_cache( 'post', array_values( $thumb_ids ) );
+			if ( ! empty( $thumb_ids ) ) {
+				update_meta_cache( 'post', array_values( $thumb_ids ) );
+			}
 		}
 
 		foreach ( $children as $child_id ) {
@@ -258,8 +269,11 @@ final class Nexxi_Kids_Catalog {
 			$stock_status = (string) get_post_meta( $child_id, '_stock_status', true );
 			$in_stock     = $manage_stock ? ( $stock_qty > 0 || 'notify' === get_post_meta( $child_id, '_backorders', true ) || 'yes' === get_post_meta( $child_id, '_backorders', true ) ) : ( 'outofstock' !== $stock_status );
 
-			$tid   = (int) get_post_meta( $child_id, '_thumbnail_id', true );
-			$image = $tid > 0 ? wp_get_attachment_image_url( $tid, 'large' ) : '';
+			$image = '';
+			if ( $include_images ) {
+				$tid   = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+				$image = $tid > 0 ? wp_get_attachment_image_url( $tid, 'large' ) : '';
+			}
 
 			$rows[] = array(
 				'id'      => $child_id,
@@ -275,7 +289,11 @@ final class Nexxi_Kids_Catalog {
 				'image'   => $image ? $image : '',
 			);
 		}
-		$cache[ $pid ] = $rows;
+		if ( $include_images ) {
+			$cache_full[ $pid ] = $rows;
+		} else {
+			$cache_light[ $pid ] = $rows;
+		}
 		return $rows;
 	}
 
@@ -283,7 +301,7 @@ final class Nexxi_Kids_Catalog {
 	public static function stock_left( WC_Product $product ) {
 		if ( $product->is_type( 'variable' ) ) {
 			$total = null;
-			foreach ( self::variation_payload( $product ) as $row ) {
+			foreach ( self::variation_payload( $product, false ) as $row ) {
 				if ( null !== $row['stock'] ) { $total = (int) $total + max( 0, $row['stock'] ); }
 			}
 			return $total;
@@ -295,7 +313,7 @@ final class Nexxi_Kids_Catalog {
 	public static function discount_percent( WC_Product $product ) {
 		if ( ! $product->is_on_sale() ) { return 0; }
 		$best = 0;
-		$items = $product->is_type( 'variable' ) ? self::variation_payload( $product ) : array( array( 'price' => (float) $product->get_price(), 'regular' => (float) $product->get_regular_price() ) );
+		$items = $product->is_type( 'variable' ) ? self::variation_payload( $product, false ) : array( array( 'price' => (float) $product->get_price(), 'regular' => (float) $product->get_regular_price() ) );
 		foreach ( $items as $row ) {
 			if ( $row['regular'] > 0 && $row['price'] < $row['regular'] ) { $best = max( $best, (int) round( ( 1 - $row['price'] / $row['regular'] ) * 100 ) ); }
 		}
