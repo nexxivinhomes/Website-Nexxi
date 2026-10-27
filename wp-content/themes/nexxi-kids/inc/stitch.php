@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261027_speed_opt_v19';
+	$purge_ver = '20261027_price_sync_v20';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// One-time sync of legacy plugin files on live server to prevent duplicate class/file loads
@@ -60,6 +60,72 @@ add_action( 'init', static function () {
 				@file_put_contents( $commerce_main_file, $c_src );
 				if ( function_exists( 'opcache_invalidate' ) ) {
 					@opcache_invalidate( $commerce_main_file, true );
+				}
+			}
+		}
+		// One-time repair for any variable products whose variations had 0/empty price on Pancake POS (e.g. 2TLSFR2H01)
+		global $wpdb;
+		$var_rows = $wpdb->get_results(
+			"SELECT v.ID AS var_id, v.post_parent AS parent_id,
+			        pm_reg.meta_value AS reg_price, pm_pri.meta_value AS act_price
+			 FROM {$wpdb->posts} v
+			 LEFT JOIN {$wpdb->postmeta} pm_reg ON v.ID = pm_reg.post_id AND pm_reg.meta_key = '_regular_price'
+			 LEFT JOIN {$wpdb->postmeta} pm_pri ON v.ID = pm_pri.post_id AND pm_pri.meta_key = '_price'
+			 WHERE v.post_type = 'product_variation' AND v.post_status IN ('publish', 'private')"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( $var_rows ) {
+			$by_parent = array();
+			foreach ( $var_rows as $vr ) {
+				$pid = (int) $vr->parent_id;
+				if ( $pid <= 0 ) {
+					continue;
+				}
+				$by_parent[ $pid ][] = array(
+					'vid' => (int) $vr->var_id,
+					'reg' => (float) $vr->reg_price,
+					'pri' => (float) $vr->act_price,
+				);
+			}
+			$p_maps = null;
+			foreach ( $by_parent as $pid => $vlist ) {
+				$min_valid_reg = 0.0;
+				$missing_vids  = array();
+				foreach ( $vlist as $vi ) {
+					$r = $vi['reg'] > 0 ? $vi['reg'] : $vi['pri'];
+					if ( $r > 0 ) {
+						if ( $min_valid_reg <= 0 || $r < $min_valid_reg ) {
+							$min_valid_reg = $r;
+						}
+					} else {
+						$missing_vids[] = $vi['vid'];
+					}
+				}
+				if ( empty( $missing_vids ) ) {
+					continue;
+				}
+				if ( $min_valid_reg <= 0 && class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ) {
+					if ( null === $p_maps ) {
+						$p_cat  = Nexxi_Pancake_Sync_Manager_V4::get_pancake_catalog( false );
+						$p_maps = Nexxi_Pancake_Sync_Manager_V4::build_lookup_maps( $p_cat );
+					}
+					$p_sku = strtoupper( trim( (string) ( get_post_meta( $pid, '_nexxi_pancake_sku', true ) ?: get_post_meta( $pid, '_sku', true ) ) ) );
+					if ( '' !== $p_sku && isset( $p_maps['by_sku'][ $p_sku ]['min_price'] ) ) {
+						$min_valid_reg = (float) $p_maps['by_sku'][ $p_sku ]['min_price'];
+					}
+				}
+				if ( $min_valid_reg > 0 ) {
+					$p_str = (string) round( $min_valid_reg );
+					foreach ( $missing_vids as $mvid ) {
+						update_post_meta( $mvid, '_regular_price', $p_str );
+						update_post_meta( $mvid, '_price', $p_str );
+					}
+					if ( (float) get_post_meta( $pid, '_price', true ) <= 0 ) {
+						update_post_meta( $pid, '_price', $p_str );
+					}
+					if ( function_exists( 'wc_delete_product_transients' ) ) {
+						wc_delete_product_transients( $pid );
+					}
+					clean_post_cache( $pid );
 				}
 			}
 		}

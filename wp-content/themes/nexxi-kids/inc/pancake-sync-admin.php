@@ -466,13 +466,34 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			if ( ! is_array( $p ) ) {
 				continue;
 			}
-			// Recalculate stock strictly according to the active Pancake warehouse if per-warehouse data is present
+			// Recalculate stock strictly according to the active Pancake warehouse if per-warehouse data is present,
+			// and fill any missing/zero variation prices from same-size sibling variations or product min_price
 			if ( ! empty( $p['variations'] ) && is_array( $p['variations'] ) ) {
-				$recalc_total = 0;
+				$recalc_total  = 0;
+				$price_by_size = array();
+				foreach ( $p['variations'] as $pv_scan ) {
+					$scan_p = (float) ( $pv_scan['price'] ?? 0 );
+					$scan_s = strtolower( trim( (string) ( $pv_scan['size'] ?? '' ) ) );
+					if ( $scan_p > 0 ) {
+						if ( '' !== $scan_s && ! isset( $price_by_size[ $scan_s ] ) ) {
+							$price_by_size[ $scan_s ] = $scan_p;
+						}
+						if ( empty( $p['min_price'] ) || $scan_p < (float) $p['min_price'] ) {
+							$p['min_price'] = $scan_p;
+						}
+						if ( $scan_p > (float) ( $p['max_price'] ?? 0 ) ) {
+							$p['max_price'] = $scan_p;
+						}
+					}
+				}
 				foreach ( $p['variations'] as &$pv ) {
 					if ( isset( $pv['warehouses'] ) && is_array( $pv['warehouses'] ) ) {
 						$wh_res      = self::extract_variation_warehouse_stock( $pv, $warehouse_id );
 						$pv['stock'] = $wh_res['stock'];
+					}
+					if ( (float) ( $pv['price'] ?? 0 ) <= 0 && ! empty( $p['min_price'] ) ) {
+						$s_k         = strtolower( trim( (string) ( $pv['size'] ?? '' ) ) );
+						$pv['price'] = ( '' !== $s_k && isset( $price_by_size[ $s_k ] ) ) ? $price_by_size[ $s_k ] : (float) $p['min_price'];
 					}
 					$recalc_total += max( 0, (int) ( $pv['stock'] ?? 0 ) );
 				}
@@ -846,13 +867,27 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			);
 		}
 
-		// Second pass: if some variations of the same color didn't have images[0] set on Pancake, inherit from class_images[color_key]
+		// Second pass:
+		// 1) If some variations of the same color didn't have images[0] set on Pancake, inherit from class_images[color_key].
+		// 2) If some variations on Pancake POS have retail_price = 0 / None (e.g. 0đ - 300.000đ on Pancake), inherit the price of the same size or product min_price.
+		$price_by_size = array();
+		foreach ( $item['variations'] as $v_scan ) {
+			$sp = (float) ( $v_scan['price'] ?? 0 );
+			$ss = strtolower( trim( (string) ( $v_scan['size'] ?? '' ) ) );
+			if ( $sp > 0 && '' !== $ss && ! isset( $price_by_size[ $ss ] ) ) {
+				$price_by_size[ $ss ] = $sp;
+			}
+		}
 		foreach ( $item['variations'] as &$v_entry ) {
 			if ( empty( $v_entry['image'] ) && ! empty( $v_entry['color_key'] ) && ! empty( $item['class_images'][ $v_entry['color_key'] ]['image'] ) ) {
 				$v_entry['image'] = $item['class_images'][ $v_entry['color_key'] ]['image'];
 				if ( ! empty( $v_entry['sku'] ) ) {
 					$item['var_images'][ strtoupper( $v_entry['sku'] ) ] = $v_entry['image'];
 				}
+			}
+			if ( (float) ( $v_entry['price'] ?? 0 ) <= 0 && (float) $item['min_price'] > 0 ) {
+				$s_key            = strtolower( trim( (string) ( $v_entry['size'] ?? '' ) ) );
+				$v_entry['price'] = ( '' !== $s_key && isset( $price_by_size[ $s_key ] ) ) ? $price_by_size[ $s_key ] : (float) $item['min_price'];
 			}
 		}
 		unset( $v_entry );
@@ -2077,6 +2112,20 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					$result['stock_updated']++;
 				}
 
+				// Ensure any Website variation with missing/zero price inherits its price from Pancake
+				$cur_v_reg = (float) get_post_meta( $child_id, '_regular_price', true );
+				$cur_v_pri = (float) get_post_meta( $child_id, '_price', true );
+				$pv_price  = $matched_pv && (float) ( $matched_pv['price'] ?? 0 ) > 0 ? (float) $matched_pv['price'] : (float) ( $pancake_item['min_price'] ?? 0 );
+				if ( $pv_price > 0 && ( $cur_v_reg <= 0 || $cur_v_pri <= 0 ) ) {
+					$p_str = (string) $pv_price;
+					if ( $cur_v_reg <= 0 ) {
+						update_post_meta( $child_id, '_regular_price', $p_str );
+					}
+					if ( $cur_v_pri <= 0 ) {
+						update_post_meta( $child_id, '_price', $p_str );
+					}
+				}
+
 				$wc_children_matched[ $child_id ] = array(
 					'v_sku'      => $v_sku,
 					'wc_c_key'   => $wc_c_key,
@@ -2916,38 +2965,55 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		// Check if this SKU already exists on the Website BEFORE making any remote API calls
 		$existing_prod = self::find_existing_wc_product_for_pancake( $pancake_item );
 		if ( $existing_prod && ! empty( $opts['skip_existing'] ) ) {
-			$wc_id      = $existing_prod->get_id();
-			$parent_sku = $lookup_sku ?: (string) $existing_prod->get_sku();
-			$prod_name  = trim( (string) ( $pancake_item['name'] ?? $existing_prod->get_name() ) );
-
-			// Ensure SKU & Pancake link metadata are recorded on the existing product
-			if ( '' !== $lookup_sku && '' === trim( (string) $existing_prod->get_sku() ) ) {
-				update_post_meta( $wc_id, '_sku', $lookup_sku );
+			$has_missing_price = false;
+			if ( function_exists( 'nexxi_kids_price_range' ) ) {
+				$ex_range = nexxi_kids_price_range( $existing_prod );
+				if ( empty( $ex_range['regular'] ) || (float) $ex_range['regular'] <= 0 ) {
+					$has_missing_price = true;
+				}
 			}
-			if ( '' !== $lookup_sku ) {
-				update_post_meta( $wc_id, '_nexxi_pancake_sku', $lookup_sku );
+			if ( ! $has_missing_price && $existing_prod->is_type( 'variable' ) ) {
+				foreach ( $existing_prod->get_children() as $ex_cid ) {
+					if ( (float) get_post_meta( $ex_cid, '_regular_price', true ) <= 0 || (float) get_post_meta( $ex_cid, '_price', true ) <= 0 ) {
+						$has_missing_price = true;
+						break;
+					}
+				}
 			}
-			if ( '' !== $pancake_id ) {
-				update_post_meta( $wc_id, '_nexxi_pancake_product_id', $pancake_id );
+			if ( ! $has_missing_price ) {
+				$wc_id      = $existing_prod->get_id();
+				$parent_sku = $lookup_sku ?: (string) $existing_prod->get_sku();
+				$prod_name  = trim( (string) ( $pancake_item['name'] ?? $existing_prod->get_name() ) );
+
+				// Ensure SKU & Pancake link metadata are recorded on the existing product
+				if ( '' !== $lookup_sku && '' === trim( (string) $existing_prod->get_sku() ) ) {
+					update_post_meta( $wc_id, '_sku', $lookup_sku );
+				}
+				if ( '' !== $lookup_sku ) {
+					update_post_meta( $wc_id, '_nexxi_pancake_sku', $lookup_sku );
+				}
+				if ( '' !== $pancake_id ) {
+					update_post_meta( $wc_id, '_nexxi_pancake_product_id', $pancake_id );
+				}
+
+				$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+				$thumb_url = wp_get_attachment_image_url( get_post_thumbnail_id( $wc_id ), 'thumbnail' );
+				return array(
+					'wc_id'              => $wc_id,
+					'pancake_id'         => $pancake_id,
+					'pancake_sku'        => $parent_sku,
+					'name'               => $prod_name,
+					'created_new'        => false,
+					'skipped_duplicate'  => true,
+					'variations_synced'  => $existing_prod->is_type( 'variable' ) ? count( $existing_prod->get_children() ) : 0,
+					'downloaded_urls'    => 0,
+					'variations_img_set' => 0,
+					'edit_url'           => get_edit_post_link( $wc_id, 'raw' ),
+					'view_url'           => get_permalink( $wc_id ),
+					'thumb_url'          => $thumb_url ? $thumb_url : '',
+				);
 			}
-
-			$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-
-			$thumb_url = wp_get_attachment_image_url( get_post_thumbnail_id( $wc_id ), 'thumbnail' );
-			return array(
-				'wc_id'              => $wc_id,
-				'pancake_id'         => $pancake_id,
-				'pancake_sku'        => $parent_sku,
-				'name'               => $prod_name,
-				'created_new'        => false,
-				'skipped_duplicate'  => true,
-				'variations_synced'  => $existing_prod->is_type( 'variable' ) ? count( $existing_prod->get_children() ) : 0,
-				'downloaded_urls'    => 0,
-				'variations_img_set' => 0,
-				'edit_url'           => get_edit_post_link( $wc_id, 'raw' ),
-				'view_url'           => get_permalink( $wc_id ),
-				'thumb_url'          => $thumb_url ? $thumb_url : '',
-			);
 		}
 
 		wp_defer_term_counting( true );
@@ -3184,10 +3250,14 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					}
 				}
 
-				if ( $opts['sync_price'] && (float) ( $pv['price'] ?? 0 ) > 0 ) {
-					$price_str = (string) (float) $pv['price'];
+				$eff_v_price = (float) ( $pv['price'] ?? 0 );
+				if ( $eff_v_price <= 0 ) {
+					$eff_v_price = (float) ( $pancake_item['min_price'] ?? $pancake_item['max_price'] ?? 0 );
+				}
+				if ( $opts['sync_price'] && $eff_v_price > 0 ) {
+					$price_str = (string) $eff_v_price;
 					$var_obj->set_regular_price( $price_str );
-					if ( '' === (string) $var_obj->get_sale_price() ) {
+					if ( '' === (string) $var_obj->get_sale_price() || (float) $var_obj->get_sale_price() <= 0 ) {
 						$var_obj->set_price( $price_str );
 					}
 				}
@@ -3203,6 +3273,27 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				$saved_vid            = $var_obj->save();
 				$matched_wc_var_ids[] = (int) $saved_vid;
 				$variations_synced++;
+			}
+
+			// Ensure any remaining child variations or parent meta have valid price if Pancake has min_price > 0
+			$fallback_min_p = (float) ( $pancake_item['min_price'] ?? 0 );
+			if ( $opts['sync_price'] && $fallback_min_p > 0 ) {
+				$fb_str = (string) $fallback_min_p;
+				foreach ( $product->get_children() as $child_id ) {
+					$cid = (int) $child_id;
+					if ( (float) get_post_meta( $cid, '_regular_price', true ) <= 0 ) {
+						update_post_meta( $cid, '_regular_price', $fb_str );
+					}
+					if ( (float) get_post_meta( $cid, '_price', true ) <= 0 ) {
+						update_post_meta( $cid, '_price', $fb_str );
+					}
+				}
+				if ( (float) get_post_meta( $wc_id, '_regular_price', true ) <= 0 ) {
+					update_post_meta( $wc_id, '_regular_price', $fb_str );
+				}
+				if ( (float) get_post_meta( $wc_id, '_price', true ) <= 0 ) {
+					update_post_meta( $wc_id, '_price', $fb_str );
+				}
 			}
 
 			// Zero out stock on any stale Website variations that are no longer in Pancake's active variations
@@ -4603,11 +4694,21 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 						}
 						p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty), warehouses: whMap });
 					});
-					// Inherit class image for variations of the same color that didn't have images[0] set directly
+					// Inherit class image & same-size/min_price for variations missing image or price on Pancake
+					const priceBySize = {};
+					p.variations.forEach(v => {
+						if (v.price > 0 && v.size && !priceBySize[String(v.size).toLowerCase()]) {
+							priceBySize[String(v.size).toLowerCase()] = v.price;
+						}
+					});
 					p.variations.forEach(v => {
 						if (!v.image && v.color_key && p.class_images[v.color_key]?.image) {
 							v.image = p.class_images[v.color_key].image;
 							if (v.sku) p.var_images[v.sku.toUpperCase()] = v.image;
+						}
+						if ((!v.price || v.price <= 0) && p.min_price > 0) {
+							const sk = String(v.size || '').toLowerCase();
+							v.price = priceBySize[sk] || p.min_price;
 						}
 					});
 				}
@@ -6364,10 +6465,20 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 					}
 					p.variations.push({ sku: vsku, color_raw: colorVal, color_key: cKey, size: sizeVal, image: vimg, price, stock: Math.max(0, qty), warehouses: whMap });
 				});
+				const priceBySize = {};
+				p.variations.forEach(v => {
+					if (v.price > 0 && v.size && !priceBySize[String(v.size).toLowerCase()]) {
+						priceBySize[String(v.size).toLowerCase()] = v.price;
+					}
+				});
 				p.variations.forEach(v => {
 					if (!v.image && v.color_key && p.class_images[v.color_key]?.image) {
 						v.image = p.class_images[v.color_key].image;
 						if (v.sku) p.var_images[v.sku.toUpperCase()] = v.image;
+					}
+					if ((!v.price || v.price <= 0) && p.min_price > 0) {
+						const sk = String(v.size || '').toLowerCase();
+						v.price = priceBySize[sk] || p.min_price;
 					}
 				});
 			}
