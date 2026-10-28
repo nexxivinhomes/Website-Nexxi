@@ -94,6 +94,13 @@ function nexxi_kids_award_order_points( WC_Order $order, $user_id = 0 ) {
 		return (int) $order->get_meta( '_nexxi_points_earned' );
 	}
 	$points = nexxi_kids_calculate_order_points( $order );
+	if ( function_exists( 'nexxi_kids_get_user_tier_info' ) ) {
+		$t_info = nexxi_kids_get_user_tier_info( $user_id );
+		$mult   = isset( $t_info['tier']['point_mult'] ) ? (float) $t_info['tier']['point_mult'] : 1.0;
+		if ( $mult > 1.0 ) {
+			$points = (int) round( $points * $mult );
+		}
+	}
 	if ( $points <= 0 ) {
 		return 0;
 	}
@@ -794,26 +801,32 @@ function nexxi_kids_account_status_badge( $status ) {
 
 function nexxi_kids_account_dashboard( WP_User $user ) {
 	$uid = $user->ID;
-	$count = nexxi_kids_account_order_count( $uid );
-	$spent = function_exists( 'wc_get_customer_total_spent' ) ? (float) wc_get_customer_total_spent( $uid ) : 0;
+	$ord_stats = function_exists( 'nexxi_kids_get_customer_order_stats' ) ? nexxi_kids_get_customer_order_stats( $uid ) : null;
+	$count = $ord_stats ? (int) $ord_stats['order_count'] : nexxi_kids_account_order_count( $uid );
+	$spent = $ord_stats ? (float) $ord_stats['total_spent'] : ( function_exists( 'wc_get_customer_total_spent' ) ? (float) wc_get_customer_total_spent( $uid ) : 0 );
 	$open = wc_get_orders( array( 'customer_id' => $uid, 'status' => array( 'wc-pending', 'wc-processing', 'wc-on-hold' ), 'return' => 'ids', 'limit' => -1 ) );
 	$recent = wc_get_orders( array( 'customer_id' => $uid, 'limit' => 3, 'orderby' => 'date', 'order' => 'DESC' ) );
 	$wishlist = nexxi_kids_account_wishlist_count( $uid );
 	$points = nexxi_kids_get_user_points( $uid );
+	$tier_info = function_exists( 'nexxi_kids_get_user_tier_info' ) ? nexxi_kids_get_user_tier_info( $uid ) : null;
+	$pts_cfg   = function_exists( 'nexxi_kids_get_points_settings' ) ? nexxi_kids_get_points_settings() : array( 'earn_unit_vnd' => 10000, 'point_value_vnd' => 1000 );
+	$baby_name = (string) get_user_meta( $uid, 'nexxi_baby_name', true );
+	$baby_bday = (string) get_user_meta( $uid, 'nexxi_baby_birthday', true );
+	$baby_gen  = (string) get_user_meta( $uid, 'nexxi_baby_gender', true );
 	$orders_url = wc_get_account_endpoint_url( 'orders' );
 	$address_url = wc_get_account_endpoint_url( 'edit-address' );
 	$account_url = wc_get_account_endpoint_url( 'edit-account' );
 	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
 	$stats = array(
 		array( 'stars', 'Điểm thành viên NEXXI', number_format_i18n( $points ) . ' điểm', '#nexxi-member-points' ),
-		array( 'shopping_bag', 'Tổng đơn hàng', $count . ' đơn', $orders_url ),
-		array( 'local_shipping', 'Đang xử lý', count( $open ) . ' đơn', $orders_url ),
-		array( 'payments', 'Đã mua sắm', wc_price( $spent ), $orders_url ),
+		array( 'workspace_premium', 'Hạng thành viên', $tier_info ? ( ( $tier_info['tier']['icon'] ?? '👑' ) . ' ' . $tier_info['tier']['name'] ) : 'Thành Viên Mới', '#nexxi-member-points' ),
+		array( 'shopping_bag', 'Tổng đơn đã đặt', $count . ' đơn', $orders_url ),
+		array( 'payments', 'Tổng tiền chi tiêu', wc_price( $spent ), $orders_url ),
 	);
 	$book = nexxi_kids_get_address_book( $uid );
 	ob_start(); ?>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm" id="nexxi-member-points">
-<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản & Điểm Thành Viên' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản, Hạng Thành Viên & Điểm NEXXI Club' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
 <?php foreach ( $stats as $stat ) : ?>
 <a class="bg-surface-container-low hover:bg-surface-container-high/60 rounded-lg p-space-md flex flex-col gap-1 transition-colors" href="<?php echo esc_url( $stat[3] ); ?>"><span class="w-9 h-9 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center"><span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $stat[0] ); ?></span></span><span class="font-label-sm text-label-sm text-outline mt-1"><?php echo esc_html( $stat[1] ); ?></span><span class="font-title-md text-title-md text-primary font-bold"><?php echo wp_kses_post( $stat[2] ); ?></span></a>
@@ -825,8 +838,20 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 			<span class="material-symbols-outlined text-[22px]">loyalty</span>
 		</span>
 		<div>
-			<span class="font-label-lg text-label-lg text-primary font-bold block">Điểm thành viên NEXXI hiện có: <span class="text-secondary"><?php echo esc_html( number_format_i18n( $points ) ); ?> điểm</span></span>
-			<span class="font-body-sm text-body-sm text-on-surface-variant block">Tích lũy tự động từ mọi đơn hàng theo email và số điện thoại tài khoản (10.000₫ = 1 điểm). Liên hệ NEXXI để đổi ưu đãi cho đơn hàng tiếp theo!</span>
+			<span class="font-label-lg text-label-lg text-primary font-bold block">
+				Điểm NEXXI hiện có: <span class="text-secondary"><?php echo esc_html( number_format_i18n( $points ) ); ?> điểm</span>
+				(Quy đổi: <strong class="text-primary"><?php echo esc_html( nexxi_kids_money( $points * (int) $pts_cfg['point_value_vnd'] ) ); ?></strong>)
+			</span>
+			<span class="font-body-sm text-body-sm text-on-surface-variant block">
+				<?php if ( $tier_info && ! empty( $tier_info['tier']['perks'] ) ) : ?>
+					Đặc quyền <strong><?php echo esc_html( $tier_info['tier']['name'] ); ?></strong>: <?php echo esc_html( $tier_info['tier']['perks'] ); ?>.
+					<?php if ( ! empty( $tier_info['next_tier'] ) ) : ?>
+						Mua thêm <strong><?php echo esc_html( nexxi_kids_money( $tier_info['spent_to_next'] ) ); ?></strong> để thăng hạng <strong><?php echo esc_html( $tier_info['next_tier']['name'] ); ?></strong>!
+					<?php endif; ?>
+				<?php else : ?>
+					Tích lũy tự động từ mọi đơn hàng (<?php echo esc_html( nexxi_kids_money( $pts_cfg['earn_unit_vnd'] ) ); ?> = 1 điểm) và dùng điểm trừ tiền trực tiếp khi thanh toán!
+				<?php endif; ?>
+			</span>
 		</div>
 	</div>
 	<a class="inline-flex items-center gap-1.5 bg-primary text-on-primary px-space-md py-2 rounded-full font-label-sm text-label-sm font-bold hover:bg-primary-container transition-all shadow-sm shrink-0 self-start sm:self-center no-underline" href="<?php echo esc_url( nexxi_kids_shop_url() ); ?>">
@@ -834,6 +859,35 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 		<span>Mua sắm &amp; Tích điểm</span>
 	</a>
 </div>
+
+<!-- Baby Birthday Profile Box -->
+<form method="post" class="mt-space-md p-space-md rounded-xl bg-surface-container-low border border-outline-variant/30 flex flex-col md:flex-row md:items-end justify-between gap-space-sm">
+	<?php wp_nonce_field( 'nexxi_save_baby', 'nexxi_baby_nonce' ); ?>
+	<input type="hidden" name="nexxi_save_baby_profile" value="1">
+	<div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-space-sm">
+		<div>
+			<label class="block font-label-sm text-label-sm text-primary font-bold mb-1">👶 Tên thân mật của bé</label>
+			<input type="text" name="baby_name" value="<?php echo esc_attr( $baby_name ); ?>" placeholder="VD: Bé Bắp, Bé Sóc..." class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-full px-3.5 py-2 font-body-sm text-body-sm text-on-surface outline-none">
+		</div>
+		<div>
+			<label class="block font-label-sm text-label-sm text-primary font-bold mb-1">🎂 Ngày sinh nhật của bé</label>
+			<input type="date" name="baby_birthday" value="<?php echo esc_attr( $baby_bday ); ?>" class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-full px-3.5 py-2 font-body-sm text-body-sm text-on-surface outline-none">
+		</div>
+		<div>
+			<label class="block font-label-sm text-label-sm text-primary font-bold mb-1">🎀 Giới tính của bé</label>
+			<select name="baby_gender" class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-full px-3.5 py-2 font-body-sm text-body-sm text-on-surface outline-none">
+				<option value="" <?php selected( $baby_gen, '' ); ?>>-- Chọn --</option>
+				<option value="girl" <?php selected( $baby_gen, 'girl' ); ?>>👧 Bé gái</option>
+				<option value="boy" <?php selected( $baby_gen, 'boy' ); ?>>👦 Bé trai</option>
+				<option value="both" <?php selected( $baby_gen, 'both' ); ?>>👧👦 Cả hai</option>
+			</select>
+		</div>
+	</div>
+	<button type="submit" class="inline-flex items-center justify-center gap-1.5 bg-secondary text-on-secondary px-space-md py-2 rounded-full font-label-sm text-label-sm font-bold hover:bg-secondary-container transition-all shadow-sm shrink-0 border-0 cursor-pointer">
+		<span class="material-symbols-outlined text-[16px]">cake</span>
+		<span>Lưu sinh nhật bé</span>
+	</button>
+</form>
 </section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
 <?php echo nexxi_kids_account_section_head( 'Mục 02', 'Đơn Hàng Gần Đây', $count ? '<a class="inline-flex items-center gap-1 font-label-md text-label-md text-secondary font-bold hover:underline self-start sm:self-auto" href="' . esc_url( $orders_url ) . '">Xem tất cả <span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>' : '' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
