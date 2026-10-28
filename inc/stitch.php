@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261028_combo_price_clean_v22';
+	$purge_ver = '20261028_cart_qty_stepper_v23';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( function_exists( 'nexxi_kids_sync_all_flash_sale_products' ) ) {
