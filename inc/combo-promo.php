@@ -530,26 +530,14 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 							</div>
 							<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:#45464f;">
 								<?php foreach ( $combo['lines'] as $cline ) :
-									$c_title  = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
-									$has_sale = ! empty( $cline['line_reg_total'] ) && (float) $cline['line_reg_total'] > (float) $cline['line_subtotal'];
-									$p_pct    = (int) ( $cline['prod_fs_pct'] ?? 0 );
+									$c_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
 									?>
-									<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-										<span style="flex:1;min-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+									<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+										<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
 											• <?php echo esc_html( $c_title ); ?> <strong>× <?php echo (int) $cline['qty_in_combo']; ?></strong>
-											<?php if ( $has_sale && $p_pct > 0 ) : ?>
-												<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:10px;font-weight:700;padding:0 5px;border-radius:4px;margin-left:3px;">Đã giảm SP/FS -<?php echo (int) $p_pct; ?>%</span>
-											<?php endif; ?>
-											<span style="display:inline-block;background:#fff0ed;color:#ae3115;border:1px solid #ffdad2;font-size:10px;font-weight:800;padding:0 5px;border-radius:4px;margin-left:3px;"><?php echo esc_html( $combo['badge_text'] ); ?></span>
 										</span>
-										<span style="white-space:nowrap;font-weight:700;color:#031444;text-align:right;">
-											<?php if ( $has_sale ) : ?>
-												<span style="font-size:11px;color:#94a3b8;font-weight:400;margin-right:3px;" title="Giá gốc ban đầu">Gốc <del><?php echo esc_html( nexxi_kids_money( $cline['line_reg_total'] ) ); ?></del> &rarr;</span>
-												<span style="font-size:11.5px;color:#64748b;font-weight:600;margin-right:4px;" title="Giá sau giảm SP + Flash Sale"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?> &rarr;</span>
-											<?php else : ?>
-												<del style="color:#999;font-weight:400;margin-right:4px;"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></del>
-											<?php endif; ?>
-											<strong style="color:#ae3115;font-size:12.5px;"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></strong>
+										<span style="white-space:nowrap;font-weight:700;color:#ae3115;font-size:12.5px;text-align:right;">
+											<?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?>
 										</span>
 									</div>
 								<?php endforeach; ?>
@@ -561,17 +549,11 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 						<div style="border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:12px;color:#475569;">
 							<div style="font-weight:700;color:#031444;margin-bottom:3px;">🛍️ Sản phẩm lẻ ngoài Combo (<?php echo (int) $res['leftover_count']; ?> món):</div>
 							<?php foreach ( $res['leftover_items'] as $litem ) :
-								$l_title  = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
-								$has_sale = ! empty( $litem['line_reg_total'] ) && (float) $litem['line_reg_total'] > (float) $litem['line_subtotal'];
+								$l_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
 								?>
 								<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
 									<span>• <?php echo esc_html( $l_title ); ?> × <?php echo (int) $litem['qty_leftover']; ?></span>
-									<span style="font-weight:600;">
-										<?php if ( $has_sale ) : ?>
-											<del style="color:#94a3b8;font-weight:400;font-size:11px;margin-right:4px;"><?php echo esc_html( nexxi_kids_money( $litem['line_reg_total'] ) ); ?></del>
-										<?php endif; ?>
-										<?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?>
-									</span>
+									<span style="font-weight:600;"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span>
 								</div>
 							<?php endforeach; ?>
 						</div>
