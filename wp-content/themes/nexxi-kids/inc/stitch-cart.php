@@ -54,9 +54,9 @@ function nexxi_kids_stitch_cart_content() {
 	$remaining = 0;
 	$progress = 100;
 	?>
-	<main class="w-full pt-28 md:pt-36 bg-background min-h-screen"><div class="w-full px-margin-mobile md:px-margin py-space-lg max-w-[1440px] mx-auto">
+	<main id="nexxi-stitch-cart-main" class="w-full pt-28 md:pt-36 bg-background min-h-screen"><div class="w-full px-margin-mobile md:px-margin py-space-lg max-w-[1440px] mx-auto">
 		<nav aria-label="Breadcrumb" class="flex items-center gap-space-xs text-body-sm font-body-sm text-outline mb-space-md"><a class="hover:text-primary" href="<?php echo esc_url( home_url( '/' ) ); ?>">⌂ Trang Chủ</a><span>/</span><span class="text-primary font-bold">Giỏ Hàng Của Bé</span></nav>
-		<div class="flex flex-wrap items-baseline justify-between gap-space-sm mb-space-lg"><div class="flex items-center gap-space-sm"><h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-primary tracking-tight">Giỏ Hàng Của Bé Yêu</h1><span class="bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md px-space-md py-1 rounded-full"><?php echo esc_html( $count ); ?> món tuyển chọn</span></div><a class="font-label-md text-label-md text-secondary hover:underline" href="<?php echo esc_url( nexxi_kids_stitch_url( 'shop.html' ) ); ?>">Tiếp tục mua sắm →</a></div>
+		<div class="flex flex-wrap items-baseline justify-between gap-space-sm mb-space-lg"><div class="flex items-center gap-space-sm"><h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-primary tracking-tight">Giỏ Hàng Của Bé Yêu</h1><span data-nexxi-cart-page-count class="bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md px-space-md py-1 rounded-full"><?php echo esc_html( $count ); ?> món tuyển chọn</span></div><a class="font-label-md text-label-md text-secondary hover:underline" href="<?php echo esc_url( nexxi_kids_stitch_url( 'shop.html' ) ); ?>">Tiếp tục mua sắm →</a></div>
 		<?php wc_print_notices(); ?>
 		<div class="bg-surface-container-lowest p-space-md rounded-lg shadow-sm mb-space-xl">
 			<div class="flex items-center gap-space-sm mb-space-xs"><span class="material-symbols-outlined text-secondary">local_shipping</span><p class="font-label-lg text-label-lg text-primary"><strong class="text-secondary">Miễn Phí Ship Toàn Quốc</strong> cho đơn hàng của ba mẹ!</p></div>
@@ -248,6 +248,7 @@ function nexxi_kids_stitch_cart_content() {
 				.nexxi-cart-qty[type=number] { -moz-appearance: textfield; appearance: textfield; }
 				.nexxi-qty-step-btn:hover { filter: brightness(0.95); transform: scale(1.04); }
 				.nexxi-qty-step-btn:active { transform: scale(0.96); }
+				#nexxi-stitch-cart-main.is-updating-cart .nexxi-stitch-cart-totals { opacity: 0.65; transition: opacity .15s ease; }
 				</style>
 				<script>
 				window.nexxiSyncSplitCartQty = function(cartKey) {
@@ -256,6 +257,48 @@ function nexxi_kids_stitch_cart_content() {
 					inputs.forEach(function(inp) { sum += Math.max(0, parseInt(inp.value || '0', 10) || 0); });
 					var master = document.getElementById('nx-master-qty-' + cartKey);
 					if (master) master.value = sum;
+				};
+				window.nexxiAjaxUpdateCart = function() {
+					var form = document.querySelector('.woocommerce-cart-form');
+					var mainEl = document.getElementById('nexxi-stitch-cart-main');
+					if (!form || !mainEl) return;
+					if (window._nexxiCartAbortCtrl) {
+						try { window._nexxiCartAbortCtrl.abort(); } catch (e) {}
+					}
+					var ctrl = new AbortController();
+					window._nexxiCartAbortCtrl = ctrl;
+					mainEl.classList.add('is-updating-cart');
+
+					var fd = new FormData(form);
+					fd.set('update_cart', 'Cập nhật giỏ hàng');
+
+					fetch(form.getAttribute('action') || window.location.href, {
+						method: 'POST',
+						credentials: 'same-origin',
+						body: fd,
+						signal: ctrl.signal
+					})
+					.then(function(res) { return res.text(); })
+					.then(function(html) {
+						var doc = new DOMParser().parseFromString(html, 'text/html');
+						// Strip "Giỏ hàng đã được cập nhật." notice from silent AJAX refresh so layout doesn't jump
+						doc.querySelectorAll('.woocommerce-message, .woocommerce-notices-wrapper').forEach(function(n) { n.remove(); });
+						var newMain = doc.getElementById('nexxi-stitch-cart-main') || doc.querySelector('main');
+						if (newMain && mainEl) {
+							mainEl.innerHTML = newMain.innerHTML;
+						}
+						// Also sync header cart count badge if present
+						var newBadge = doc.querySelector('[data-nexxi-cart-count]');
+						if (newBadge) {
+							var cnt = newBadge.textContent.trim();
+							document.querySelectorAll('[data-nexxi-cart-count]').forEach(function(b) { b.textContent = cnt; });
+						}
+						mainEl.classList.remove('is-updating-cart');
+					})
+					.catch(function(err) {
+						if (err && err.name === 'AbortError') return;
+						mainEl.classList.remove('is-updating-cart');
+					});
 				};
 				window.nexxiStepCartQty = function(btn, delta) {
 					var wrap = btn && btn.closest ? btn.closest('.nexxi-qty-stepper') : null;
@@ -277,14 +320,23 @@ function nexxi_kids_stitch_cart_content() {
 					input.dispatchEvent(new Event('input', { bubbles: true }));
 					input.dispatchEvent(new Event('change', { bubbles: true }));
 					var updateBtn = document.querySelector('.woocommerce-cart-form button[name="update_cart"]');
-					if (updateBtn) {
-						updateBtn.disabled = false;
-						clearTimeout(window._nexxiCartAutoUpdateTimer);
-						window._nexxiCartAutoUpdateTimer = setTimeout(function() {
-							updateBtn.click();
-						}, 450);
-					}
+					if (updateBtn) updateBtn.disabled = false;
+					clearTimeout(window._nexxiCartAutoUpdateTimer);
+					window._nexxiCartAutoUpdateTimer = setTimeout(function() {
+						if (window.nexxiAjaxUpdateCart) window.nexxiAjaxUpdateCart();
+					}, 380);
 				};
+				if (!window._nexxiCartFormSubmitBound) {
+					window._nexxiCartFormSubmitBound = true;
+					document.addEventListener('click', function(e) {
+						var updBtn = e.target && e.target.closest ? e.target.closest('.woocommerce-cart-form button[name="update_cart"]') : null;
+						if (updBtn) {
+							e.preventDefault();
+							clearTimeout(window._nexxiCartAutoUpdateTimer);
+							if (window.nexxiAjaxUpdateCart) window.nexxiAjaxUpdateCart();
+						}
+					});
+				}
 				</script>
 				<div class="flex flex-wrap items-center justify-between gap-space-sm pt-space-lg"><div class="flex gap-space-xs"><input class="bg-surface-container-low px-space-md py-space-xs rounded-full font-body-md text-body-md" type="text" name="coupon_code" placeholder="Mã giảm giá" aria-label="Mã giảm giá"><button class="bg-secondary-fixed text-secondary hover:bg-secondary-container hover:text-on-secondary px-space-md py-space-xs rounded-full font-label-md text-label-md" type="submit" name="apply_coupon" value="Áp dụng">Áp dụng</button></div><button class="bg-surface-container text-primary hover:bg-primary hover:text-on-primary px-space-md py-space-xs rounded-full font-label-md text-label-md" type="submit" name="update_cart" value="Cập nhật giỏ hàng">Cập nhật giỏ hàng</button></div>
 				<?php wp_nonce_field( 'woocommerce-cart', 'woocommerce-cart-nonce' ); ?>
