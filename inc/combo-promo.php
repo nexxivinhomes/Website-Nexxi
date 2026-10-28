@@ -134,22 +134,50 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 		if ( ! $product || ! is_object( $product ) || ! $product->exists() || $qty <= 0 ) {
 			continue;
 		}
-		// Active unit price in cart (already includes Giảm Giá SP & Flash Sale!)
-		$unit_price = (float) $product->get_price();
+		// Compute exact post-discount selling price (after Giảm Giá SP + Flash Sale, if any)
+		$eff = function_exists( 'nexxi_kids_get_cart_item_effective_prices' )
+			? nexxi_kids_get_cart_item_effective_prices( $cart_item )
+			: array(
+				'regular_price'   => (float) $product->get_regular_price(),
+				'effective_price' => (float) $product->get_price(),
+				'on_sale'         => false,
+				'pct'             => 0,
+				'has_prod_sale'   => false,
+				'prod_pct'        => 0,
+				'has_flash_sale'  => false,
+				'flash_pct'       => 0,
+			);
+		$unit_price = (float) $eff['effective_price'];
+		$reg_price  = (float) $eff['regular_price'];
 		if ( $unit_price <= 0 ) {
-			$unit_price = (float) get_post_meta( $product->get_id(), '_price', true );
+			$unit_price = (float) $product->get_price();
+			if ( $unit_price <= 0 ) {
+				$unit_price = (float) get_post_meta( $product->get_id(), '_price', true );
+			}
 		}
-		$reg_price = (float) $product->get_regular_price();
-		if ( $reg_price <= 0 ) {
+		if ( $reg_price <= 0 || $reg_price < $unit_price ) {
 			$reg_price = $unit_price;
+		}
+		// Keep cart item WC_Product price in sync with the active post-sale price
+		if ( $unit_price > 0 ) {
+			$product->set_regular_price( (string) round( $reg_price ) );
+			if ( $unit_price < $reg_price ) {
+				$product->set_sale_price( (string) round( $unit_price ) );
+			}
+			$product->set_price( (string) round( $unit_price ) );
 		}
 		for ( $i = 0; $i < $qty; $i++ ) {
 			$unit_slots[] = array(
-				'cart_item_key' => $cart_item_key,
-				'cart_item'     => $cart_item,
-				'product'       => $product,
-				'unit_price'    => max( 0.0, $unit_price ),
-				'reg_price'     => max( 0.0, $reg_price ),
+				'cart_item_key'  => $cart_item_key,
+				'cart_item'      => $cart_item,
+				'product'        => $product,
+				'unit_price'     => max( 0.0, $unit_price ), // Giá sau giảm SP + Flash Sale (nếu có)
+				'reg_price'      => max( 0.0, $reg_price ),  // Giá gốc ban đầu
+				'prod_fs_pct'    => (int) ( $eff['pct'] ?? 0 ),
+				'has_prod_sale'  => ! empty( $eff['has_prod_sale'] ),
+				'prod_pct'       => (int) ( $eff['prod_pct'] ?? 0 ),
+				'has_flash_sale' => ! empty( $eff['has_flash_sale'] ),
+				'flash_pct'      => (int) ( $eff['flash_pct'] ?? 0 ),
 			);
 		}
 	}
@@ -228,26 +256,36 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 		$cursor     += $take_qty;
 
 		// Aggregate units inside this combo by cart_item_key so identical items in the same combo display cleanly
-		$grouped_lines  = array();
-		$combo_subtotal = 0.0;
+		$grouped_lines      = array();
+		$combo_subtotal     = 0.0; // Tổng giá sau giảm SP + Flash Sale (cơ sở tính Combo)
+		$combo_reg_subtotal = 0.0; // Tổng giá gốc ban đầu
 		foreach ( $slice_units as $u ) {
-			$ck = $u['cart_item_key'];
-			$combo_subtotal += $u['unit_price'];
+			$ck                  = $u['cart_item_key'];
+			$combo_subtotal     += $u['unit_price'];
+			$combo_reg_subtotal += $u['reg_price'];
 			if ( ! isset( $grouped_lines[ $ck ] ) ) {
 				$grouped_lines[ $ck ] = array(
-					'cart_item_key' => $ck,
-					'cart_item'     => $u['cart_item'],
-					'product'       => $u['product'],
-					'qty_in_combo'  => 0,
-					'unit_price'    => $u['unit_price'],
-					'reg_price'     => $u['reg_price'],
-					'line_subtotal' => 0.0,
+					'cart_item_key'  => $ck,
+					'cart_item'      => $u['cart_item'],
+					'product'        => $u['product'],
+					'qty_in_combo'   => 0,
+					'unit_price'     => $u['unit_price'], // Đơn giá sau giảm SP + Flash Sale
+					'reg_price'      => $u['reg_price'],  // Đơn giá gốc
+					'prod_fs_pct'    => (int) ( $u['prod_fs_pct'] ?? 0 ),
+					'has_prod_sale'  => ! empty( $u['has_prod_sale'] ),
+					'prod_pct'       => (int) ( $u['prod_pct'] ?? 0 ),
+					'has_flash_sale' => ! empty( $u['has_flash_sale'] ),
+					'flash_pct'      => (int) ( $u['flash_pct'] ?? 0 ),
+					'line_subtotal'  => 0.0,              // Thành tiền sau giảm SP + Flash Sale
+					'line_reg_total' => 0.0,              // Thành tiền giá gốc
 				);
 			}
 			$grouped_lines[ $ck ]['qty_in_combo']++;
-			$grouped_lines[ $ck ]['line_subtotal'] += $u['unit_price'];
+			$grouped_lines[ $ck ]['line_subtotal']  += $u['unit_price'];
+			$grouped_lines[ $ck ]['line_reg_total'] += $u['reg_price'];
 		}
 
+		// Combo discount is ALWAYS calculated strictly on $combo_subtotal (giá sau giảm của SP + Flash Sale)
 		if ( 'fixed' === $matched_tier['type'] ) {
 			$combo_discount = min( $combo_subtotal, round( (float) $matched_tier['value'] ) );
 		} else {
@@ -284,6 +322,7 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 			'qty'            => $take_qty,
 			'badge_text'     => $badge_text,
 			'title'          => sprintf( 'Combo %d sản phẩm (%s)', $take_qty, $badge_text ),
+			'reg_subtotal'   => $combo_reg_subtotal,
 			'subtotal'       => $combo_subtotal,
 			'discount'       => $combo_discount,
 			'total_after'    => max( 0.0, $combo_subtotal - $combo_discount ),
@@ -299,17 +338,24 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 		$cursor++;
 		if ( ! isset( $leftover_grouped[ $ck ] ) ) {
 			$leftover_grouped[ $ck ] = array(
-				'cart_item_key' => $ck,
-				'cart_item'     => $u['cart_item'],
-				'product'       => $u['product'],
-				'qty_leftover'  => 0,
-				'unit_price'    => $u['unit_price'],
-				'reg_price'     => $u['reg_price'],
-				'line_subtotal' => 0.0,
+				'cart_item_key'  => $ck,
+				'cart_item'      => $u['cart_item'],
+				'product'        => $u['product'],
+				'qty_leftover'   => 0,
+				'unit_price'     => $u['unit_price'],
+				'reg_price'      => $u['reg_price'],
+				'prod_fs_pct'    => (int) ( $u['prod_fs_pct'] ?? 0 ),
+				'has_prod_sale'  => ! empty( $u['has_prod_sale'] ),
+				'prod_pct'       => (int) ( $u['prod_pct'] ?? 0 ),
+				'has_flash_sale' => ! empty( $u['has_flash_sale'] ),
+				'flash_pct'      => (int) ( $u['flash_pct'] ?? 0 ),
+				'line_subtotal'  => 0.0,
+				'line_reg_total' => 0.0,
 			);
 		}
 		$leftover_grouped[ $ck ]['qty_leftover']++;
-		$leftover_grouped[ $ck ]['line_subtotal'] += $u['unit_price'];
+		$leftover_grouped[ $ck ]['line_subtotal']  += $u['unit_price'];
+		$leftover_grouped[ $ck ]['line_reg_total'] += $u['reg_price'];
 	}
 
 	// Build concise summary labels (e.g. "1 Combo 4 giảm 10% + 1 Combo 3 giảm 7%")
@@ -463,7 +509,7 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 
 		<?php if ( ! empty( $res['combos'] ) ) : ?>
 			<div style="background:#e6f9ed;border:1px solid #86efac;color:#0b6b2f;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;margin-bottom:10px;">
-				🎉 <strong>Đã áp dụng ưu đãi Combo trên hóa đơn:</strong>
+				🎉 <strong>Đã áp dụng ưu đãi Combo trên hóa đơn (Tính trên giá sau giảm SP + Flash Sale):</strong>
 				Khách mua <strong><?php echo (int) $res['total_qty']; ?> món</strong> &rarr; Được áp
 				<strong><?php echo esc_html( implode( ' + ', $res['summary_labels'] ) ); ?></strong><?php if ( ! empty( $res['leftover_count'] ) ) : ?> và <strong><?php echo (int) $res['leftover_count']; ?> sản phẩm lẻ</strong><?php endif; ?>.
 				Tiết kiệm thêm: <strong style="color:#ae3115;font-size:13.5px;">-<?php echo esc_html( nexxi_kids_money( $res['total_discount'] ) ); ?></strong>!
@@ -474,26 +520,36 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 				<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
 					<?php foreach ( $res['combos'] as $combo ) : ?>
 						<div style="border:1.5px solid #fd6a49;background:#fff;border-radius:10px;padding:9px 12px;position:relative;">
-							<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px dashed #ffdad2;">
+							<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px dashed #ffdad2;">
 								<span style="font-weight:800;font-size:12px;color:#031444;">
-									📦 Khung Combo #<?php echo (int) $combo['index']; ?> (<?php echo (int) $combo['qty']; ?> sản phẩm)
+									📦 Khung Combo #<?php echo (int) $combo['index']; ?> (<?php echo (int) $combo['qty']; ?> sản phẩm · Giá sau giảm SP/FS: <?php echo esc_html( nexxi_kids_money( $combo['subtotal'] ) ); ?>)
 								</span>
 								<span style="background:#fd6a49;color:#fff;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px;">
-									<?php echo esc_html( $combo['badge_text'] ); ?> (-<?php echo esc_html( nexxi_kids_money( $combo['discount'] ) ); ?>)
+									<?php echo esc_html( $combo['badge_text'] ); ?> (-<?php echo esc_html( nexxi_kids_money( $combo['discount'] ) ); ?> &rarr; Còn <?php echo esc_html( nexxi_kids_money( $combo['total_after'] ) ); ?>)
 								</span>
 							</div>
-							<div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#45464f;">
+							<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:#45464f;">
 								<?php foreach ( $combo['lines'] as $cline ) :
-									$c_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
+									$c_title  = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
+									$has_sale = ! empty( $cline['line_reg_total'] ) && (float) $cline['line_reg_total'] > (float) $cline['line_subtotal'];
+									$p_pct    = (int) ( $cline['prod_fs_pct'] ?? 0 );
 									?>
-									<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-										<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+									<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+										<span style="flex:1;min-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
 											• <?php echo esc_html( $c_title ); ?> <strong>× <?php echo (int) $cline['qty_in_combo']; ?></strong>
-											<span style="display:inline-block;background:#fff0ed;color:#ae3115;border:1px solid #ffdad2;font-size:10px;font-weight:800;padding:0 5px;border-radius:4px;margin-left:4px;"><?php echo esc_html( $combo['badge_text'] ); ?></span>
+											<?php if ( $has_sale && $p_pct > 0 ) : ?>
+												<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:10px;font-weight:700;padding:0 5px;border-radius:4px;margin-left:3px;">Đã giảm SP/FS -<?php echo (int) $p_pct; ?>%</span>
+											<?php endif; ?>
+											<span style="display:inline-block;background:#fff0ed;color:#ae3115;border:1px solid #ffdad2;font-size:10px;font-weight:800;padding:0 5px;border-radius:4px;margin-left:3px;"><?php echo esc_html( $combo['badge_text'] ); ?></span>
 										</span>
-										<span style="white-space:nowrap;font-weight:700;color:#031444;">
-											<del style="color:#999;font-weight:400;margin-right:4px;"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></del>
-											<?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?>
+										<span style="white-space:nowrap;font-weight:700;color:#031444;text-align:right;">
+											<?php if ( $has_sale ) : ?>
+												<span style="font-size:11px;color:#94a3b8;font-weight:400;margin-right:3px;" title="Giá gốc ban đầu">Gốc <del><?php echo esc_html( nexxi_kids_money( $cline['line_reg_total'] ) ); ?></del> &rarr;</span>
+												<span style="font-size:11.5px;color:#64748b;font-weight:600;margin-right:4px;" title="Giá sau giảm SP + Flash Sale"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?> &rarr;</span>
+											<?php else : ?>
+												<del style="color:#999;font-weight:400;margin-right:4px;"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></del>
+											<?php endif; ?>
+											<strong style="color:#ae3115;font-size:12.5px;"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></strong>
 										</span>
 									</div>
 								<?php endforeach; ?>
@@ -505,11 +561,17 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 						<div style="border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:12px;color:#475569;">
 							<div style="font-weight:700;color:#031444;margin-bottom:3px;">🛍️ Sản phẩm lẻ ngoài Combo (<?php echo (int) $res['leftover_count']; ?> món):</div>
 							<?php foreach ( $res['leftover_items'] as $litem ) :
-								$l_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
+								$l_title  = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
+								$has_sale = ! empty( $litem['line_reg_total'] ) && (float) $litem['line_reg_total'] > (float) $litem['line_subtotal'];
 								?>
-								<div style="display:flex;justify-content:space-between;">
+								<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
 									<span>• <?php echo esc_html( $l_title ); ?> × <?php echo (int) $litem['qty_leftover']; ?></span>
-									<span style="font-weight:600;"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span>
+									<span style="font-weight:600;">
+										<?php if ( $has_sale ) : ?>
+											<del style="color:#94a3b8;font-weight:400;font-size:11px;margin-right:4px;"><?php echo esc_html( nexxi_kids_money( $litem['line_reg_total'] ) ); ?></del>
+										<?php endif; ?>
+										<?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?>
+									</span>
 								</div>
 							<?php endforeach; ?>
 						</div>
@@ -527,6 +589,42 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 	<?php
 	return ob_get_clean();
 }
+
+/**
+ * Format WooCommerce cart item price & subtotal in Checkout review-order / Mini-cart to show Original vs Post-Sale price clearly.
+ */
+add_filter(
+	'woocommerce_cart_item_price',
+	static function ( $price_html, $cart_item, $cart_item_key ) {
+		if ( ! function_exists( 'nexxi_kids_get_cart_item_effective_prices' ) || ! is_array( $cart_item ) ) {
+			return $price_html;
+		}
+		$eff = nexxi_kids_get_cart_item_effective_prices( $cart_item );
+		if ( $eff['reg_price'] > $eff['unit_price'] && $eff['unit_price'] > 0 ) {
+			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['reg_price'] ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['unit_price'] ) . '</strong>';
+		}
+		return $price_html;
+	},
+	20,
+	3
+);
+
+add_filter(
+	'woocommerce_cart_item_subtotal',
+	static function ( $subtotal_html, $cart_item, $cart_item_key ) {
+		if ( ! function_exists( 'nexxi_kids_get_cart_item_effective_prices' ) || ! is_array( $cart_item ) ) {
+			return $subtotal_html;
+		}
+		$qty = isset( $cart_item['quantity'] ) ? max( 1, (int) $cart_item['quantity'] ) : 1;
+		$eff = nexxi_kids_get_cart_item_effective_prices( $cart_item );
+		if ( $eff['reg_price'] > $eff['unit_price'] && $eff['unit_price'] > 0 ) {
+			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['reg_price'] * $qty ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['unit_price'] * $qty ) . '</strong>';
+		}
+		return $subtotal_html;
+	},
+	20,
+	3
+);
 
 /**
  * Display the Combo Promotion notification & framed breakdown on the Checkout bill & Cart Totals sidebar.

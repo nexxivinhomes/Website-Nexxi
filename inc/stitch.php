@@ -36,9 +36,12 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261027_price_sync_v20';
+	$purge_ver = '20261028_combo_price_fix_v21';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		if ( function_exists( 'nexxi_kids_sync_all_flash_sale_products' ) ) {
+			nexxi_kids_sync_all_flash_sale_products();
+		}
 		// One-time sync of legacy plugin files on live server to prevent duplicate class/file loads
 		$theme_pancake_file = get_template_directory() . '/inc/pancake-sync-admin.php';
 		$legacy_mgr_file    = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php' : '';

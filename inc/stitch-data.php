@@ -378,6 +378,12 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 	$has_prod   = '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true );
 	$prod_price = $has_prod ? (float) get_post_meta( $pid, '_nexxi_prod_sale_price', true ) : 0.0;
 	$prod_pct   = $has_prod ? (int) get_post_meta( $pid, '_nexxi_prod_sale_pct', true ) : 0;
+	if ( $has_prod && $prod_price <= 0 && $prod_pct > 0 && $prod_pct <= 95 && $reg > 0 ) {
+		$prod_price = round( $reg * ( 100 - $prod_pct ) / 100, -3 );
+		if ( $prod_price <= 0 || $prod_price >= $reg ) {
+			$prod_price = max( 1000, round( $reg * ( 100 - $prod_pct ) / 100 ) );
+		}
+	}
 	if ( $has_prod && $prod_price > 0 && $prod_price < $reg ) {
 		if ( $prod_pct <= 0 ) {
 			$prod_pct = (int) round( ( 1 - $prod_price / $reg ) * 100 );
@@ -452,39 +458,209 @@ function nexxi_kids_get_program_sale( WC_Product $product, $program = 'combined'
 		$combined_sale = max( 1000, $reg - $disc_prod - $disc_fs );
 		$combined_pct  = min( 95, $prod_pct + $fs_pct );
 		return array(
-			'on_sale' => true,
-			'regular' => $reg,
-			'sale'    => $combined_sale,
-			'pct'     => $combined_pct,
-			'stacked' => true,
+			'on_sale'       => true,
+			'regular'       => $reg,
+			'sale'          => $combined_sale,
+			'pct'           => $combined_pct,
+			'stacked'       => true,
+			'prod_on_sale'  => true,
+			'prod_sale'     => $prod_price,
+			'prod_pct'      => $prod_pct,
+			'flash_on_sale' => true,
+			'flash_sale'    => $fs_price,
+			'flash_pct'     => $fs_pct,
 		);
 	}
 	if ( $has_flash ) {
 		return array(
-			'on_sale' => true,
-			'regular' => $reg,
-			'sale'    => $fs_price,
-			'pct'     => $fs_pct,
-			'stacked' => false,
+			'on_sale'       => true,
+			'regular'       => $reg,
+			'sale'          => $fs_price,
+			'pct'           => $fs_pct,
+			'stacked'       => false,
+			'prod_on_sale'  => false,
+			'prod_sale'     => $reg,
+			'prod_pct'      => 0,
+			'flash_on_sale' => true,
+			'flash_sale'    => $fs_price,
+			'flash_pct'     => $fs_pct,
 		);
 	}
 	if ( $has_prod ) {
 		return array(
-			'on_sale' => true,
-			'regular' => $reg,
-			'sale'    => $prod_price,
-			'pct'     => $prod_pct,
-			'stacked' => false,
+			'on_sale'       => true,
+			'regular'       => $reg,
+			'sale'          => $prod_price,
+			'pct'           => $prod_pct,
+			'stacked'       => false,
+			'prod_on_sale'  => true,
+			'prod_sale'     => $prod_price,
+			'prod_pct'      => $prod_pct,
+			'flash_on_sale' => false,
+			'flash_sale'    => $reg,
+			'flash_pct'     => 0,
 		);
 	}
 	return array(
-		'on_sale' => false,
-		'regular' => $reg,
-		'sale'    => $reg,
-		'pct'     => 0,
-		'stacked' => false,
+		'on_sale'       => false,
+		'regular'       => $reg,
+		'sale'          => $reg,
+		'pct'           => 0,
+		'stacked'       => false,
+		'prod_on_sale'  => false,
+		'prod_sale'     => $reg,
+		'prod_pct'      => 0,
+		'flash_on_sale' => false,
+		'flash_sale'    => $reg,
+		'flash_pct'     => 0,
 	);
 }
+
+/**
+ * Compute the exact effective selling price of a Cart item (or WC_Product / WC_Product_Variation)
+ * AFTER applying Product Discount (🏷️ Giảm Giá SP) + Flash Sale (⚡ Flash Sale, if live).
+ *
+ * Guarantees that Cart, Checkout, and Combo Promotion ALWAYS calculate on top of the
+ * post-sale price (giá sau giảm của sản phẩm + flash sale), even if a variation's raw _price
+ * in wp_postmeta was not yet synced.
+ *
+ * @param array|WC_Product $cart_item_or_product Cart item array or WC_Product instance.
+ * @return array{
+ *   regular_price:float,
+ *   effective_price:float,
+ *   on_sale:bool,
+ *   pct:int,
+ *   has_prod_sale:bool,
+ *   prod_pct:int,
+ *   prod_sale:float,
+ *   has_flash_sale:bool,
+ *   flash_pct:int,
+ *   flash_sale:float
+ * }
+ */
+function nexxi_kids_get_cart_item_effective_prices( $cart_item_or_product ) {
+	$product   = null;
+	$parent_id = 0;
+	if ( is_array( $cart_item_or_product ) ) {
+		$product   = isset( $cart_item_or_product['data'] ) && $cart_item_or_product['data'] instanceof WC_Product ? $cart_item_or_product['data'] : null;
+		$parent_id = ! empty( $cart_item_or_product['product_id'] ) ? (int) $cart_item_or_product['product_id'] : 0;
+	} elseif ( $cart_item_or_product instanceof WC_Product ) {
+		$product = $cart_item_or_product;
+	}
+
+	if ( ! $product ) {
+		return array(
+			'regular_price'   => 0.0,
+			'effective_price' => 0.0,
+			'on_sale'         => false,
+			'pct'             => 0,
+			'has_prod_sale'   => false,
+			'prod_pct'        => 0,
+			'prod_sale'       => 0.0,
+			'has_flash_sale'  => false,
+			'flash_pct'       => 0,
+			'flash_sale'      => 0.0,
+		);
+	}
+
+	if ( $parent_id <= 0 ) {
+		$parent_id = $product->is_type( 'variation' ) ? (int) $product->get_parent_id() : (int) $product->get_id();
+	}
+	$parent_product = ( $parent_id > 0 && $parent_id !== (int) $product->get_id() )
+		? ( function_exists( 'wc_get_product' ) ? wc_get_product( $parent_id ) : null )
+		: $product;
+	if ( ! $parent_product ) {
+		$parent_product = $product;
+	}
+
+	$prog = nexxi_kids_get_program_sale( $parent_product, 'combined' );
+
+	$var_id   = (int) $product->get_id();
+	$var_reg  = (float) get_post_meta( $var_id, '_regular_price', true );
+	if ( $var_reg <= 0 ) {
+		$var_reg = (float) $product->get_regular_price();
+	}
+	$var_sale = (float) get_post_meta( $var_id, '_sale_price', true );
+	if ( $var_sale <= 0 ) {
+		$var_sale = (float) $product->get_sale_price();
+	}
+
+	$reg_price       = (float) $prog['regular'] > 0 ? (float) $prog['regular'] : $var_reg;
+	$effective_price = (float) $prog['sale'];
+	$on_sale         = ! empty( $prog['on_sale'] ) && $effective_price > 0 && $effective_price < $reg_price;
+	$pct             = $on_sale ? (int) $prog['pct'] : 0;
+
+	// Fallback if product has direct variation sale_price in WooCommerce without program meta
+	if ( ! $on_sale && $var_sale > 0 && $var_reg > 0 && $var_sale < $var_reg ) {
+		$reg_price       = $var_reg;
+		$effective_price = $var_sale;
+		$on_sale         = true;
+		$pct             = (int) round( ( 1 - $var_sale / $var_reg ) * 100 );
+	}
+
+	if ( $effective_price <= 0 ) {
+		$raw_p = (float) $product->get_price();
+		if ( $raw_p <= 0 ) {
+			$raw_p = (float) get_post_meta( $var_id, '_price', true );
+		}
+		$effective_price = $raw_p > 0 ? $raw_p : $reg_price;
+	}
+	if ( $reg_price <= 0 || $reg_price < $effective_price ) {
+		$reg_price = $effective_price;
+	}
+
+	return array(
+		'regular_price'   => max( 0.0, (float) $reg_price ),
+		'effective_price' => max( 0.0, (float) $effective_price ),
+		'on_sale'         => (bool) ( $effective_price > 0 && $effective_price < $reg_price ),
+		'pct'             => (int) $pct,
+		'has_prod_sale'   => ! empty( $prog['prod_on_sale'] ),
+		'prod_pct'        => isset( $prog['prod_pct'] ) ? (int) $prog['prod_pct'] : 0,
+		'prod_sale'       => isset( $prog['prod_sale'] ) ? (float) $prog['prod_sale'] : (float) $reg_price,
+		'has_flash_sale'  => ! empty( $prog['flash_on_sale'] ),
+		'flash_pct'       => isset( $prog['flash_pct'] ) ? (int) $prog['flash_pct'] : 0,
+		'flash_sale'      => isset( $prog['flash_sale'] ) ? (float) $prog['flash_sale'] : (float) $reg_price,
+	);
+}
+
+/**
+ * Sync the active post-sale price (after Giảm Giá SP + Flash Sale) onto the WC_Product in the cart item.
+ */
+function nexxi_kids_sync_cart_item_program_price( $cart_item ) {
+	if ( empty( $cart_item['data'] ) || ! ( $cart_item['data'] instanceof WC_Product ) ) {
+		return $cart_item;
+	}
+	$eff = nexxi_kids_get_cart_item_effective_prices( $cart_item );
+	if ( $eff['effective_price'] > 0 ) {
+		$cart_item['data']->set_regular_price( (string) round( $eff['regular_price'] ) );
+		if ( $eff['on_sale'] ) {
+			$cart_item['data']->set_sale_price( (string) round( $eff['effective_price'] ) );
+		} else {
+			$cart_item['data']->set_sale_price( '' );
+		}
+		$cart_item['data']->set_price( (string) round( $eff['effective_price'] ) );
+	}
+	return $cart_item;
+}
+add_filter( 'woocommerce_add_cart_item', 'nexxi_kids_sync_cart_item_program_price', 20, 1 );
+add_filter( 'woocommerce_get_cart_item_from_session', 'nexxi_kids_sync_cart_item_program_price', 20, 1 );
+
+add_action(
+	'woocommerce_before_calculate_totals',
+	static function ( $cart ) {
+		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
+			return;
+		}
+		if ( ! $cart || ! is_object( $cart ) || ! method_exists( $cart, 'get_cart' ) ) {
+			return;
+		}
+		foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+			nexxi_kids_sync_cart_item_program_price( $cart_item );
+		}
+	},
+	10,
+	1
+);
 
 /**
  * Batch-prime postmeta, taxonomy terms, variation postmeta, and featured image attachments
@@ -700,6 +876,13 @@ function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 	$sold       = (int) $product->get_total_sales();
 	$left       = $fast_var['stock_left'];
 	$variations = $fast_var['variations'];
+	if ( $sale_price > 0 && ! empty( $variations ) ) {
+		foreach ( $variations as &$v_row ) {
+			$v_row['regular'] = (float) $reg_price;
+			$v_row['price']   = (float) $sale_price;
+		}
+		unset( $v_row );
+	}
 	$url        = 'flash' === $context ? add_query_arg( 'flash_sale', '1', $product->get_permalink() ) : $product->get_permalink();
 	$mat_terms  = get_the_terms( $product->get_id(), 'pa_chat-lieu' );
 	$material   = ( is_array( $mat_terms ) && ! empty( $mat_terms[0]->name ) ) ? $mat_terms[0]->name : '';

@@ -52,6 +52,9 @@ function nexxi_kids_stitch_cart_content() {
 										<strong style="font-size:15px;color:#031444;">
 											Khung Combo #<?php echo (int) $combo['index']; ?>: Gói <?php echo (int) $combo['qty']; ?> sản phẩm
 										</strong>
+										<span style="font-size:12px;color:#64748b;font-weight:600;">
+											(Giá sau giảm SP/FS: <?php echo esc_html( nexxi_kids_money( $combo['subtotal'] ) ); ?>)
+										</span>
 									</div>
 									<div style="font-size:13px;color:#0b6b2f;background:#e6f9ed;border:1px solid #86efac;padding:3px 11px;border-radius:999px;font-weight:700;">
 										Đã giảm thêm: -<?php echo esc_html( nexxi_kids_money( $combo['discount'] ) ); ?> (Còn <?php echo esc_html( nexxi_kids_money( $combo['total_after'] ) ); ?>)
@@ -70,6 +73,8 @@ function nexxi_kids_stitch_cart_content() {
 										$terms         = get_the_terms( $cart_item['product_id'], 'product_cat' );
 										$category      = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
 										$title         = nexxi_kids_cart_item_title( $cart_item );
+										$has_item_sale = ! empty( $cline['reg_price'] ) && (float) $cline['reg_price'] > (float) $cline['unit_price'];
+										$item_sale_pct = (int) ( $cline['prod_fs_pct'] ?? 0 );
 										?>
 										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
 											<div class="w-full md:col-span-6 flex items-center gap-space-md">
@@ -79,6 +84,11 @@ function nexxi_kids_stitch_cart_content() {
 												<div class="flex flex-col gap-1 min-w-0">
 													<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
 														<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span>
+														<?php if ( $has_item_sale && $item_sale_pct > 0 ) : ?>
+															<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;">
+																Giảm SP/FS -<?php echo (int) $item_sale_pct; ?>%
+															</span>
+														<?php endif; ?>
 														<span style="display:inline-block;background:#fff0ed;color:#ae3115;border:1px solid #ffdad2;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;">
 															<?php echo esc_html( $combo['badge_text'] ); ?>
 														</span>
@@ -88,8 +98,13 @@ function nexxi_kids_stitch_cart_content() {
 												</div>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
-												<span class="md:hidden text-outline">Đơn giá:</span>
-												<?php echo wp_kses_post( $cart->get_product_price( $product ) ); ?>
+												<span class="md:hidden text-outline">Đơn giá (sau giảm SP/FS):</span>
+												<div class="text-right md:text-center">
+													<?php if ( $has_item_sale ) : ?>
+														<div class="text-xs text-outline line-through" title="Giá gốc"><?php echo esc_html( nexxi_kids_money( $cline['reg_price'] ) ); ?></div>
+													<?php endif; ?>
+													<div class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $cline['unit_price'] ) ); ?></div>
+												</div>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng trong Combo:</span>
@@ -102,8 +117,8 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm">
 												<div class="text-right">
-													<div class="text-xs text-outline line-through"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></div>
-													<span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></span>
+													<div class="text-xs text-outline line-through" title="Giá sau giảm SP/FS (trước Combo)"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></div>
+													<span class="font-title-md text-title-md text-secondary font-bold" title="Giá sau khi áp thêm Combo"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></span>
 												</div>
 												<a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a>
 											</div>
@@ -138,10 +153,19 @@ function nexxi_kids_stitch_cart_content() {
 										$terms         = get_the_terms( $cart_item['product_id'], 'product_cat' );
 										$category      = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
 										$title         = nexxi_kids_cart_item_title( $cart_item );
+										$has_left_sale = ! empty( $litem['reg_price'] ) && (float) $litem['reg_price'] > (float) $litem['unit_price'];
 										?>
 										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
 											<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?> · Sản phẩm lẻ</span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
-											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface"><span class="md:hidden text-outline">Đơn giá:</span><?php echo wp_kses_post( $cart->get_product_price( $product ) ); ?></div>
+											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
+												<span class="md:hidden text-outline">Đơn giá:</span>
+												<div class="text-right md:text-center">
+													<?php if ( $has_left_sale ) : ?>
+														<div class="text-xs text-outline line-through"><?php echo esc_html( nexxi_kids_money( $litem['reg_price'] ) ); ?></div>
+													<?php endif; ?>
+													<div class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $litem['unit_price'] ) ); ?></div>
+												</div>
+											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng lẻ:</span>
 												<input class="qty nexxi-cart-qty nexxi-split-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary"
@@ -178,12 +202,21 @@ function nexxi_kids_stitch_cart_content() {
 					$terms = get_the_terms( $cart_item['product_id'], 'product_cat' );
 					$category = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
 					$title = nexxi_kids_cart_item_title( $cart_item );
+					$eff_row = function_exists( 'nexxi_kids_get_cart_item_effective_prices' ) ? nexxi_kids_get_cart_item_effective_prices( $cart_item ) : array( 'regular_price' => (float) $product->get_regular_price(), 'effective_price' => (float) $product->get_price(), 'on_sale' => false );
 					?>
 					<div class="bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
 						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
-						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface"><span class="md:hidden text-outline">Đơn giá:</span><?php echo wp_kses_post( $cart->get_product_price( $product ) ); ?></div>
+						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
+							<span class="md:hidden text-outline">Đơn giá:</span>
+							<div class="text-right md:text-center">
+								<?php if ( ! empty( $eff_row['on_sale'] ) ) : ?>
+									<div class="text-xs text-outline line-through"><?php echo esc_html( nexxi_kids_money( $eff_row['regular_price'] ) ); ?></div>
+								<?php endif; ?>
+								<div class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] ) ); ?></div>
+							</div>
+						</div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center"><span class="md:hidden text-outline">Số lượng:</span><input class="qty nexxi-cart-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary" aria-label="Số lượng <?php echo esc_attr( $product->get_name() ); ?>" type="number" min="0" max="<?php echo esc_attr( $product->get_max_purchase_quantity() ); ?>" name="cart[<?php echo esc_attr( $cart_item_key ); ?>][qty]" value="<?php echo esc_attr( $quantity ); ?>"></div>
-						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo wp_kses_post( $cart->get_product_subtotal( $product, $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
+						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] * (int) $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 					</div>
 				<?php endforeach; ?>
 				</div>
