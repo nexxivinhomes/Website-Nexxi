@@ -810,12 +810,15 @@ function nexxi_kids_bulk_discount_admin_page() {
 	?>
 	<div class="wrap" style="max-width:1340px;margin-top:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 		<!-- Unified "Khuyến mãi shop" Tab Bar -->
-		<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid #e4e2de;padding-bottom:10px;">
+		<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid #e4e2de;padding-bottom:10px;flex-wrap:wrap;">
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-bulk-discount' ) ); ?>" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;background:#031444;color:#fff;font-weight:700;font-size:13.5px;text-decoration:none;box-shadow:0 2px 8px rgba(3,20,68,0.18);">
 				🏷️ Giảm Giá Bán Sản Phẩm (Hàng Loạt / SKU)
 			</a>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-flash-sale' ) ); ?>" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;background:#fff;color:#031444;border:1px solid #d5d3ce;font-weight:700;font-size:13.5px;text-decoration:none;">
 				⚡ Chiến Dịch Flash Sale &amp; Đếm Ngược
+			</a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-combo-promo' ) ); ?>" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;background:#fff;color:#031444;border:1px solid #d5d3ce;font-weight:700;font-size:13.5px;text-decoration:none;">
+				🎁 Combo Khuyến Mãi (Theo Số Lượng Bill)
 			</a>
 		</div>
 		<!-- Header -->
