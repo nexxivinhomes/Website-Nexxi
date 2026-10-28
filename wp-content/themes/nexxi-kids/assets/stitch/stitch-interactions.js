@@ -356,9 +356,10 @@
     const zoom = $('[data-nexxi-zoom]');
     const showImage = src => {
       if (!src || !mainImg) return;
+      mainImg.removeAttribute('srcset');
       mainImg.src = src;
-      if (zoom) zoom.href = src;
       const matchedThumb = $$('[data-nexxi-thumb]').find(t => t.dataset.nexxiThumb === src);
+      if (zoom) zoom.href = (matchedThumb && matchedThumb.dataset.nexxiFull) || src;
       if (matchedThumb) {
         $$('[data-nexxi-thumb]').forEach(other => {
           const on = other === matchedThumb;

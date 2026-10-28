@@ -872,7 +872,8 @@ function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 	$reg_price  = $prog['regular'];
 	$fast_var   = nexxi_kids_fast_card_variations( $product );
 	$sizes      = $fast_var['sizes'];
-	$image      = wp_get_attachment_image_url( $product->get_image_id(), 'large' );
+	// Thẻ SP hiển thị ô vuông ~250-360px: dùng cỡ woocommerce_thumbnail (480px, cắt vuông) thay vì 'large'/ảnh gốc.
+	$image      = wp_get_attachment_image_url( $product->get_image_id(), 'woocommerce_thumbnail' );
 	$sold       = (int) $product->get_total_sales();
 	$left       = $fast_var['stock_left'];
 	$variations = $fast_var['variations'];

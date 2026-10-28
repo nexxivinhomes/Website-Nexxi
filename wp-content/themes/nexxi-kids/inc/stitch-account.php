@@ -1367,7 +1367,7 @@ function nexxi_kids_vn_address_script() {
 	?>
 	<script data-no-optimize="1" data-no-defer="1">
 	(function() {
-		window.NexxiVNAddresses2025 = <?php echo wp_json_encode( $vn_data ); ?>;
+		window.NexxiVNAddresses2025 = <?php echo wp_json_encode( $vn_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); ?>;
 
 		function foldVN(str) {
 			if (!str) return '';
