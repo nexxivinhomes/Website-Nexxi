@@ -73,11 +73,8 @@ function nexxi_kids_stitch_cart_content() {
 										?>
 										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
 											<div class="w-full md:col-span-6 flex items-center gap-space-md">
-												<a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0 relative" href="<?php echo esc_url( $permalink ); ?>">
+												<a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>">
 													<?php echo wp_kses_post( $image ); ?>
-													<span style="position:absolute;top:4px;left:4px;background:#fd6a49;color:#fff;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:999px;box-shadow:0 2px 4px rgba(0,0,0,0.15);">
-														<?php echo esc_html( $combo['badge_text'] ); ?>
-													</span>
 												</a>
 												<div class="flex flex-col gap-1 min-w-0">
 													<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
