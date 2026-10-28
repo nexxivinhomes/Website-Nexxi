@@ -2,6 +2,49 @@
 /** WooCommerce cart data in the Stitch cart composition. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/**
+ * Render an always-visible [-][qty][+] stepper control for Cart items.
+ */
+function nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_val, $is_split = false ) {
+	$max_qty = $product ? (int) $product->get_max_purchase_quantity() : -1;
+	$max_attr = $max_qty > 0 ? (string) $max_qty : '';
+	$p_name  = $product ? $product->get_name() : '';
+	ob_start();
+	?>
+	<div class="nexxi-qty-stepper" style="display:inline-flex;align-items:center;background:#f3f1ed;border:1.5px solid #e4e2de;border-radius:999px;padding:2px;height:38px;box-sizing:border-box;">
+		<button type="button"
+			class="nexxi-qty-step-btn"
+			onclick="window.nexxiStepCartQty && window.nexxiStepCartQty(this, -1)"
+			aria-label="Giảm số lượng <?php echo esc_attr( $p_name ); ?>"
+			style="width:30px;height:30px;border-radius:999px;border:none;background:#ffffff;color:#031444;font-weight:800;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 2px rgba(3,20,68,0.08);flex-shrink:0;user-select:none;transition:background .15s,color .15s;">
+			&minus;
+		</button>
+		<input class="qty nexxi-cart-qty<?php echo $is_split ? ' nexxi-split-qty' : ''; ?> bg-transparent text-center font-label-md text-label-md text-primary"
+			<?php if ( $is_split ) : ?>
+				data-cart-key="<?php echo esc_attr( $cart_item_key ); ?>"
+				oninput="window.nexxiSyncSplitCartQty && window.nexxiSyncSplitCartQty('<?php echo esc_js( $cart_item_key ); ?>')"
+			<?php else : ?>
+				name="cart[<?php echo esc_attr( $cart_item_key ); ?>][qty]"
+			<?php endif; ?>
+			aria-label="Số lượng <?php echo esc_attr( $p_name ); ?>"
+			type="number"
+			inputmode="numeric"
+			min="0"
+			<?php if ( '' !== $max_attr ) : ?>max="<?php echo esc_attr( $max_attr ); ?>"<?php endif; ?>
+			value="<?php echo esc_attr( (int) $qty_val ); ?>"
+			style="width:40px;min-height:30px;height:30px;border:none;background:transparent;text-align:center;font-weight:700;font-size:14px;color:#031444;padding:0;margin:0;outline:none;-moz-appearance:textfield;appearance:textfield;">
+		<button type="button"
+			class="nexxi-qty-step-btn"
+			onclick="window.nexxiStepCartQty && window.nexxiStepCartQty(this, 1)"
+			aria-label="Tăng số lượng <?php echo esc_attr( $p_name ); ?>"
+			style="width:30px;height:30px;border-radius:999px;border:none;background:#fd6a49;color:#ffffff;font-weight:800;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(253,106,73,0.28);flex-shrink:0;user-select:none;transition:background .15s,color .15s;">
+			&#43;
+		</button>
+	</div>
+	<?php
+	return ob_get_clean();
+}
+
 function nexxi_kids_stitch_cart_content() {
 	if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return ''; }
 	ob_start();
@@ -103,12 +146,7 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng trong Combo:</span>
-												<input class="qty nexxi-cart-qty nexxi-split-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary"
-													data-cart-key="<?php echo esc_attr( $cart_item_key ); ?>"
-													oninput="nexxiSyncSplitCartQty('<?php echo esc_js( $cart_item_key ); ?>')"
-													aria-label="Số lượng <?php echo esc_attr( $product->get_name() ); ?>"
-													type="number" min="0" max="<?php echo esc_attr( $product->get_max_purchase_quantity() ); ?>"
-													value="<?php echo esc_attr( $qty_in_combo ); ?>">
+												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_in_combo, true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm">
 												<div class="text-right">
@@ -162,12 +200,7 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng lẻ:</span>
-												<input class="qty nexxi-cart-qty nexxi-split-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary"
-													data-cart-key="<?php echo esc_attr( $cart_item_key ); ?>"
-													oninput="nexxiSyncSplitCartQty('<?php echo esc_js( $cart_item_key ); ?>')"
-													aria-label="Số lượng <?php echo esc_attr( $product->get_name() ); ?>"
-													type="number" min="0" max="<?php echo esc_attr( $product->get_max_purchase_quantity() ); ?>"
-													value="<?php echo esc_attr( $qty_left ); ?>">
+												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_left, true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 										</div>
@@ -176,15 +209,6 @@ function nexxi_kids_stitch_cart_content() {
 							</div>
 						<?php endif; ?>
 					</div>
-					<script>
-					function nexxiSyncSplitCartQty(cartKey) {
-						var inputs = document.querySelectorAll('.nexxi-split-qty[data-cart-key="' + cartKey + '"]');
-						var sum = 0;
-						inputs.forEach(function(inp) { sum += Math.max(0, parseInt(inp.value || '0', 10) || 0); });
-						var master = document.getElementById('nx-master-qty-' + cartKey);
-						if (master) master.value = sum;
-					}
-					</script>
 				<?php else : ?>
 				<div class="flex flex-col gap-space-md">
 				<?php foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) :
@@ -209,12 +233,59 @@ function nexxi_kids_stitch_cart_content() {
 								<div class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] ) ); ?></div>
 							</div>
 						</div>
-						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center"><span class="md:hidden text-outline">Số lượng:</span><input class="qty nexxi-cart-qty bg-surface-container rounded-full text-center font-label-md text-label-md text-primary" aria-label="Số lượng <?php echo esc_attr( $product->get_name() ); ?>" type="number" min="0" max="<?php echo esc_attr( $product->get_max_purchase_quantity() ); ?>" name="cart[<?php echo esc_attr( $cart_item_key ); ?>][qty]" value="<?php echo esc_attr( $quantity ); ?>"></div>
+						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
+							<span class="md:hidden text-outline">Số lượng:</span>
+							<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $quantity, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+						</div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] * (int) $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 					</div>
 				<?php endforeach; ?>
 				</div>
 				<?php endif; ?>
+				<style>
+				.nexxi-cart-qty::-webkit-outer-spin-button,
+				.nexxi-cart-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+				.nexxi-cart-qty[type=number] { -moz-appearance: textfield; appearance: textfield; }
+				.nexxi-qty-step-btn:hover { filter: brightness(0.95); transform: scale(1.04); }
+				.nexxi-qty-step-btn:active { transform: scale(0.96); }
+				</style>
+				<script>
+				window.nexxiSyncSplitCartQty = function(cartKey) {
+					var inputs = document.querySelectorAll('.nexxi-split-qty[data-cart-key="' + cartKey + '"]');
+					var sum = 0;
+					inputs.forEach(function(inp) { sum += Math.max(0, parseInt(inp.value || '0', 10) || 0); });
+					var master = document.getElementById('nx-master-qty-' + cartKey);
+					if (master) master.value = sum;
+				};
+				window.nexxiStepCartQty = function(btn, delta) {
+					var wrap = btn && btn.closest ? btn.closest('.nexxi-qty-stepper') : null;
+					var input = wrap ? wrap.querySelector('.nexxi-cart-qty') : null;
+					if (!input) return;
+					var cur = parseInt(input.value || '0', 10);
+					if (isNaN(cur)) cur = 0;
+					var minAttr = input.getAttribute('min');
+					var maxAttr = input.getAttribute('max');
+					var min = (minAttr !== null && minAttr !== '') ? parseInt(minAttr, 10) : 0;
+					var max = (maxAttr !== null && maxAttr !== '' && parseInt(maxAttr, 10) > 0) ? parseInt(maxAttr, 10) : 9999;
+					var next = Math.max(min, Math.min(max, cur + delta));
+					if (next === cur) return;
+					input.value = next;
+					var key = input.getAttribute('data-cart-key');
+					if (key && window.nexxiSyncSplitCartQty) {
+						window.nexxiSyncSplitCartQty(key);
+					}
+					input.dispatchEvent(new Event('input', { bubbles: true }));
+					input.dispatchEvent(new Event('change', { bubbles: true }));
+					var updateBtn = document.querySelector('.woocommerce-cart-form button[name="update_cart"]');
+					if (updateBtn) {
+						updateBtn.disabled = false;
+						clearTimeout(window._nexxiCartAutoUpdateTimer);
+						window._nexxiCartAutoUpdateTimer = setTimeout(function() {
+							updateBtn.click();
+						}, 450);
+					}
+				};
+				</script>
 				<div class="flex flex-wrap items-center justify-between gap-space-sm pt-space-lg"><div class="flex gap-space-xs"><input class="bg-surface-container-low px-space-md py-space-xs rounded-full font-body-md text-body-md" type="text" name="coupon_code" placeholder="Mã giảm giá" aria-label="Mã giảm giá"><button class="bg-secondary-fixed text-secondary hover:bg-secondary-container hover:text-on-secondary px-space-md py-space-xs rounded-full font-label-md text-label-md" type="submit" name="apply_coupon" value="Áp dụng">Áp dụng</button></div><button class="bg-surface-container text-primary hover:bg-primary hover:text-on-primary px-space-md py-space-xs rounded-full font-label-md text-label-md" type="submit" name="update_cart" value="Cập nhật giỏ hàng">Cập nhật giỏ hàng</button></div>
 				<?php wp_nonce_field( 'woocommerce-cart', 'woocommerce-cart-nonce' ); ?>
 			</form></div>

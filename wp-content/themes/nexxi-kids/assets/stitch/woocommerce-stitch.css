@@ -4,7 +4,9 @@
 #size-guide .nexxi-size-guide__fields input { border-color: #e4e2de; border-radius: 14px; background: #fbf9f5; }
 #size-guide .nexxi-size-guide__submit { border-radius: 999px; background: #fd6a49; }
 #size-guide .nexxi-size-guide__table th { background: #ffdad2; color: #031444; }
-.nexxi-cart-qty { width: 68px; min-height: 36px; border: 0; outline-color: #fd6a49; }
+.nexxi-cart-qty { width: 42px; min-height: 30px; border: 0; outline-color: #fd6a49; -moz-appearance: textfield; appearance: textfield; }
+.nexxi-cart-qty::-webkit-outer-spin-button,
+.nexxi-cart-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .nexxi-stitch-cart-totals .cart_totals { width: 100%; float: none; }
 .nexxi-stitch-cart-totals .cart_totals h2 { display: none; }
 .nexxi-stitch-cart-totals table { width: 100%; border-collapse: collapse; font-size: 14px; }
