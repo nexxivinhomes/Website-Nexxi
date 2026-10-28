@@ -475,12 +475,19 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		}
 		$mode = $parsed['mode'];
 		$val  = $parsed['val'];
+		$auto_started_msg = '';
+		if ( 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() ) {
+			$auto_end = wp_date( 'Y-m-d\TH:i', time() + DAY_IN_SECONDS );
+			update_option( 'nexxi_flash_sale_enabled', '1' );
+			update_option( 'nexxi_flash_sale_end', $auto_end );
+			set_theme_mod( 'nexxi_kids_flash_sale_end', $auto_end );
+			delete_option( 'nexxi_flash_sale_last_expired' );
+			nexxi_kids_sync_all_flash_sale_products();
+			$auto_started_msg = ' (Đã tự động bật đồng hồ Flash Sale 24h để áp dụng ngay giá giảm!)';
+		}
 		if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val, 0, '1' ) ) {
 			nexxi_kids_flush_sale_cache();
-			$warn = ( 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() )
-				? ' ⚠️ Lưu ý: Đồng hồ Flash Sale ở Mục 1 đang tắt (00:00:00) — vui lòng cài Thời gian kết thúc ở Mục 1 để chương trình bắt đầu hiển thị ngoài Website!'
-				: '';
-			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá Flash Sale cho sản phẩm #' . $pid . '!' . $warn, 'updated' );
+			add_settings_error( 'nexxi_fs', 'single_saved', 'Đã cập nhật giá Flash Sale cho sản phẩm #' . $pid . '!' . $auto_started_msg, 'updated' );
 		}
 	} elseif ( 'bulk_discount' === $action ) {
 		$pids     = isset( $_POST['product_ids'] ) && is_array( $_POST['product_ids'] ) ? array_map( 'absint', wp_unslash( $_POST['product_ids'] ) ) : array();
@@ -489,6 +496,16 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		$parsed   = nexxi_kids_parse_flash_discount_input( $raw_val, $exp_mode );
 		$mode     = $parsed['mode'];
 		$val      = $parsed['val'];
+		$auto_started_msg = '';
+		if ( ! empty( $pids ) && 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() ) {
+			$auto_end = wp_date( 'Y-m-d\TH:i', time() + DAY_IN_SECONDS );
+			update_option( 'nexxi_flash_sale_enabled', '1' );
+			update_option( 'nexxi_flash_sale_end', $auto_end );
+			set_theme_mod( 'nexxi_kids_flash_sale_end', $auto_end );
+			delete_option( 'nexxi_flash_sale_last_expired' );
+			nexxi_kids_sync_all_flash_sale_products();
+			$auto_started_msg = ' (Đã tự động bật đồng hồ Flash Sale 24h để áp dụng ngay giá giảm!)';
+		}
 		$count    = 0;
 		foreach ( $pids as $pid ) {
 			if ( $pid && nexxi_kids_apply_product_discount( $pid, $mode, $val, 0, '1' ) ) {
@@ -497,10 +514,7 @@ function nexxi_kids_handle_flash_sale_admin_post() {
 		}
 		if ( $count > 0 ) {
 			nexxi_kids_flush_sale_cache();
-			$warn = ( 'clear' !== $mode && $val > 0 && ! nexxi_kids_is_flash_sale_live() )
-				? ' ⚠️ Lưu ý: Đồng hồ Flash Sale ở Mục 1 đang tắt (00:00:00) — vui lòng cài Thời gian kết thúc ở Mục 1 để chương trình bắt đầu hiển thị ngoài Website!'
-				: '';
-			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng Flash Sale cho ' . $count . ' sản phẩm!' . $warn, 'updated' );
+			add_settings_error( 'nexxi_fs', 'bulk_saved', 'Đã áp dụng Flash Sale cho ' . $count . ' sản phẩm!' . $auto_started_msg, 'updated' );
 		} else {
 			add_settings_error( 'nexxi_fs', 'bulk_empty', 'Vui lòng tích chọn ít nhất 1 sản phẩm trong bảng bên dưới (hoặc bấm nút Lưu trên từng dòng sản phẩm).', 'error' );
 		}
