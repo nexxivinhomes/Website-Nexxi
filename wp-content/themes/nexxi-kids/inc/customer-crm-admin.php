@@ -43,7 +43,7 @@ function nexxi_kids_get_points_settings() {
 		$saved = array();
 	}
 	$res = wp_parse_args( $saved, $defaults );
-	$res['earn_unit_vnd']     = max( 100, (int) $res['earn_unit_vnd'] );
+	$res['earn_unit_vnd']     = max( 1, (int) $res['earn_unit_vnd'] );
 	$res['point_value_vnd']   = max( 1, (int) $res['point_value_vnd'] );
 	$res['min_points_redeem'] = max( 1, (int) $res['min_points_redeem'] );
 	$res['max_redeem_pct']    = min( 100, max( 1, (int) $res['max_redeem_pct'] ) );
@@ -1123,7 +1123,7 @@ function nexxi_kids_customer_manager_admin_page() {
 						</div>
 						<div class="nexxi-form-field">
 							<label>💰 Tổng chi tiêu ghi nhận thêm (VNĐ - nếu mua tại cửa hàng)</label>
-							<input type="number" name="manual_spent_adjust" min="0" step="1000" class="nexxi-crm-input" value="<?php echo esc_attr( (int) $e_spent ); ?>" placeholder="0">
+							<input type="number" name="manual_spent_adjust" min="0" step="any" class="nexxi-crm-input" value="<?php echo esc_attr( (int) $e_spent ); ?>" placeholder="0">
 						</div>
 
 						<div class="nexxi-form-field">
@@ -1361,9 +1361,9 @@ function nexxi_kids_handle_member_tiers_post() {
 	// 1. Save Points = Money + Upgrade/Downgrade Settings + Tiers Table
 	if ( 'save_all_tier_settings' === $action ) {
 		$pts_settings = array(
-			'earn_unit_vnd'     => isset( $_POST['earn_unit_vnd'] ) ? max( 100, absint( $_POST['earn_unit_vnd'] ) ) : 10000,
+			'earn_unit_vnd'     => isset( $_POST['earn_unit_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['earn_unit_vnd'] ) ) ) ) ) : 10000,
 			'redeem_enabled'    => ! empty( $_POST['redeem_enabled'] ) ? '1' : '0',
-			'point_value_vnd'   => isset( $_POST['point_value_vnd'] ) ? max( 1, absint( $_POST['point_value_vnd'] ) ) : 1000,
+			'point_value_vnd'   => isset( $_POST['point_value_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['point_value_vnd'] ) ) ) ) ) : 1000,
 			'min_points_redeem' => isset( $_POST['min_points_redeem'] ) ? max( 1, absint( $_POST['min_points_redeem'] ) ) : 10,
 			'max_redeem_pct'    => isset( $_POST['max_redeem_pct'] ) ? min( 100, max( 1, absint( $_POST['max_redeem_pct'] ) ) ) : 50,
 		);
@@ -1476,21 +1476,21 @@ function nexxi_kids_member_tiers_admin_page() {
 					<div class="nexxi-form-grid">
 						<div class="nexxi-form-field">
 							<label>Mức tích điểm (Bao nhiêu VNĐ = 1 điểm)</label>
-							<input type="number" name="earn_unit_vnd" min="100" step="500" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['earn_unit_vnd']; ?>">
-							<span style="font-size:11.5px;color:#64748b;">VD: Nhập <code>10000</code> nghĩa là khách mua 10.000₫ được +1 điểm.</span>
+							<input type="number" name="earn_unit_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['earn_unit_vnd']; ?>">
+							<span style="font-size:11.5px;color:#64748b;">VD: Nhập <code>1000</code> hoặc <code>10000</code> nghĩa là khách mua bấy nhiêu VNĐ được +1 điểm.</span>
 						</div>
 						<div class="nexxi-form-field">
 							<label>Giá trị tiêu điểm (1 Điểm = Bao nhiêu VNĐ)</label>
-							<input type="number" name="point_value_vnd" min="1" step="100" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['point_value_vnd']; ?>">
+							<input type="number" name="point_value_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['point_value_vnd']; ?>">
 							<span style="font-size:11.5px;color:#64748b;">VD: Nhập <code>1000</code> nghĩa là 1 điểm trừ trực tiếp 1.000₫ trên đơn.</span>
 						</div>
 						<div class="nexxi-form-field">
 							<label>Số điểm tối thiểu để được đổi</label>
-							<input type="number" name="min_points_redeem" min="1" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['min_points_redeem']; ?>">
+							<input type="number" name="min_points_redeem" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['min_points_redeem']; ?>">
 						</div>
 						<div class="nexxi-form-field">
 							<label>Giới hạn trừ bằng điểm tối đa (% đơn hàng)</label>
-							<input type="number" name="max_redeem_pct" min="1" max="100" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['max_redeem_pct']; ?>">
+							<input type="number" name="max_redeem_pct" min="1" max="100" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['max_redeem_pct']; ?>">
 						</div>
 					</div>
 					<label style="display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-weight:700;color:#031444;cursor:pointer;">
@@ -1577,11 +1577,11 @@ function nexxi_kids_member_tiers_admin_page() {
 										<input type="text" name="t_icon[]" value="<?php echo esc_attr( $t['icon'] ?? '👑' ); ?>" class="nexxi-crm-input" style="width:52px;text-align:center;">
 									</td>
 									<td><input type="text" name="t_name[]" value="<?php echo esc_attr( $t['name'] ); ?>" class="nexxi-crm-input" style="width:170px;font-weight:700;"></td>
-									<td><input type="number" name="t_spent[]" value="<?php echo esc_attr( (int) $t['min_spent'] ); ?>" min="0" step="100000" class="nexxi-crm-input" style="width:135px;"></td>
-									<td><input type="number" name="t_points[]" value="<?php echo (int) $t['min_points']; ?>" min="0" class="nexxi-crm-input" style="width:95px;"></td>
-									<td><input type="number" name="t_disc[]" value="<?php echo esc_attr( $t['discount_pct'] ); ?>" min="0" max="90" step="0.5" class="nexxi-crm-input" style="width:90px;"></td>
-									<td><input type="number" name="t_mult[]" value="<?php echo esc_attr( $t['point_mult'] ); ?>" min="1" max="10" step="0.1" class="nexxi-crm-input" style="width:80px;"></td>
-									<td><input type="number" name="t_gift[]" value="<?php echo (int) $t['birthday_gift']; ?>" min="0" step="10000" class="nexxi-crm-input" style="width:115px;"></td>
+									<td><input type="number" name="t_spent[]" value="<?php echo esc_attr( (int) $t['min_spent'] ); ?>" min="0" step="any" class="nexxi-crm-input" style="width:135px;"></td>
+									<td><input type="number" name="t_points[]" value="<?php echo (int) $t['min_points']; ?>" min="0" step="any" class="nexxi-crm-input" style="width:95px;"></td>
+									<td><input type="number" name="t_disc[]" value="<?php echo esc_attr( $t['discount_pct'] ); ?>" min="0" max="90" step="any" class="nexxi-crm-input" style="width:90px;"></td>
+									<td><input type="number" name="t_mult[]" value="<?php echo esc_attr( $t['point_mult'] ); ?>" min="1" max="10" step="any" class="nexxi-crm-input" style="width:80px;"></td>
+									<td><input type="number" name="t_gift[]" value="<?php echo (int) $t['birthday_gift']; ?>" min="0" step="any" class="nexxi-crm-input" style="width:115px;"></td>
 									<td><input type="text" name="t_perks[]" value="<?php echo esc_attr( $t['perks'] ); ?>" class="nexxi-crm-input" style="width:250px;"></td>
 									<td style="white-space:nowrap;">
 										<input type="color" name="t_color[]" value="<?php echo esc_attr( $t['color'] ?? '#031444' ); ?>" title="Màu chữ">
@@ -1610,11 +1610,11 @@ function nexxi_kids_member_tiers_admin_page() {
 			tr.innerHTML =
 				'<td><input type="hidden" name="t_slug[]" value=""><input type="text" name="t_icon[]" value="👑" class="nexxi-crm-input" style="width:52px;text-align:center;"></td>' +
 				'<td><input type="text" name="t_name[]" value="Hạng VIP Mới" class="nexxi-crm-input" style="width:170px;font-weight:700;"></td>' +
-				'<td><input type="number" name="t_spent[]" value="20000000" min="0" step="100000" class="nexxi-crm-input" style="width:135px;"></td>' +
-				'<td><input type="number" name="t_points[]" value="2000" min="0" class="nexxi-crm-input" style="width:95px;"></td>' +
-				'<td><input type="number" name="t_disc[]" value="12" min="0" max="90" step="0.5" class="nexxi-crm-input" style="width:90px;"></td>' +
-				'<td><input type="number" name="t_mult[]" value="2.5" min="1" max="10" step="0.1" class="nexxi-crm-input" style="width:80px;"></td>' +
-				'<td><input type="number" name="t_gift[]" value="300000" min="0" step="10000" class="nexxi-crm-input" style="width:115px;"></td>' +
+				'<td><input type="number" name="t_spent[]" value="20000000" min="0" step="any" class="nexxi-crm-input" style="width:135px;"></td>' +
+				'<td><input type="number" name="t_points[]" value="2000" min="0" step="any" class="nexxi-crm-input" style="width:95px;"></td>' +
+				'<td><input type="number" name="t_disc[]" value="12" min="0" max="90" step="any" class="nexxi-crm-input" style="width:90px;"></td>' +
+				'<td><input type="number" name="t_mult[]" value="2.5" min="1" max="10" step="any" class="nexxi-crm-input" style="width:80px;"></td>' +
+				'<td><input type="number" name="t_gift[]" value="300000" min="0" step="any" class="nexxi-crm-input" style="width:115px;"></td>' +
 				'<td><input type="text" name="t_perks[]" value="Ưu đãi đặc quyền VIP" class="nexxi-crm-input" style="width:250px;"></td>' +
 				'<td style="white-space:nowrap;"><input type="color" name="t_color[]" value="#7c2d12"><input type="color" name="t_bg[]" value="#ffedd5"></td>' +
 				'<td><button type="button" onclick="this.closest(\'tr\').remove()" class="nexxi-crm-btn nexxi-crm-btn--danger" style="padding:4px 8px;">✕</button></td>';
