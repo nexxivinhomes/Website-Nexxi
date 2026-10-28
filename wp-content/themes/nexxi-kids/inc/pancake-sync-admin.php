@@ -3865,7 +3865,7 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		}
 
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'products';
-		if ( ! in_array( $active_tab, array( 'products', 'images' ), true ) ) {
+		if ( ! in_array( $active_tab, array( 'products', 'images', 'web_products' ), true ) ) {
 			$active_tab = 'products';
 		}
 
@@ -3909,8 +3909,8 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				.nxp-hero { background: linear-gradient(135deg, #1b2a59 0%, #2b4285 100%); color: #fff; border-radius: 16px; padding: 22px 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; box-shadow: 0 10px 28px rgba(27,42,89,0.16); margin-bottom: 16px; }
 				.nxp-hero h1 { color: #fff; font-size: 23px; font-weight: 800; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
 				.nxp-hero p { margin: 0; color: rgba(255,255,255,0.86); font-size: 13.5px; }
-				.nxp-tabs-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-				@media (max-width: 860px) { .nxp-tabs-nav { grid-template-columns: 1fr; } }
+				.nxp-tabs-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+				@media (max-width: 1200px) { .nxp-tabs-nav { grid-template-columns: 1fr; } }
 				.nxp-tab-link { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 14px; background: #fff; border: 2px solid #e2e8f0; text-decoration: none; color: #1e293b; transition: all 0.18s; box-shadow: 0 2px 6px rgba(15,23,42,0.04); }
 				.nxp-tab-link:hover { border-color: #94a3b8; color: #0f172a; transform: translateY(-1px); }
 				.nxp-tab-link.active { border-color: #e85d3f; background: linear-gradient(135deg, #fff7f5 0%, #ffffff 100%); box-shadow: 0 6px 18px rgba(232,93,63,0.15); }
@@ -4004,11 +4004,30 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 						<div class="nxp-tab-desc">Đồng bộ SKU sản phẩm &amp; SKU phân loại từ Pancake POS • Tải toàn bộ ảnh SP (chỉ lấy ảnh chưa có) &amp; gán ảnh từng phân loại màu sắc theo SKU phân loại</div>
 					</div>
 				</a>
+				<a href="<?php echo esc_url( add_query_arg( array( 'page' => self::MENU_SLUG, 'tab' => 'web_products' ), admin_url( 'admin.php' ) ) ); ?>" id="nxpTabBtnWebProducts" data-tab="web_products" class="nxp-tab-link <?php echo 'web_products' === $active_tab ? 'active' : ''; ?>">
+					<div class="nxp-tab-icon">🛍️</div>
+					<div>
+						<div class="nxp-tab-title">
+							<span>Tab 3: Quản Lý Sản Phẩm Trên Web</span>
+							<span class="nxp-badge nxp-badge-ok nxp-tab-open-badge" style="<?php echo 'web_products' === $active_tab ? '' : 'display:none;'; ?>">Đang mở</span>
+						</div>
+						<div class="nxp-tab-desc">Sửa / xóa toàn bộ thông tin SP (SKU, tên, mô tả, ảnh, biến thể, SEO &amp; thẻ meta) • Tải file toàn bộ SP • Sửa hàng loạt bằng file (chỉ mục có thay đổi)</div>
+					</div>
+				</a>
 			</div>
 
 			<?php if ( isset( $_GET['saved_msg'] ) ) : ?>
 				<div class="notice notice-success is-dismissible"><p><strong>Đã lưu cấu hình đồng bộ Pancake SKU &amp; Ảnh thành công!</strong></p></div>
 			<?php endif; ?>
+
+			<!-- TAB 3 PANE: QUẢN LÝ SẢN PHẨM TRÊN WEB (dữ liệu nạp qua AJAX — inc/web-product-manager-admin.php) -->
+			<div id="nxp-pane-web_products" class="nxp-tab-pane" style="<?php echo 'web_products' === $active_tab ? '' : 'display:none;'; ?>">
+				<?php
+				if ( class_exists( 'Nexxi_Web_Product_Manager' ) ) {
+					Nexxi_Web_Product_Manager::render_tab();
+				}
+				?>
+			</div>
 
 			<!-- TAB 1 PANE -->
 			<div id="nxp-pane-products" class="nxp-tab-pane" style="<?php echo 'products' === $active_tab ? '' : 'display:none;'; ?>">
@@ -6233,18 +6252,20 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			let spaAbortCtrl = null;
 
 			function switchTabNoReload(tabName, pushHistory = true) {
-				const targetTab = tabName === 'images' ? 'images' : 'products';
+				const targetTab = ['images', 'web_products'].includes(tabName) ? tabName : 'products';
 				const p1 = $('#nxp-pane-products');
 				const p2 = $('#nxp-pane-images');
+				const p3 = $('#nxp-pane-web_products');
 				if (p1) p1.style.display = targetTab === 'products' ? 'block' : 'none';
 				if (p2) p2.style.display = targetTab === 'images' ? 'block' : 'none';
+				if (p3) p3.style.display = targetTab === 'web_products' ? 'block' : 'none';
 
 				$$('.nxp-tab-link', wrapRoot).forEach(link => {
-					if (link.dataset.tab === targetTab) {
-						link.classList.add('is-active');
-					} else {
-						link.classList.remove('is-active');
-					}
+					const isOn = link.dataset.tab === targetTab;
+					link.classList.toggle('is-active', isOn);
+					link.classList.toggle('active', isOn);
+					const openBadge = link.querySelector('.nxp-tab-open-badge');
+					if (openBadge) openBadge.style.display = isOn ? '' : 'none';
 				});
 
 				if (pushHistory && window.history && window.history.pushState) {
@@ -6257,6 +6278,14 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			async function loadSpaUrlNoReload(targetUrl, targetTab = '', pushHistory = true) {
 				const u = new URL(targetUrl, window.location.origin);
 				const tab = targetTab || u.searchParams.get('tab') || 'products';
+				if (tab === 'web_products') {
+					// Tab 3 tự nạp dữ liệu qua AJAX riêng (assets/js/web-product-manager.js)
+					switchTabNoReload(tab, false);
+					if (pushHistory && window.history && window.history.pushState) {
+						window.history.pushState({ tab, url: u.toString() }, '', u.toString());
+					}
+					return;
+				}
 				try {
 					switchTabNoReload(tab, false);
 

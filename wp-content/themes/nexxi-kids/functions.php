@@ -3,7 +3,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 define( 'NEXXI_KIDS_VERSION', '1.0.0' );
-foreach ( array( 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch', 'stitch-cart', 'stitch-account', 'setup-pages', 'customer-crm-admin', 'flash-sale-admin', 'bulk-discount-admin', 'combo-promo', 'pancake-sync-admin', 'zalo-order-notify', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
+foreach ( array( 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch', 'stitch-cart', 'stitch-account', 'setup-pages', 'customer-crm-admin', 'flash-sale-admin', 'bulk-discount-admin', 'combo-promo', 'pancake-sync-admin', 'web-product-manager-admin', 'zalo-order-notify', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
 	require_once get_template_directory() . '/inc/' . $nexxi_kids_module . '.php';
 }
 
