@@ -98,13 +98,8 @@ function nexxi_kids_stitch_cart_content() {
 												</div>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
-												<span class="md:hidden text-outline">Đơn giá (sau giảm SP/FS):</span>
-												<div class="text-right md:text-center">
-													<?php if ( $has_item_sale ) : ?>
-														<div class="text-xs text-outline line-through" title="Giá gốc"><?php echo esc_html( nexxi_kids_money( $cline['reg_price'] ) ); ?></div>
-													<?php endif; ?>
-													<div class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $cline['unit_price'] ) ); ?></div>
-												</div>
+												<span class="md:hidden text-outline">Đơn giá:</span>
+												<span class="font-bold text-primary"><?php echo esc_html( nexxi_kids_money( $cline['unit_price'] ) ); ?></span>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng trong Combo:</span>
@@ -117,8 +112,7 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm">
 												<div class="text-right">
-													<div class="text-xs text-outline line-through" title="Giá sau giảm SP/FS (trước Combo)"><?php echo esc_html( nexxi_kids_money( $cline['line_subtotal'] ) ); ?></div>
-													<span class="font-title-md text-title-md text-secondary font-bold" title="Giá sau khi áp thêm Combo"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></span>
+													<span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></span>
 												</div>
 												<a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a>
 											</div>
