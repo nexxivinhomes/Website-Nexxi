@@ -184,10 +184,9 @@ function nexxi_kids_account_sidebar( WP_User $user ) {
 <div class="relative mb-space-sm"><div class="w-24 h-24 rounded-full bg-surface-container-high p-1 shadow-inner"><img class="w-full h-full object-cover rounded-full shadow-sm" src="<?php echo esc_url( get_avatar_url( $user->ID, array( 'size' => 192 ) ) ); ?>" alt="<?php echo esc_attr( nexxi_kids_account_name( $user ) ); ?>"></div></div>
 <h2 class="font-headline-sm text-headline-sm text-primary mb-1"><?php echo esc_html( nexxi_kids_account_name( $user ) ); ?></h2>
 <p class="font-body-sm text-body-sm text-on-surface-variant mb-space-sm break-all"><?php echo esc_html( $user->user_email ); ?></p>
-<div class="w-full grid grid-cols-3 gap-space-xs pt-space-sm mt-space-xs bg-surface-container-low rounded-lg p-space-sm">
+<div class="w-full grid grid-cols-2 gap-space-xs pt-space-sm mt-space-xs bg-surface-container-low rounded-lg p-space-sm">
 <div class="flex flex-col items-center"><span class="font-label-sm text-label-sm text-outline">Đơn hàng</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo (int) $orders; ?> đơn</span></div>
-<div class="flex flex-col items-center border-x border-outline-variant/25 px-1"><span class="font-label-sm text-label-sm text-outline">Điểm NEXXI</span><span class="font-label-md text-label-md text-secondary font-bold"><?php echo esc_html( number_format_i18n( $points ) ); ?> điểm</span></div>
-<div class="flex flex-col items-center"><span class="font-label-sm text-label-sm text-outline">Yêu thích</span><span class="font-label-md text-label-md text-primary font-bold" data-nexxi-wishlist-count><?php echo (int) $wishlist; ?></span></div>
+<div class="flex flex-col items-center border-l border-outline-variant/25"><span class="font-label-sm text-label-sm text-outline">Yêu thích</span><span class="font-label-md text-label-md text-primary font-bold" data-nexxi-wishlist-count><?php echo (int) $wishlist; ?></span></div>
 </div>
 </div>
 <nav class="bg-surface-container-lowest rounded-xl p-space-sm shadow-sm flex flex-col gap-1" aria-label="Tài khoản">
@@ -800,8 +799,6 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	$open = wc_get_orders( array( 'customer_id' => $uid, 'status' => array( 'wc-pending', 'wc-processing', 'wc-on-hold' ), 'return' => 'ids', 'limit' => -1 ) );
 	$recent = wc_get_orders( array( 'customer_id' => $uid, 'limit' => 3, 'orderby' => 'date', 'order' => 'DESC' ) );
 	$wishlist = nexxi_kids_account_wishlist_count( $uid );
-	$points = nexxi_kids_get_user_points( $uid );
-	$pts_cfg   = function_exists( 'nexxi_kids_get_points_settings' ) ? nexxi_kids_get_points_settings() : array( 'earn_unit_vnd' => 10000, 'point_value_vnd' => 1000 );
 	$baby_name = (string) get_user_meta( $uid, 'nexxi_baby_name', true );
 	$baby_bday = (string) get_user_meta( $uid, 'nexxi_baby_birthday', true );
 	$baby_gen  = (string) get_user_meta( $uid, 'nexxi_baby_gender', true );
@@ -810,39 +807,19 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	$account_url = wc_get_account_endpoint_url( 'edit-account' );
 	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
 	$stats = array(
-		array( 'stars', 'Điểm thành viên NEXXI', number_format_i18n( $points ) . ' điểm', '#nexxi-member-points' ),
 		array( 'shopping_bag', 'Tổng đơn đã đặt', $count . ' đơn', $orders_url ),
 		array( 'local_shipping', 'Đang xử lý', count( $open ) . ' đơn', $orders_url ),
 		array( 'payments', 'Tổng tiền chi tiêu', wc_price( $spent ), $orders_url ),
+		array( 'favorite', 'Mẫu yêu thích', $wishlist . ' sản phẩm', $wishlist_url ),
 	);
 	$book = nexxi_kids_get_address_book( $uid );
 	ob_start(); ?>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm" id="nexxi-member-points">
-<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản & Điểm Thành Viên NEXXI Club' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
+<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản NEXXI Club' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
 <?php foreach ( $stats as $stat ) : ?>
 <a class="bg-surface-container-low hover:bg-surface-container-high/60 rounded-lg p-space-md flex flex-col gap-1 transition-colors" href="<?php echo esc_url( $stat[3] ); ?>"><span class="w-9 h-9 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center"><span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $stat[0] ); ?></span></span><span class="font-label-sm text-label-sm text-outline mt-1"><?php echo esc_html( $stat[1] ); ?></span><span class="font-title-md text-title-md text-primary font-bold"><?php echo wp_kses_post( $stat[2] ); ?></span></a>
 <?php endforeach; ?>
-</div>
-<div class="mt-space-md p-space-md rounded-xl bg-gradient-to-r from-secondary-fixed/60 via-surface-container-low to-primary-fixed/40 border border-secondary-fixed flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
-	<div class="flex items-start sm:items-center gap-space-sm">
-		<span class="w-11 h-11 rounded-full bg-secondary text-on-secondary flex items-center justify-center shrink-0 shadow-sm">
-			<span class="material-symbols-outlined text-[22px]">loyalty</span>
-		</span>
-		<div>
-			<span class="font-label-lg text-label-lg text-primary font-bold block">
-				Điểm NEXXI hiện có: <span class="text-secondary"><?php echo esc_html( number_format_i18n( $points ) ); ?> điểm</span>
-				(Quy đổi: <strong class="text-primary"><?php echo esc_html( nexxi_kids_money( $points * (int) $pts_cfg['point_value_vnd'] ) ); ?></strong>)
-			</span>
-			<span class="font-body-sm text-body-sm text-on-surface-variant block">
-				Tích lũy tự động từ mọi đơn hàng (<?php echo esc_html( nexxi_kids_money( $pts_cfg['earn_unit_vnd'] ) ); ?> = 1 điểm) và dùng điểm trừ tiền trực tiếp khi thanh toán!
-			</span>
-		</div>
-	</div>
-	<a class="inline-flex items-center gap-1.5 bg-primary text-on-primary px-space-md py-2 rounded-full font-label-sm text-label-sm font-bold hover:bg-primary-container transition-all shadow-sm shrink-0 self-start sm:self-center no-underline" href="<?php echo esc_url( nexxi_kids_shop_url() ); ?>">
-		<span class="material-symbols-outlined text-[16px]">redeem</span>
-		<span>Mua sắm &amp; Tích điểm</span>
-	</a>
 </div>
 
 <!-- Baby Birthday Profile Box -->
@@ -883,14 +860,10 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	$first = $items ? reset( $items ) : null;
 	$thumb = $first && $first->get_product() ? $first->get_product()->get_image( 'woocommerce_thumbnail', array( 'class' => 'w-full h-full object-cover' ) ) : '';
 	$more = count( $items ) > 1 ? ' và ' . ( count( $items ) - 1 ) . ' sản phẩm khác' : '';
-	$ord_pts = (int) $order->get_meta( '_nexxi_points_earned' );
-	if ( $ord_pts <= 0 ) {
-		$ord_pts = nexxi_kids_calculate_order_points( $order );
-	}
 	?>
 <a class="flex items-center gap-space-md p-space-md bg-surface-container-low rounded-lg hover:bg-surface-container-high/60 transition-colors" href="<?php echo esc_url( $order->get_view_order_url() ); ?>">
 <span class="w-14 h-16 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0"><?php echo wp_kses_post( $thumb ); ?></span>
-<span class="flex-1 min-w-0 flex flex-col gap-0.5"><span class="flex flex-wrap items-center gap-space-xs"><span class="font-label-lg text-label-lg text-primary">Đơn #<?php echo esc_html( $order->get_order_number() ); ?></span><?php echo nexxi_kids_account_status_badge( $order->get_status() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><?php if ( $ord_pts > 0 ) : ?><span class="bg-secondary-fixed/70 text-secondary font-label-sm text-[11px] px-2 py-0.5 rounded-full font-bold">+<?php echo (int) $ord_pts; ?> điểm</span><?php endif; ?></span><span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1"><?php echo esc_html( ( $first ? $first->get_name() : '' ) . $more ); ?></span><span class="font-body-sm text-body-sm text-outline"><?php echo esc_html( wc_format_datetime( $order->get_date_created(), 'd/m/Y H:i' ) ); ?></span></span>
+<span class="flex-1 min-w-0 flex flex-col gap-0.5"><span class="flex flex-wrap items-center gap-space-xs"><span class="font-label-lg text-label-lg text-primary">Đơn #<?php echo esc_html( $order->get_order_number() ); ?></span><?php echo nexxi_kids_account_status_badge( $order->get_status() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span><span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1"><?php echo esc_html( ( $first ? $first->get_name() : '' ) . $more ); ?></span><span class="font-body-sm text-body-sm text-outline"><?php echo esc_html( wc_format_datetime( $order->get_date_created(), 'd/m/Y H:i' ) ); ?></span></span>
 <span class="text-right shrink-0"><span class="block font-title-md text-title-md text-secondary font-bold"><?php echo wp_kses_post( $order->get_formatted_order_total() ); ?></span><span class="font-label-sm text-label-sm text-primary">Xem chi tiết →</span></span>
 </a>
 <?php endforeach; ?>
@@ -1183,7 +1156,7 @@ add_filter( 'woocommerce_billing_fields', static function ( $fields ) {
 	if ( isset( $fields['billing_email'] ) ) {
 		$fields['billing_email']['required']    = true;
 		$fields['billing_email']['label']       = 'Địa chỉ email';
-		$fields['billing_email']['placeholder'] = 'Nhập email để nhận thông tin đơn hàng & tích điểm';
+		$fields['billing_email']['placeholder'] = 'Nhập email để nhận thông tin đơn hàng';
 		$fields['billing_email']['class']       = array( 'form-row-wide' );
 		$fields['billing_email']['priority']    = 10;
 	}
@@ -1955,7 +1928,7 @@ add_action( 'woocommerce_after_checkout_validation', static function ( $data, $e
 	$email = isset( $data['billing_email'] ) ? sanitize_email( $data['billing_email'] ) : '';
 	$phone = isset( $data['billing_phone'] ) ? nexxi_kids_normalize_phone( $data['billing_phone'] ) : '';
 	if ( '' === $email || ! is_email( $email ) ) {
-		$errors->add( 'billing_email_required', 'Vui lòng nhập địa chỉ Email hợp lệ để nhận thông tin đơn hàng và tích điểm thành viên NEXXI.' );
+		$errors->add( 'billing_email_required', 'Vui lòng nhập địa chỉ Email hợp lệ để nhận thông tin đơn hàng.' );
 	}
 	if ( '' === $phone || strlen( $phone ) < 8 ) {
 		$errors->add( 'billing_phone_required', 'Vui lòng nhập Số điện thoại nhận hàng hợp lệ.' );
@@ -1964,9 +1937,9 @@ add_action( 'woocommerce_after_checkout_validation', static function ( $data, $e
 
 /**
  * Main Checkout handler:
- * - Guest with NO existing email/phone -> auto-create account (username = email, password = phone), link order, award points, auto-login.
- * - Guest with EXISTING email or phone -> link order to existing account, update order/profile info, award points, notify customer to log in.
- * - Logged-in user -> award points to current account.
+ * - Guest with NO existing email/phone -> auto-create account (username = email, password = phone), link order, auto-login.
+ * - Guest with EXISTING email or phone -> link order to existing account, update order/profile info, notify customer to log in.
+ * - Logged-in user -> link order to current account.
  *
  * @param int           $order_id    Order ID.
  * @param array         $posted_data Posted checkout data.
@@ -1996,7 +1969,6 @@ function nexxi_kids_handle_checkout_account_and_points( $order_id, $posted_data 
 			$order->set_customer_id( $uid );
 		}
 		nexxi_kids_sync_order_to_user_profile( $uid, $order );
-		nexxi_kids_award_order_points( $order, $uid );
 		$order->update_meta_data( '_nexxi_checkout_account_status', 'logged_in' );
 		$order->update_meta_data( '_nexxi_checkout_account_processed', 'yes' );
 		$order->save();
@@ -2013,7 +1985,6 @@ function nexxi_kids_handle_checkout_account_and_points( $order_id, $posted_data 
 
 		$order->set_customer_id( $uid );
 		nexxi_kids_sync_order_to_user_profile( $uid, $order );
-		$points = nexxi_kids_award_order_points( $order, $uid );
 
 		$order->update_meta_data( '_nexxi_checkout_account_status', 'linked_existing' );
 		$order->update_meta_data( '_nexxi_linked_account_email', $acct_email );
@@ -2023,8 +1994,7 @@ function nexxi_kids_handle_checkout_account_and_points( $order_id, $posted_data 
 		if ( function_exists( 'wc_add_notice' ) ) {
 			wc_add_notice(
 				sprintf(
-					'Đơn hàng đã được đặt, điểm thành viên Nexxi (+%d điểm) đã được cộng vào tài khoản %s. Vui lòng đăng nhập để kiểm tra điểm hoặc đổi ưu đãi (nếu có).',
-					(int) $points,
+					'Đơn hàng đã được đặt và liên kết vào tài khoản %s. Vui lòng đăng nhập để theo dõi đơn hàng của bạn.',
 					esc_html( $acct_email )
 				),
 				'success'
@@ -2064,8 +2034,6 @@ function nexxi_kids_handle_checkout_account_and_points( $order_id, $posted_data 
 			nexxi_kids_sync_order_to_user_profile( $new_user_id, $order );
 
 			$order->set_customer_id( $new_user_id );
-			$points = nexxi_kids_award_order_points( $order, $new_user_id );
-
 			$order->update_meta_data( '_nexxi_checkout_account_status', 'created_new' );
 			$order->update_meta_data( '_nexxi_created_account_email', $email );
 			$order->update_meta_data( '_nexxi_created_account_phone', $compact_phone );
@@ -2081,10 +2049,9 @@ function nexxi_kids_handle_checkout_account_and_points( $order_id, $posted_data 
 			if ( function_exists( 'wc_add_notice' ) ) {
 				wc_add_notice(
 					sprintf(
-						'Đơn hàng đã được đặt thành công! Tài khoản thành viên NEXXI của bạn đã được tạo tự động (Tên đăng nhập: %s | Mật khẩu: %s) và cộng +%d điểm thành viên.',
+						'Đơn hàng đã được đặt thành công! Tài khoản thành viên NEXXI của bạn đã được tạo tự động (Tên đăng nhập: %s | Mật khẩu: %s).',
 						esc_html( $email ),
-						esc_html( $compact_phone ),
-						(int) $points
+						esc_html( $compact_phone )
 					),
 					'success'
 				);
@@ -2096,7 +2063,7 @@ add_action( 'woocommerce_checkout_order_processed', 'nexxi_kids_handle_checkout_
 add_action( 'woocommerce_store_api_checkout_order_processed', 'nexxi_kids_handle_checkout_account_and_points', 10, 1 );
 
 /**
- * Render prominent NEXXI Club Account & Points notification banner on the Order Received (Thank You) page.
+ * Render prominent NEXXI Club Account notification banner on the Order Received (Thank You) page.
  *
  * @param int $order_id Order ID.
  */
@@ -2112,11 +2079,7 @@ function nexxi_kids_render_thankyou_account_banner( $order_id ) {
 	}
 	$rendered[ $order_id ] = true;
 
-	$status = (string) $order->get_meta( '_nexxi_checkout_account_status' );
-	$points = (int) $order->get_meta( '_nexxi_points_earned' );
-	if ( $points <= 0 ) {
-		$points = nexxi_kids_calculate_order_points( $order );
-	}
+	$status      = (string) $order->get_meta( '_nexxi_checkout_account_status' );
 	$account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/tai-khoan/' );
 
 	if ( 'linked_existing' === $status ) {
@@ -2130,23 +2093,23 @@ function nexxi_kids_render_thankyou_account_banner( $order_id ) {
 			<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
 				<div class="flex items-start gap-space-md">
 					<span class="w-12 h-12 rounded-full bg-secondary text-on-secondary flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-						<span class="material-symbols-outlined text-[26px]">stars</span>
+						<span class="material-symbols-outlined text-[26px]">verified_user</span>
 					</span>
 					<div class="space-y-1.5">
 						<div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm font-bold uppercase tracking-wider">
-							<span>+<?php echo (int) $points; ?> Điểm Thành Viên NEXXI</span>
+							<span>Tài Khoản Thành Viên NEXXI</span>
 						</div>
 						<p class="font-title-md text-title-md text-primary font-bold leading-relaxed m-0">
-							Đơn hàng đã được đặt, điểm thành viên Nexxi đã được cộng vào tài khoản <span class="text-secondary underline decoration-2 underline-offset-2"><?php echo esc_html( $acct_email ); ?></span>. Vui lòng đăng nhập để kiểm tra điểm hoặc đổi ưu đãi ( nếu có ).
+							Đơn hàng đã được đặt và liên kết tự động vào tài khoản <span class="text-secondary underline decoration-2 underline-offset-2"><?php echo esc_html( $acct_email ); ?></span>.
 						</p>
 						<p class="font-body-sm text-body-sm text-on-surface-variant m-0">
-							Thông tin đơn hàng #<?php echo esc_html( $order->get_order_number() ); ?> và <strong>+<?php echo (int) $points; ?> điểm</strong> tích lũy đã được cập nhật tự động vào hồ sơ thành viên của bạn.
+							Thông tin đơn hàng #<?php echo esc_html( $order->get_order_number() ); ?> đã được cập nhật vào hồ sơ thành viên của bạn.
 						</p>
 					</div>
 				</div>
 				<a href="<?php echo esc_url( $login_url ); ?>" class="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-container text-on-primary px-space-lg py-3.5 rounded-full font-label-lg text-label-lg font-bold shadow-md transition-all shrink-0 no-underline">
 					<span class="material-symbols-outlined text-[20px]">login</span>
-					<span>Đăng nhập kiểm tra điểm</span>
+					<span>Đăng nhập quản lý đơn</span>
 				</a>
 			</div>
 		</div>
@@ -2172,10 +2135,10 @@ function nexxi_kids_render_thankyou_account_banner( $order_id ) {
 					</span>
 					<div class="space-y-2">
 						<div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm font-bold uppercase tracking-wider">
-							<span>Tài Khoản Thành Viên Mới • +<?php echo (int) $points; ?> Điểm NEXXI</span>
+							<span>Tài Khoản Thành Viên Mới • NEXXI Club</span>
 						</div>
 						<p class="font-title-md text-title-md text-primary font-bold leading-relaxed m-0">
-							Đơn hàng đã được đặt thành công! Hệ thống đã tự động tạo tài khoản thành viên NEXXI và cộng <span class="text-secondary">+<?php echo (int) $points; ?> điểm</span> cho bạn:
+							Đơn hàng đã được đặt thành công! Hệ thống đã tự động tạo tài khoản thành viên NEXXI cho bạn:
 						</p>
 						<div class="flex flex-wrap items-center gap-3 pt-1">
 							<span class="px-3.5 py-1.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 font-body-md text-body-md text-on-surface">
@@ -2189,28 +2152,12 @@ function nexxi_kids_render_thankyou_account_banner( $order_id ) {
 				</div>
 				<a href="<?php echo esc_url( $account_url ); ?>" class="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-container text-on-primary px-space-lg py-3.5 rounded-full font-label-lg text-label-lg font-bold shadow-md transition-all shrink-0 no-underline">
 					<span class="material-symbols-outlined text-[20px]">account_circle</span>
-					<span>Quản lý tài khoản &amp; điểm</span>
+					<span>Quản lý tài khoản</span>
 				</a>
 			</div>
 		</div>
 		<?php
 		return;
-	}
-
-	if ( $points > 0 ) {
-		?>
-		<div class="nexxi-thankyou-account-banner mb-space-lg p-space-md rounded-2xl bg-surface-container-low border border-secondary-fixed flex flex-wrap items-center justify-between gap-space-sm">
-			<div class="flex items-center gap-space-sm">
-				<span class="w-10 h-10 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center shrink-0">
-					<span class="material-symbols-outlined text-[22px]">stars</span>
-				</span>
-				<span class="font-body-md text-body-md text-primary">
-					Đơn hàng đã được đặt thành công! Tài khoản thành viên NEXXI của bạn vừa được cộng thêm <strong class="text-secondary">+<?php echo (int) $points; ?> điểm</strong>.
-				</span>
-			</div>
-			<a href="<?php echo esc_url( $account_url ); ?>" class="font-label-md text-label-md text-secondary font-bold hover:underline">Kiểm tra điểm thành viên →</a>
-		</div>
-		<?php
 	}
 }
 add_action( 'woocommerce_before_thankyou', 'nexxi_kids_render_thankyou_account_banner', 5 );

@@ -1,58 +1,23 @@
 <?php
 /**
- * NEXXI Customer & Order Management Suite (WP Admin + Storefront Points Integration).
+ * NEXXI Customer & Order Management Suite (WP Admin + Storefront Baby Profile Integration).
  *
  * Provides a top-level "Quản lý khách hàng" menu placed directly above "Khuyến mãi shop", with 2 submenus:
  *  1. 👤 Quản lý khách hàng (nexxi-customer-manager):
  *     - Full CRUD (Add, Edit, Delete single/bulk customer accounts)
- *     - Aggregated view: Points, Total Orders, Total Spent, NEXXI Club Join Date, Baby's Birthday, etc.
- *     - Points = Money configuration (Mức tích điểm & quy đổi điểm trừ tiền)
+ *     - Aggregated view: Total Orders, Total Spent, NEXXI Club Join Date, Baby's Birthday, etc.
  *  2. 📦 Quản lý đơn hàng (nexxi-order-manager):
  *     - Order list management with search, status tabs & date filters
  *     - Single-row quick status switching
- *     - Bulk order actions (change status in bulk, award points, export CSV, delete)
+ *     - Bulk order actions (change status in bulk, export CSV, delete)
  */
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /* ==========================================================================
- * 1. CORE DATA HELPERS: POINTS = MONEY & CUSTOMER ORDER STATS
+ * 1. CORE DATA HELPERS: CUSTOMER ORDER STATS
  * ========================================================================== */
-
-/**
- * Default Points = Money settings.
- *
- * @return array
- */
-function nexxi_kids_get_points_settings() {
-	$defaults = array(
-		'earn_unit_vnd'     => 10000, // 10.000₫ chi tiêu = 1 điểm
-		'redeem_enabled'    => '1',   // Cho phép dùng điểm trừ tiền tại Giỏ hàng / Thanh toán
-		'point_value_vnd'   => 1000,  // 1 điểm = 1.000₫ khi đổi ưu đãi
-		'min_points_redeem' => 10,    // Tối thiểu 10 điểm mới được đổi
-		'max_redeem_pct'    => 50,    // Tối đa giảm 50% giá trị đơn hàng bằng điểm
-	);
-	$saved = get_option( 'nexxi_points_settings', array() );
-	if ( ! is_array( $saved ) ) {
-		$saved = array();
-	}
-	$res = wp_parse_args( $saved, $defaults );
-	$res['earn_unit_vnd']     = max( 1, (int) $res['earn_unit_vnd'] );
-	$res['point_value_vnd']   = max( 1, (int) $res['point_value_vnd'] );
-	$res['min_points_redeem'] = max( 1, (int) $res['min_points_redeem'] );
-	$res['max_redeem_pct']    = min( 100, max( 1, (int) $res['max_redeem_pct'] ) );
-	return $res;
-}
-
-// Connect configured earn_unit_vnd to nexxi_kids_calculate_order_points() in stitch-account.php.
-add_filter(
-	'nexxi_kids_points_per_unit',
-	static function () {
-		$pts = nexxi_kids_get_points_settings();
-		return (int) $pts['earn_unit_vnd'];
-	}
-);
 
 /**
  * Calculate total spent & order count for a customer.
@@ -127,164 +92,6 @@ function nexxi_kids_get_customer_order_stats( $user_id ) {
 	);
 	return $runtime_cache[ $user_id ];
 }
-
-/**
- * Apply Points-to-Money redemption on Cart/Checkout when customer opts to use points.
- */
-add_action(
-	'woocommerce_cart_calculate_fees',
-	static function ( WC_Cart $cart ) {
-		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
-			return;
-		}
-		if ( ! is_user_logged_in() ) {
-			return;
-		}
-		$uid     = get_current_user_id();
-		$pts_cfg = nexxi_kids_get_points_settings();
-		if ( '1' === (string) $pts_cfg['redeem_enabled'] && WC()->session ) {
-			$use_pts = (int) WC()->session->get( 'nexxi_redeem_points', 0 );
-			if ( $use_pts > 0 ) {
-				$avail_pts = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : (int) get_user_meta( $uid, 'nexxi_member_points', true );
-				$use_pts   = min( $use_pts, $avail_pts );
-				if ( $use_pts >= (int) $pts_cfg['min_points_redeem'] ) {
-					$base_sub   = max( 0.0, (float) $cart->get_subtotal() );
-					$max_vnd    = round( $base_sub * ( (int) $pts_cfg['max_redeem_pct'] / 100.0 ) );
-					$pt_val     = (int) $pts_cfg['point_value_vnd'];
-					$redeem_vnd = min( $max_vnd, $use_pts * $pt_val );
-					$actual_pts = $pt_val > 0 ? (int) floor( $redeem_vnd / $pt_val ) : 0;
-					$redeem_vnd = $actual_pts * $pt_val;
-					if ( $actual_pts > 0 && $redeem_vnd > 0 ) {
-						WC()->session->set( 'nexxi_redeem_points_actual', $actual_pts );
-						$cart->add_fee(
-							sprintf( '💎 Đổi %s điểm NEXXI Club (-%s)', number_format_i18n( $actual_pts ), nexxi_kids_money( $redeem_vnd ) ),
-							-$redeem_vnd,
-							false
-						);
-					}
-				}
-			}
-		}
-	},
-	25
-);
-
-/**
- * Handle AJAX / POST toggle for redeeming NEXXI points on Cart & Checkout.
- */
-add_action(
-	'wp_loaded',
-	static function () {
-		if ( empty( $_POST['nexxi_points_redeem_action'] ) || ! is_user_logged_in() || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
-		}
-		$act = sanitize_key( wp_unslash( $_POST['nexxi_points_redeem_action'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		$uid = get_current_user_id();
-		if ( 'apply' === $act ) {
-			$avail = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : 0;
-			$req   = isset( $_POST['nexxi_points_to_use'] ) ? absint( $_POST['nexxi_points_to_use'] ) : $avail; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			WC()->session->set( 'nexxi_redeem_points', min( $avail, max( 0, $req ) ) );
-		} elseif ( 'cancel' === $act ) {
-			WC()->session->set( 'nexxi_redeem_points', 0 );
-			WC()->session->set( 'nexxi_redeem_points_actual', 0 );
-		}
-	},
-	15
-);
-
-/**
- * Deduct redeemed points when an order is created at Checkout.
- */
-add_action(
-	'woocommerce_checkout_order_processed',
-	static function ( $order_id, $posted_data = array(), $order = null ) {
-		if ( ! is_user_logged_in() || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
-		}
-		$used_pts = (int) WC()->session->get( 'nexxi_redeem_points_actual', 0 );
-		if ( $used_pts <= 0 ) {
-			return;
-		}
-		if ( ! $order instanceof WC_Order ) {
-			$order = wc_get_order( $order_id );
-		}
-		if ( ! $order instanceof WC_Order || 'yes' === (string) $order->get_meta( '_nexxi_points_redeemed_done' ) ) {
-			return;
-		}
-		$uid     = get_current_user_id();
-		$cur_pts = (int) get_user_meta( $uid, 'nexxi_member_points', true );
-		$new_pts = max( 0, $cur_pts - $used_pts );
-		update_user_meta( $uid, 'nexxi_member_points', $new_pts );
-
-		$order->update_meta_data( '_nexxi_points_redeemed', $used_pts );
-		$order->update_meta_data( '_nexxi_points_redeemed_done', 'yes' );
-		$order->save_meta_data();
-		$order->add_order_note( sprintf( 'NEXXI Club: Khách đã sử dụng %d điểm để trừ tiền đơn hàng (Số dư điểm còn lại: %d).', $used_pts, $new_pts ) );
-
-		WC()->session->set( 'nexxi_redeem_points', 0 );
-		WC()->session->set( 'nexxi_redeem_points_actual', 0 );
-	},
-	25,
-	3
-);
-
-/**
- * Render Points = Money redemption widget on Checkout / Cart Totals if user has points.
- */
-add_action(
-	'woocommerce_review_order_before_order_total',
-	static function () {
-		if ( ! is_user_logged_in() || ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
-		}
-		$pts_cfg = nexxi_kids_get_points_settings();
-		if ( '1' !== (string) $pts_cfg['redeem_enabled'] ) {
-			return;
-		}
-		$uid   = get_current_user_id();
-		$avail = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : 0;
-		if ( $avail < (int) $pts_cfg['min_points_redeem'] ) {
-			return;
-		}
-		$active_pts = (int) WC()->session->get( 'nexxi_redeem_points', 0 );
-		$pt_val     = (int) $pts_cfg['point_value_vnd'];
-		$max_vnd    = $avail * $pt_val;
-		?>
-		<tr class="nexxi-points-redeem-row">
-			<td colspan="2" style="padding:6px 0;border:none;">
-				<div style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:12px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-					<div style="font-size:12.5px;color:#0f172a;">
-						💎 <strong>Điểm NEXXI Club:</strong> Bạn có <strong style="color:#fd6a49;"><?php echo esc_html( number_format_i18n( $avail ) ); ?> điểm</strong>
-						(Quy đổi tối đa <strong><?php echo esc_html( nexxi_kids_money( $max_vnd ) ); ?></strong> · 1 điểm = <?php echo esc_html( nexxi_kids_money( $pt_val ) ); ?>)
-					</div>
-					<div>
-						<?php if ( $active_pts > 0 ) : ?>
-							<button type="button" onclick="nexxiTogglePointsRedeem('cancel', 0)" style="background:#ef4444;color:#fff;border:none;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Bỏ dùng điểm</button>
-						<?php else : ?>
-							<button type="button" onclick="nexxiTogglePointsRedeem('apply', <?php echo (int) $avail; ?>)" style="background:#031444;color:#fff;border:none;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Dùng điểm trừ tiền ngay</button>
-						<?php endif; ?>
-					</div>
-				</div>
-				<script>
-				window.nexxiTogglePointsRedeem = function(action, pts) {
-					var fd = new FormData();
-					fd.append('nexxi_points_redeem_action', action);
-					fd.append('nexxi_points_to_use', pts);
-					fetch(window.location.href, { method: 'POST', credentials: 'same-origin', body: fd }).then(function() {
-						if (window.jQuery) {
-							window.jQuery(document.body).trigger('update_checkout');
-						} else {
-							window.location.reload();
-						}
-					});
-				};
-				</script>
-			</td>
-		</tr>
-		<?php
-	},
-	15
-);
 
 /* ==========================================================================
  * 2. ADMIN MENU REGISTRATION (PLACED DIRECTLY ABOVE "KHUYẾN MÃI SHOP")
@@ -368,7 +175,7 @@ function nexxi_kids_render_crm_top_nav( $active_slug ) {
 	$tabs = array(
 		'nexxi-customer-manager' => array(
 			'label' => '👤 1. Quản lý khách hàng',
-			'desc'  => 'Tài khoản khách hàng, Điểm tích lũy, Tổng đơn, Chi tiêu, Ngày tham gia & Sinh nhật của bé',
+			'desc'  => 'Tài khoản khách hàng, Tổng đơn đã đặt, Tổng tiền chi tiêu, Ngày tham gia & Sinh nhật của bé',
 		),
 		'nexxi-order-manager'    => array(
 			'label' => '📦 2. Quản lý đơn hàng',
@@ -446,7 +253,6 @@ function nexxi_kids_handle_customer_manager_post() {
 		$address_1     = isset( $_POST['address_1'] ) ? sanitize_text_field( wp_unslash( $_POST['address_1'] ) ) : '';
 		$ward          = isset( $_POST['ward'] ) ? sanitize_text_field( wp_unslash( $_POST['ward'] ) ) : '';
 		$city          = isset( $_POST['city'] ) ? sanitize_text_field( wp_unslash( $_POST['city'] ) ) : '';
-		$points        = isset( $_POST['member_points'] ) ? max( 0, (int) $_POST['member_points'] ) : 0;
 		$joined_date   = isset( $_POST['club_joined_date'] ) ? sanitize_text_field( wp_unslash( $_POST['club_joined_date'] ) ) : '';
 		$baby_name     = isset( $_POST['baby_name'] ) ? sanitize_text_field( wp_unslash( $_POST['baby_name'] ) ) : '';
 		$baby_birthday = isset( $_POST['baby_birthday'] ) ? sanitize_text_field( wp_unslash( $_POST['baby_birthday'] ) ) : '';
@@ -520,9 +326,6 @@ function nexxi_kids_handle_customer_manager_post() {
 		update_user_meta( $target_uid, 'billing_city', $city );
 		update_user_meta( $target_uid, 'shipping_city', $city );
 
-		update_user_meta( $target_uid, 'nexxi_member_points', $points );
-		update_user_meta( $target_uid, 'nexxi_points_backfilled', '1' );
-
 		if ( '' !== $joined_date ) {
 			update_user_meta( $target_uid, 'nexxi_club_joined_date', $joined_date );
 		}
@@ -558,16 +361,6 @@ function nexxi_kids_handle_customer_manager_post() {
 			$edit_uid > 0 ? 'Đã cập nhật thông tin tài khoản khách hàng #' . $target_uid . ' thành công!' : 'Đã tạo tài khoản khách hàng mới #' . $target_uid . ' thành công!',
 			'updated'
 		);
-	} elseif ( 'save_points_settings' === $action ) {
-		$pts_settings = array(
-			'earn_unit_vnd'     => isset( $_POST['earn_unit_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['earn_unit_vnd'] ) ) ) ) ) : 10000,
-			'redeem_enabled'    => ! empty( $_POST['redeem_enabled'] ) ? '1' : '0',
-			'point_value_vnd'   => isset( $_POST['point_value_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['point_value_vnd'] ) ) ) ) ) : 1000,
-			'min_points_redeem' => isset( $_POST['min_points_redeem'] ) ? max( 1, absint( $_POST['min_points_redeem'] ) ) : 10,
-			'max_redeem_pct'    => isset( $_POST['max_redeem_pct'] ) ? min( 100, max( 1, absint( $_POST['max_redeem_pct'] ) ) ) : 50,
-		);
-		update_option( 'nexxi_points_settings', $pts_settings );
-		add_settings_error( 'nexxi_crm', 'points_saved', 'Đã lưu cài đặt Mức tích điểm & Quy đổi Điểm = Tiền thành công!', 'updated' );
 	} elseif ( 'delete_customer' === $action ) {
 		$del_uid = isset( $_POST['delete_user_id'] ) ? absint( $_POST['delete_user_id'] ) : 0;
 		if ( $del_uid > 0 && $del_uid !== get_current_user_id() && ! user_can( $del_uid, 'manage_options' ) ) {
@@ -589,13 +382,6 @@ function nexxi_kids_handle_customer_manager_post() {
 					wp_delete_user( $u_id );
 					$count++;
 				}
-			} elseif ( 'add_points' === $bulk_type ) {
-				$delta = isset( $_POST['bulk_points_delta'] ) ? (int) $_POST['bulk_points_delta'] : 0;
-				if ( 0 !== $delta ) {
-					$cur = (int) get_user_meta( $u_id, 'nexxi_member_points', true );
-					update_user_meta( $u_id, 'nexxi_member_points', max( 0, $cur + $delta ) );
-					$count++;
-				}
 			}
 		}
 		add_settings_error( 'nexxi_crm', 'bulk_done', 'Đã thực hiện thao tác hàng loạt cho ' . $count . ' tài khoản khách hàng!', 'updated' );
@@ -604,7 +390,6 @@ function nexxi_kids_handle_customer_manager_post() {
 add_action( 'admin_init', 'nexxi_kids_handle_customer_manager_post' );
 
 function nexxi_kids_customer_manager_admin_page() {
-	$pts_cfg       = nexxi_kids_get_points_settings();
 	$search        = isset( $_GET['s_cust'] ) ? sanitize_text_field( wp_unslash( $_GET['s_cust'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$filter_bmonth = isset( $_GET['f_bmonth'] ) ? absint( $_GET['f_bmonth'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$sort_by       = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'joined_desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -622,14 +407,13 @@ function nexxi_kids_customer_manager_admin_page() {
 	$cur_month = (int) wp_date( 'n' );
 	$rows      = array();
 	$kpi_total_members = 0;
-	$kpi_total_points  = 0;
+	$kpi_total_orders  = 0;
 	$kpi_total_spent   = 0.0;
 	$kpi_bday_month    = 0;
 
 	foreach ( $all_users as $u ) {
 		$uid       = (int) $u->ID;
 		$stats     = nexxi_kids_get_customer_order_stats( $uid );
-		$points    = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : (int) get_user_meta( $uid, 'nexxi_member_points', true );
 		$phone     = (string) get_user_meta( $uid, 'billing_phone', true );
 		$addr1     = (string) get_user_meta( $uid, 'billing_address_1', true );
 		$ward      = (string) get_user_meta( $uid, 'billing_ward', true );
@@ -658,7 +442,7 @@ function nexxi_kids_customer_manager_admin_page() {
 		}
 
 		$kpi_total_members++;
-		$kpi_total_points += $points;
+		$kpi_total_orders += (int) $stats['order_count'];
 		$kpi_total_spent  += (float) $stats['total_spent'];
 		if ( $bday_month === $cur_month ) {
 			$kpi_bday_month++;
@@ -682,8 +466,6 @@ function nexxi_kids_customer_manager_admin_page() {
 			'email'       => $u->user_email,
 			'phone'       => $phone,
 			'addr_full'   => implode( ', ', array_filter( array( $addr1, $ward, $city ) ) ),
-			'points'      => $points,
-			'points_vnd'  => $points * (int) $pts_cfg['point_value_vnd'],
 			'order_count' => (int) $stats['order_count'],
 			'total_spent' => (float) $stats['total_spent'],
 			'joined_ts'   => $joined_ts,
@@ -702,9 +484,6 @@ function nexxi_kids_customer_manager_admin_page() {
 		static function ( $a, $b ) use ( $sort_by ) {
 			if ( 'spent_desc' === $sort_by ) {
 				return $b['total_spent'] <=> $a['total_spent'];
-			}
-			if ( 'points_desc' === $sort_by ) {
-				return $b['points'] <=> $a['points'];
 			}
 			if ( 'orders_desc' === $sort_by ) {
 				return $b['order_count'] <=> $a['order_count'];
@@ -728,9 +507,9 @@ function nexxi_kids_customer_manager_admin_page() {
 				<span>Tự động đồng bộ từ đơn hàng &amp; đăng ký</span>
 			</div>
 			<div class="nexxi-crm-kpi">
-				<small>💎 Tổng điểm NEXXI lưu hành</small>
-				<strong style="color:#fd6a49;"><?php echo esc_html( number_format_i18n( $kpi_total_points ) ); ?> điểm</strong>
-				<span>Tương đương <?php echo esc_html( nexxi_kids_money( $kpi_total_points * (int) $pts_cfg['point_value_vnd'] ) ); ?></span>
+				<small>📦 Tổng đơn hàng đã đặt</small>
+				<strong style="color:#fd6a49;"><?php echo esc_html( number_format_i18n( $kpi_total_orders ) ); ?> đơn</strong>
+				<span><a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-order-manager' ) ); ?>">Quản lý danh sách đơn hàng &rarr;</a></span>
 			</div>
 			<div class="nexxi-crm-kpi">
 				<small>💰 Tổng chi tiêu tích lũy</small>
@@ -742,38 +521,6 @@ function nexxi_kids_customer_manager_admin_page() {
 				<strong style="color:#9d174d;"><?php echo (int) $kpi_bday_month; ?> bé</strong>
 				<span><a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-customer-manager&f_bmonth=' . $cur_month ) ); ?>">Lọc danh sách bé sinh nhật tháng này &rarr;</a></span>
 			</div>
-		</div>
-
-		<!-- Points = Money Quick Config Card -->
-		<div class="nexxi-crm-card" style="padding:16px 20px;">
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-customer-manager' ) ); ?>" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;">
-				<?php wp_nonce_field( 'nexxi_crm_customer_nonce', 'nexxi_crm_nonce' ); ?>
-				<input type="hidden" name="nexxi_crm_customer_action" value="save_points_settings">
-				<div style="min-width:190px;">
-					<strong style="font-size:14px;color:#031444;display:block;margin-bottom:4px;">💎 Cài đặt Điểm = Tiền</strong>
-					<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#475569;cursor:pointer;">
-						<input type="checkbox" name="redeem_enabled" value="1" <?php checked( $pts_cfg['redeem_enabled'], '1' ); ?>>
-						Cho phép đổi điểm trừ tiền
-					</label>
-				</div>
-				<div class="nexxi-form-field" style="flex:1;min-width:160px;">
-					<label>Mức tích điểm (VNĐ = 1 điểm)</label>
-					<input type="number" name="earn_unit_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['earn_unit_vnd']; ?>">
-				</div>
-				<div class="nexxi-form-field" style="flex:1;min-width:160px;">
-					<label>Giá trị đổi (1 Điểm = VNĐ)</label>
-					<input type="number" name="point_value_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['point_value_vnd']; ?>">
-				</div>
-				<div class="nexxi-form-field" style="width:130px;">
-					<label>Điểm đổi tối thiểu</label>
-					<input type="number" name="min_points_redeem" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['min_points_redeem']; ?>">
-				</div>
-				<div class="nexxi-form-field" style="width:130px;">
-					<label>Giảm tối đa (% đơn)</label>
-					<input type="number" name="max_redeem_pct" min="1" max="100" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['max_redeem_pct']; ?>">
-				</div>
-				<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--navy" style="height:36px;">💾 Lưu mức tích điểm</button>
-			</form>
 		</div>
 
 		<?php
@@ -789,7 +536,6 @@ function nexxi_kids_customer_manager_admin_page() {
 			$e_addr1  = $e_uid ? (string) get_user_meta( $e_uid, 'billing_address_1', true ) : '';
 			$e_ward   = $e_uid ? (string) get_user_meta( $e_uid, 'billing_ward', true ) : '';
 			$e_city   = $e_uid ? (string) get_user_meta( $e_uid, 'billing_city', true ) : '';
-			$e_pts    = $e_uid ? (int) nexxi_kids_get_user_points( $e_uid ) : 0;
 			$e_joined = $e_uid ? (string) get_user_meta( $e_uid, 'nexxi_club_joined_date', true ) : '';
 			if ( '' === $e_joined && $editing_user && $editing_user->user_registered ) {
 				$e_joined = gmdate( 'Y-m-d', strtotime( $editing_user->user_registered ) );
@@ -832,10 +578,6 @@ function nexxi_kids_customer_manager_admin_page() {
 							<input type="text" name="password" class="nexxi-crm-input" value="" placeholder="<?php echo $e_uid > 0 ? 'Nhập nếu muốn đổi mật khẩu...' : 'Mặc định là Số điện thoại'; ?>">
 						</div>
 
-						<div class="nexxi-form-field">
-							<label>💎 Điểm thành viên NEXXI hiện có</label>
-							<input type="number" name="member_points" min="0" step="any" class="nexxi-crm-input" value="<?php echo (int) $e_pts; ?>">
-						</div>
 						<div class="nexxi-form-field">
 							<label>📅 Ngày tham gia NEXXI Club</label>
 							<input type="date" name="club_joined_date" class="nexxi-crm-input" value="<?php echo esc_attr( $e_joined ); ?>">
@@ -903,7 +645,6 @@ function nexxi_kids_customer_manager_admin_page() {
 					<select name="sort_by" class="nexxi-crm-select">
 						<option value="joined_desc" <?php selected( $sort_by, 'joined_desc' ); ?>>Sắp xếp: Mới tham gia</option>
 						<option value="spent_desc" <?php selected( $sort_by, 'spent_desc' ); ?>>Sắp xếp: Chi tiêu cao nhất</option>
-						<option value="points_desc" <?php selected( $sort_by, 'points_desc' ); ?>>Sắp xếp: Nhiều điểm nhất</option>
 						<option value="orders_desc" <?php selected( $sort_by, 'orders_desc' ); ?>>Sắp xếp: Nhiều đơn nhất</option>
 					</select>
 					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--navy">Lọc danh sách</button>
@@ -921,14 +662,10 @@ function nexxi_kids_customer_manager_admin_page() {
 
 				<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#f8fafc;border-radius:10px;margin-bottom:12px;border:1px solid #e2e8f0;">
 					<strong style="font-size:12.5px;color:#031444;">⚡ Thao tác hàng loạt:</strong>
-					<select name="bulk_customer_op" class="nexxi-crm-select" onchange="document.getElementById('nx-bulk-pts-wrap').style.display=(this.value==='add_points'?'inline-flex':'none');">
+					<select name="bulk_customer_op" class="nexxi-crm-select">
 						<option value="">-- Chọn thao tác --</option>
-						<option value="add_points">💎 Cộng / Trừ điểm thành viên hàng loạt</option>
 						<option value="delete">🗑️ Xóa các tài khoản đã chọn</option>
 					</select>
-					<span id="nx-bulk-pts-wrap" style="display:none;align-items:center;gap:6px;">
-						<input type="number" name="bulk_points_delta" step="any" class="nexxi-crm-input" style="width:130px;" placeholder="VD: +50 hoặc -20">
-					</span>
 					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--ghost" onclick="return confirm('Xác nhận thực hiện thao tác hàng loạt cho các khách hàng đã tích chọn?');">Áp dụng</button>
 					<span style="margin-left:auto;font-size:12.5px;color:#64748b;">Hiển thị <strong><?php echo count( $rows ); ?></strong> khách hàng</span>
 				</div>
@@ -939,7 +676,6 @@ function nexxi_kids_customer_manager_admin_page() {
 							<tr>
 								<th style="width:32px;"><input type="checkbox" onclick="document.querySelectorAll('.nx-cust-cb').forEach(c=>c.checked=this.checked)"></th>
 								<th>Khách hàng &amp; Liên hệ</th>
-								<th>Điểm NEXXI</th>
 								<th>Tổng đơn đã đặt</th>
 								<th>Tổng tiền chi tiêu</th>
 								<th>Tham gia NEXXI Club</th>
@@ -949,7 +685,7 @@ function nexxi_kids_customer_manager_admin_page() {
 						</thead>
 						<tbody>
 							<?php if ( empty( $rows ) ) : ?>
-								<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b;">Chưa có khách hàng nào khớp điều kiện lọc.</td></tr>
+								<tr><td colspan="7" style="text-align:center;padding:30px;color:#64748b;">Chưa có khách hàng nào khớp điều kiện lọc.</td></tr>
 							<?php else : ?>
 								<?php foreach ( $rows as $r ) : ?>
 									<tr>
@@ -971,10 +707,6 @@ function nexxi_kids_customer_manager_admin_page() {
 											<?php if ( '' !== $r['note'] ) : ?>
 												<div style="color:#0369a1;background:#e0f2fe;display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;margin-top:3px;">📝 <?php echo esc_html( $r['note'] ); ?></div>
 											<?php endif; ?>
-										</td>
-										<td>
-											<strong style="color:#fd6a49;font-size:14px;"><?php echo esc_html( number_format_i18n( $r['points'] ) ); ?> điểm</strong>
-											<div style="font-size:11px;color:#64748b;">≈ <?php echo esc_html( nexxi_kids_money( $r['points_vnd'] ) ); ?></div>
 										</td>
 										<td>
 											<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-order-manager&cust_id=' . $r['uid'] ) ); ?>" style="font-weight:800;color:#031444;text-decoration:underline;">
@@ -1116,12 +848,6 @@ function nexxi_kids_handle_order_manager_post() {
 				$new_st = 0 === strpos( $new_st, 'wc-' ) ? substr( $new_st, 3 ) : $new_st;
 				$ord->update_status( $new_st, 'Thao tác hàng loạt từ Quản lý đơn hàng NEXXI.' );
 				$count++;
-			} elseif ( 'award_points' === $op && function_exists( 'nexxi_kids_award_order_points' ) ) {
-				$cid = (int) $ord->get_customer_id();
-				if ( $cid > 0 ) {
-					nexxi_kids_award_order_points( $ord, $cid );
-					$count++;
-				}
 			} elseif ( 'trash' === $op ) {
 				$ord->delete( false );
 				$count++;
@@ -1251,7 +977,6 @@ function nexxi_kids_order_manager_admin_page() {
 						<?php foreach ( $statuses as $st_key => $st_label ) : ?>
 							<option value="<?php echo esc_attr( 'status_' . $st_key ); ?>">Đổi trạng thái &rarr; <?php echo esc_html( $st_label ); ?></option>
 						<?php endforeach; ?>
-						<option value="award_points">💎 Cộng điểm NEXXI Club cho các đơn đã chọn</option>
 						<option value="export_csv">📥 Xuất danh sách đơn đã chọn ra file Excel (CSV)</option>
 						<option value="trash">🗑️ Chuyển các đơn đã chọn vào thùng rác</option>
 					</select>
@@ -1268,14 +993,13 @@ function nexxi_kids_order_manager_admin_page() {
 								<th>Khách hàng &amp; Địa chỉ nhận</th>
 								<th>Sản phẩm đặt mua</th>
 								<th>Tổng thanh toán</th>
-								<th>Điểm NEXXI</th>
 								<th>Quản lý trạng thái đơn</th>
 								<th style="text-align:right;">Chi tiết</th>
 							</tr>
 						</thead>
 						<tbody>
 							<?php if ( empty( $orders ) ) : ?>
-								<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b;">Chưa có đơn hàng nào khớp bộ lọc.</td></tr>
+								<tr><td colspan="7" style="text-align:center;padding:30px;color:#64748b;">Chưa có đơn hàng nào khớp bộ lọc.</td></tr>
 							<?php else : ?>
 								<?php foreach ( $orders as $ord ) :
 									$oid     = $ord->get_id();
@@ -1284,10 +1008,6 @@ function nexxi_kids_order_manager_admin_page() {
 									$c_name  = trim( $ord->get_billing_first_name() . ' ' . $ord->get_billing_last_name() );
 									$phone   = $ord->get_billing_phone();
 									$addr    = implode( ', ', array_filter( array( $ord->get_billing_address_1(), $ord->get_billing_city() ) ) );
-									$pts     = (int) $ord->get_meta( '_nexxi_points_earned' );
-									if ( $pts <= 0 && function_exists( 'nexxi_kids_calculate_order_points' ) ) {
-										$pts = nexxi_kids_calculate_order_points( $ord );
-									}
 									$combo_sum = (string) $ord->get_meta( '_nexxi_combo_summary' );
 									$edit_url  = $ord->get_edit_order_url();
 									?>
@@ -1332,9 +1052,6 @@ function nexxi_kids_order_manager_admin_page() {
 										<td>
 											<strong style="font-size:14px;color:#0b6b2f;"><?php echo wp_kses_post( $ord->get_formatted_order_total() ); ?></strong>
 											<div style="font-size:11px;color:#64748b;"><?php echo esc_html( $ord->get_payment_method_title() ); ?></div>
-										</td>
-										<td>
-											<span class="nexxi-crm-badge" style="background:#fff0ed;color:#fd6a49;">+<?php echo (int) $pts; ?> điểm</span>
 										</td>
 										<td>
 											<div style="display:flex;gap:5px;align-items:center;">
@@ -1406,7 +1123,7 @@ add_action(
 		update_user_meta( $uid, 'nexxi_baby_gender', $bgen );
 
 		if ( function_exists( 'wc_add_notice' ) ) {
-			wc_add_notice( 'Đã cập nhật thông tin & ngày sinh nhật của bé để nhận ưu đãi NEXXI Club!', 'success' );
+			wc_add_notice( 'Đã cập nhật thông tin & ngày sinh nhật của bé thành công!', 'success' );
 		}
 		wp_safe_redirect( wc_get_page_permalink( 'myaccount' ) );
 		exit;
