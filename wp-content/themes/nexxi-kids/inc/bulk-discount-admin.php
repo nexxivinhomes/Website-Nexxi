@@ -10,17 +10,25 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-/** Register top-level + Products submenu for Regular Product Bulk Discount. */
+/** Register unified "Khuyến mãi shop" top-level menu + submenus for Regular Product Bulk Discount. */
 function nexxi_kids_bulk_discount_admin_menu() {
 	if ( ! class_exists( 'WooCommerce' ) ) { return; }
 	add_menu_page(
-		'NEXXI Giảm Giá Bán Sản Phẩm (Hàng Loạt / SKU)',
-		'🏷️ Giảm Giá SP',
+		'Khuyến mãi shop — NEXXI',
+		'Khuyến mãi shop',
 		'manage_woocommerce',
 		'nexxi-bulk-discount',
 		'nexxi_kids_bulk_discount_admin_page',
 		'dashicons-tag',
-		56.1
+		56
+	);
+	add_submenu_page(
+		'nexxi-bulk-discount',
+		'NEXXI Giảm Giá Bán Sản Phẩm (Hàng Loạt / SKU)',
+		'🏷️ Giảm Giá SP',
+		'manage_woocommerce',
+		'nexxi-bulk-discount',
+		'nexxi_kids_bulk_discount_admin_page'
 	);
 	add_submenu_page(
 		'edit.php?post_type=product',
@@ -31,7 +39,7 @@ function nexxi_kids_bulk_discount_admin_menu() {
 		'nexxi_kids_bulk_discount_admin_page'
 	);
 }
-add_action( 'admin_menu', 'nexxi_kids_bulk_discount_admin_menu', 21 );
+add_action( 'admin_menu', 'nexxi_kids_bulk_discount_admin_menu', 20 );
 
 /**
  * Extract a leading code from a NEXXI product title when _sku is empty
@@ -801,6 +809,15 @@ function nexxi_kids_bulk_discount_admin_page() {
 	$export_url = add_query_arg( array( 'page' => 'nexxi-bulk-discount', 'nexxi_bd_export' => 'catalog' ), admin_url( 'admin.php' ) );
 	?>
 	<div class="wrap" style="max-width:1340px;margin-top:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+		<!-- Unified "Khuyến mãi shop" Tab Bar -->
+		<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid #e4e2de;padding-bottom:10px;">
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-bulk-discount' ) ); ?>" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;background:#031444;color:#fff;font-weight:700;font-size:13.5px;text-decoration:none;box-shadow:0 2px 8px rgba(3,20,68,0.18);">
+				🏷️ Giảm Giá Bán Sản Phẩm (Hàng Loạt / SKU)
+			</a>
+			<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-flash-sale' ) ); ?>" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;background:#fff;color:#031444;border:1px solid #d5d3ce;font-weight:700;font-size:13.5px;text-decoration:none;">
+				⚡ Chiến Dịch Flash Sale &amp; Đếm Ngược
+			</a>
+		</div>
 		<!-- Header -->
 		<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
 			<div>
