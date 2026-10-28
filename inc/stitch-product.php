@@ -19,7 +19,7 @@ function nexxi_kids_product_config( WC_Product $product ) {
 	foreach ( Nexxi_Kids_Catalog::product_terms( $product, 'mau-sac' ) as $term ) {
 		$colors[] = array( 'slug' => $term->slug, 'name' => $term->name, 'hex' => Nexxi_Kids_Catalog::color_hex( $term ) );
 	}
-	$image = wp_get_attachment_image_url( $product->get_image_id(), 'full' );
+	$image = wp_get_attachment_image_url( $product->get_image_id(), 'woocommerce_single' );
 	$vars  = Nexxi_Kids_Catalog::variation_payload( $product );
 	$color_img_lookup = array();
 	foreach ( $vars as &$v ) {
@@ -27,7 +27,7 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		$v['price']   = (float) $prog['sale'];
 		$vid_thumb    = (int) get_post_meta( $v['id'], '_thumbnail_id', true );
 		if ( $vid_thumb > 0 ) {
-			$full_url = wp_get_attachment_image_url( $vid_thumb, 'full' );
+			$full_url = wp_get_attachment_image_url( $vid_thumb, 'woocommerce_single' );
 			if ( $full_url ) {
 				$v['image'] = $full_url;
 			}
@@ -43,7 +43,7 @@ function nexxi_kids_product_config( WC_Product $product ) {
 		foreach ( $class_map as $ckey => $cinfo ) {
 			$c_url = '';
 			if ( ! empty( $cinfo['att_id'] ) ) {
-				$c_url = wp_get_attachment_image_url( (int) $cinfo['att_id'], 'full' );
+				$c_url = wp_get_attachment_image_url( (int) $cinfo['att_id'], 'woocommerce_single' );
 			}
 			if ( ! $c_url && ! empty( $cinfo['url'] ) ) {
 				$c_url = $cinfo['url'];
@@ -192,20 +192,22 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 		}
 	}
 	$ids = array_values( array_unique( array_filter( array_merge( array( $product->get_image_id() ), $product->get_gallery_image_ids(), $extra_ids ) ) ) );
-	$main = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : wc_placeholder_img_src( 'full' );
+	// Ảnh chính hiển thị ~600px: dùng cỡ woocommerce_single (760px); nút phóng to vẫn mở ảnh gốc.
+	$main      = $ids ? wp_get_attachment_image_url( $ids[0], 'woocommerce_single' ) : wc_placeholder_img_src( 'woocommerce_single' );
+	$main_full = $ids ? wp_get_attachment_image_url( $ids[0], 'full' ) : $main;
 	$materials = nexxi_kids_product_attr_names( $product, 'chat-lieu' );
 	$prog = nexxi_kids_get_program_sale( $product, 'combined' );
 	$discount = $prog['pct'];
 	ob_start(); ?>
 <div class="nexxi-pdp-main-media relative w-full aspect-square bg-surface-container-low rounded-xl overflow-hidden shadow-[0_8px_24px_-4px_rgba(27,42,89,0.06)] group">
-<img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>">
+<img class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" id="mainProductImg" src="<?php echo esc_url( $main ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" width="760" height="760" fetchpriority="high" decoding="async">
 <div class="absolute top-space-md left-space-md flex flex-col gap-space-xs items-start pointer-events-none">
 <?php if ( $materials ) : ?><span class="bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-sm flex items-center gap-1.5 transform -rotate-2"><span class="material-symbols-outlined text-secondary text-[16px]">eco</span><?php echo esc_html( implode( ' · ', $materials ) ); ?></span><?php endif; ?>
 <span class="bg-secondary text-on-secondary font-label-sm text-label-sm font-bold px-2.5 py-1 rounded-full shadow-sm -rotate-3 inline-block<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-gallery-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
 <div class="absolute top-space-md right-space-md flex flex-col gap-space-xs">
 <button class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-secondary hover:bg-secondary hover:text-on-secondary transition-all flex items-center justify-center shadow-md" <?php echo nexxi_kids_wishlist_attrs( $product->get_id() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>><span class="material-symbols-outlined text-[20px]">favorite_border</span></button>
-<a class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center shadow-md" href="<?php echo esc_url( $main ); ?>" target="_blank" rel="noopener" data-nexxi-zoom aria-label="Phóng to ảnh"><span class="material-symbols-outlined text-[20px]">zoom_in</span></a>
+<a class="w-10 h-10 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center shadow-md" href="<?php echo esc_url( $main_full ); ?>" target="_blank" rel="noopener" data-nexxi-zoom aria-label="Phóng to ảnh"><span class="material-symbols-outlined text-[20px]">zoom_in</span></a>
 </div>
 <div class="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md px-space-md py-space-xs rounded-full text-on-surface-variant font-label-sm text-label-sm"><span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Hình ảnh sản phẩm thực tế từ NEXXI</span><span class="text-outline"><?php echo count( $ids ) > 1 ? esc_html( count( $ids ) . ' ảnh' ) : 'Chạm để phóng to'; ?></span></div>
 </div>
@@ -217,7 +219,7 @@ function nexxi_kids_pdp_gallery( WC_Product $product, $features ) {
 <div class="nexxi-thumb-track" data-nexxi-thumb-track>
 <?php foreach ( $ids as $index => $id ) :
 	$caption = wp_get_attachment_caption( $id ); ?>
-<button class="thumbnail-btn nexxi-thumb-item relative aspect-square rounded-2xl overflow-hidden bg-surface-container <?php echo 0 === $index ? 'ring-2 ring-secondary-container' : 'opacity-70 hover:opacity-100'; ?> transition-all shadow-sm" type="button" data-nexxi-thumb="<?php echo esc_url( wp_get_attachment_image_url( $id, 'full' ) ); ?>" data-nexxi-thumb-index="<?php echo (int) $index; ?>" aria-label="Xem ảnh <?php echo (int) $index + 1; ?>">
+<button class="thumbnail-btn nexxi-thumb-item relative aspect-square rounded-2xl overflow-hidden bg-surface-container <?php echo 0 === $index ? 'ring-2 ring-secondary-container' : 'opacity-70 hover:opacity-100'; ?> transition-all shadow-sm" type="button" data-nexxi-thumb="<?php echo esc_url( wp_get_attachment_image_url( $id, 'woocommerce_single' ) ); ?>" data-nexxi-full="<?php echo esc_url( wp_get_attachment_image_url( $id, 'full' ) ); ?>" data-nexxi-thumb-index="<?php echo (int) $index; ?>" aria-label="Xem ảnh <?php echo (int) $index + 1; ?>">
 <img class="w-full h-full object-cover" src="<?php echo esc_url( wp_get_attachment_image_url( $id, 'woocommerce_thumbnail' ) ); ?>" alt="" loading="lazy">
 <?php if ( $caption ) : ?><span class="absolute bottom-1 inset-x-1 text-center bg-surface-container-lowest/90 rounded text-[10px] font-label-sm text-primary py-0.5 line-clamp-1"><?php echo esc_html( $caption ); ?></span><?php endif; ?>
 </button>

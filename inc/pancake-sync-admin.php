@@ -1871,15 +1871,23 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		}
 
 		require_once ABSPATH . 'wp-admin/includes/image.php';
-		// Speed optimization: only generate 'thumbnail' during bulk Pancake image sideloading (prevents 8x GD/Imagick CPU timeout)
+		// Speed optimization: only generate the storefront sizes actually displayed (thumbnail + WooCommerce card/single sizes)
+		// instead of all ~8 registered sizes. Previously only 'thumbnail' was generated, which forced product cards
+		// and product pages to download the full multi-MB original image.
 		$fast_sizes_cb = function( $sizes ) {
+			if ( function_exists( 'nexxi_perf_filter_store_sizes' ) ) {
+				return nexxi_perf_filter_store_sizes( $sizes );
+			}
 			return isset( $sizes['thumbnail'] ) ? array( 'thumbnail' => $sizes['thumbnail'] ) : array();
 		};
+		$big_threshold_cb = function() {
+			return 2048; // Scale very large originals down to 2048px so "full" stays reasonably light.
+		};
 		add_filter( 'intermediate_image_sizes_advanced', $fast_sizes_cb, 999 );
-		add_filter( 'big_image_size_threshold', '__return_false', 999 );
+		add_filter( 'big_image_size_threshold', $big_threshold_cb, 999 );
 		$attach_data = wp_generate_attachment_metadata( $attach_id, $file_path );
 		remove_filter( 'intermediate_image_sizes_advanced', $fast_sizes_cb, 999 );
-		remove_filter( 'big_image_size_threshold', '__return_false', 999 );
+		remove_filter( 'big_image_size_threshold', $big_threshold_cb, 999 );
 		wp_update_attachment_metadata( $attach_id, $attach_data );
 
 		update_post_meta( $attach_id, '_nexxi_pancake_source_url', $image_url );

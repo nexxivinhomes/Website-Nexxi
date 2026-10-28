@@ -36,7 +36,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261028_web_products_v30';
+	$purge_ver = '20261028_perf_v31';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( function_exists( 'nexxi_kids_sync_all_flash_sale_products' ) ) {
@@ -636,12 +636,13 @@ function nexxi_kids_stitch_countdown_digits( $html ) {
 function nexxi_kids_render_stitch( $screen ) {
 	$shells = array( 'index' => 'index', 'shop' => 'shop', 'product' => 'product', 'flash-sale' => 'flash-sale', 'cart' => 'cart', 'checkout' => 'checkout', 'account' => 'account', 'login' => 'login', 'members' => 'members', 'page' => 'index' );
 	if ( ! isset( $shells[ $screen ] ) ) { return; }
+	$GLOBALS['nexxi_stitch_screen'] = $screen; // Dùng bởi inc/performance.php để bỏ CSS/JS không cần trên màn hình này.
 	if ( ! headers_sent() ) {
 		if ( in_array( $screen, array( 'cart', 'checkout', 'account', 'login', 'members' ), true ) || is_user_logged_in() ) {
 			nocache_headers();
 			@header( 'X-LiteSpeed-Cache-Control: no-cache' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		} else {
-			@header( 'X-LiteSpeed-Cache-Control: public,max-age=180' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			@header( 'X-LiteSpeed-Cache-Control: public,max-age=' . ( function_exists( 'nexxi_perf_page_cache_ttl' ) ? nexxi_perf_page_cache_ttl() : 180 ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		}
 	}
 	$file = get_template_directory() . '/assets/stitch/pages/' . $shells[ $screen ] . '.html';
@@ -769,7 +770,9 @@ function nexxi_kids_render_stitch( $screen ) {
 	wp_dequeue_script( 'nexxi-kids-theme' );
 	$head_end = stripos( $html, '</head>' );
 	$body_end = strripos( $html, '</body>' );
-	if ( false === $head_end || false === $body_end ) { echo $html; return; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	// Hậu xử lý toàn bộ trang (font icon rút gọn, WebP...) — xem inc/performance.php.
+	ob_start( function_exists( 'nexxi_perf_finalize_html' ) ? 'nexxi_perf_finalize_html' : null );
+	if ( false === $head_end || false === $body_end ) { echo $html; ob_end_flush(); return; } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	echo substr( $html, 0, $head_end ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_head();
 	$stitch_css = $asset_url . '/woocommerce-stitch.css?ver=' . filemtime( get_template_directory() . '/assets/stitch/woocommerce-stitch.css' );
@@ -780,4 +783,5 @@ function nexxi_kids_render_stitch( $screen ) {
 	$js = get_template_directory() . '/assets/stitch/stitch-interactions.js';
 	echo '<script data-no-optimize="1" data-no-defer="1">window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . ( is_readable( $js ) ? filemtime( $js ) : NEXXI_KIDS_VERSION ) ) . '"></script>';
 	echo substr( $html, $body_end ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	ob_end_flush();
 }

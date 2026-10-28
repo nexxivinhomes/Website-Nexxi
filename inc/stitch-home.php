@@ -20,9 +20,10 @@ function nexxi_kids_stitch_home( $html ) {
 			$cls .= ' is-active';
 			$first_found = true;
 		}
-		$loading = ( 0 === $idx ) ? ' loading="eager" fetchpriority="high"' : ' loading="lazy"';
+		$loading = ( 0 === $idx ) ? ' loading="eager" fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"';
+		$srcset  = function_exists( 'nexxi_perf_srcset_attr_for_url' ) ? nexxi_perf_srcset_attr_for_url( $url, '100vw' ) : '';
 		$slides_html .= '<div class="' . esc_attr( $cls ) . '" data-hero-slide="' . (int) $idx . '" data-hero-slot="' . (int) $slot . '">'
-			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '" alt="Banner NEXXI ' . (int) $slot . '"' . $loading . '>'
+			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '"' . $srcset . ' alt="Banner NEXXI ' . (int) $slot . '"' . $loading . '>'
 			. '</div>';
 	}
 	$html = nexxi_dom_set_attr( $html, 'data-nexxi-hero-slider', 'data-order', implode( ',', $hero_order ) );
