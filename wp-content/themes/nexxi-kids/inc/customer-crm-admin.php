@@ -1,18 +1,13 @@
 <?php
 /**
- * NEXXI Customer, Membership Tier & Order Management Suite (WP Admin + Storefront Loyalty Integration).
+ * NEXXI Customer & Order Management Suite (WP Admin + Storefront Points Integration).
  *
- * Provides a top-level "Quản lý khách hàng" menu placed directly above "Khuyến mãi shop", with 3 submenus:
+ * Provides a top-level "Quản lý khách hàng" menu placed directly above "Khuyến mãi shop", with 2 submenus:
  *  1. 👤 Quản lý khách hàng (nexxi-customer-manager):
  *     - Full CRUD (Add, Edit, Delete single/bulk customer accounts)
- *     - Aggregated view: Points, Membership Tier, Total Orders, Total Spent, NEXXI Club Join Date, Baby's Birthday, etc.
- *  2. 👑 Hạng thành viên (nexxi-member-tiers):
- *     - Manage membership tiers per customer account (auto or manual lock)
- *     - Configure membership tiers & corresponding benefits (% bill discount, point multiplier, baby birthday gift)
- *     - Configure tier downgrade expiration period (thời hạn tụt hạng)
- *     - Configure tier upgrade thresholds (mức thăng hạng theo chi tiêu / điểm)
- *     - Configure Points = Money conversion (tích điểm & đổi điểm trừ tiền)
- *  3. 📦 Quản lý đơn hàng (nexxi-order-manager):
+ *     - Aggregated view: Points, Total Orders, Total Spent, NEXXI Club Join Date, Baby's Birthday, etc.
+ *     - Points = Money configuration (Mức tích điểm & quy đổi điểm trừ tiền)
+ *  2. 📦 Quản lý đơn hàng (nexxi-order-manager):
  *     - Order list management with search, status tabs & date filters
  *     - Single-row quick status switching
  *     - Bulk order actions (change status in bulk, award points, export CSV, delete)
@@ -22,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /* ==========================================================================
- * 1. CORE DATA HELPERS: SETTINGS, TIERS, POINTS = MONEY & BABY PROFILE
+ * 1. CORE DATA HELPERS: POINTS = MONEY & CUSTOMER ORDER STATS
  * ========================================================================== */
 
 /**
@@ -60,106 +55,7 @@ add_filter(
 );
 
 /**
- * Default Membership Tiers configuration.
- *
- * @return array<string,array>
- */
-function nexxi_kids_get_member_tiers_config() {
-	$defaults = array(
-		'member'  => array(
-			'slug'          => 'member',
-			'name'          => 'Thành Viên Mới',
-			'icon'          => '🌱',
-			'color'         => '#475569',
-			'bg_color'      => '#f1f5f9',
-			'min_spent'     => 0,
-			'min_points'    => 0,
-			'discount_pct'  => 0,
-			'point_mult'    => 1.0,
-			'birthday_gift' => 20000,
-			'perks'         => 'Tích điểm mọi đơn hàng, nhận ưu đãi sinh nhật bé 20.000₫',
-		),
-		'silver'  => array(
-			'slug'          => 'silver',
-			'name'          => 'Hạng Bạc (Silver)',
-			'icon'          => '🥈',
-			'color'         => '#1e40af',
-			'bg_color'      => '#dbeafe',
-			'min_spent'     => 2000000,
-			'min_points'    => 200,
-			'discount_pct'  => 3,
-			'point_mult'    => 1.2,
-			'birthday_gift' => 50000,
-			'perks'         => 'Giảm thêm 3% mọi đơn hàng, nhân x1.2 điểm tích lũy, quà sinh nhật bé 50.000₫',
-		),
-		'gold'    => array(
-			'slug'          => 'gold',
-			'name'          => 'Hạng Vàng (Gold)',
-			'icon'          => '🥇',
-			'color'         => '#b45309',
-			'bg_color'      => '#fef3c7',
-			'min_spent'     => 5000000,
-			'min_points'    => 500,
-			'discount_pct'  => 5,
-			'point_mult'    => 1.5,
-			'birthday_gift' => 100000,
-			'perks'         => 'Giảm thêm 5% mọi đơn hàng, nhân x1.5 điểm tích lũy, quà sinh nhật bé 100.000₫',
-		),
-		'diamond' => array(
-			'slug'          => 'diamond',
-			'name'          => 'Hạng Kim Cương (Diamond)',
-			'icon'          => '💎',
-			'color'         => '#9d174d',
-			'bg_color'      => '#fce7f3',
-			'min_spent'     => 12000000,
-			'min_points'    => 1200,
-			'discount_pct'  => 10,
-			'point_mult'    => 2.0,
-			'birthday_gift' => 200000,
-			'perks'         => 'Giảm thêm 10% mọi đơn hàng, nhân x2.0 điểm tích lũy, quà sinh nhật bé 200.000₫',
-		),
-	);
-
-	$saved = get_option( 'nexxi_member_tiers_config', null );
-	if ( ! is_array( $saved ) || empty( $saved ) ) {
-		return $defaults;
-	}
-
-	// Sort by min_spent ascending
-	uasort(
-		$saved,
-		static function ( $a, $b ) {
-			return ( (float) ( $a['min_spent'] ?? 0 ) ) <=> ( (float) ( $b['min_spent'] ?? 0 ) );
-		}
-	);
-	return $saved;
-}
-
-/**
- * Tier Upgrade & Downgrade Rules configuration.
- *
- * @return array
- */
-function nexxi_kids_get_tier_rules_settings() {
-	$defaults = array(
-		'upgrade_metric'          => 'either',      // 'spent' | 'points' | 'either' | 'both'
-		'downgrade_enabled'       => '1',           // '1' = Bật xét tụt hạng, '0' = Không bao giờ tụt hạng
-		'downgrade_months'        => 6,             // Thời hạn duy trì hạng (tháng) kể từ đơn hàng / lần xét hạng gần nhất
-		'downgrade_mode'          => 'step_down_1', // 'step_down_1' (tụt 1 bậc) | 'period_spend' (tính theo chi tiêu trong chu kỳ) | 'reset_base' (về hạng đầu)
-		'protect_manual_override' => '1',           // Giữ nguyên hạng cho tài khoản được Admin khóa hạng cố định
-		'apply_tier_discount'     => '1',           // Tự động giảm % theo hạng thành viên trên hóa đơn
-	);
-	$saved = get_option( 'nexxi_tier_rules_settings', array() );
-	if ( ! is_array( $saved ) ) {
-		$saved = array();
-	}
-	$res = wp_parse_args( $saved, $defaults );
-	$res['downgrade_months'] = max( 1, (int) $res['downgrade_months'] );
-	return $res;
-}
-
-/**
- * Calculate total spent & order count for a customer (including linked orders by user_id or billing_email).
+ * Calculate total spent & order count for a customer.
  *
  * @param int $user_id WordPress User ID.
  * @return array{order_count:int,completed_count:int,total_spent:float,last_order_date:string,last_order_ts:int}
@@ -233,156 +129,7 @@ function nexxi_kids_get_customer_order_stats( $user_id ) {
 }
 
 /**
- * Determine which tier a user qualifies for based on spent & points, and evaluate downgrade expiration.
- *
- * @param int $user_id WordPress User ID.
- * @return array{
- *   tier_slug:string,
- *   tier:array,
- *   is_manual:bool,
- *   is_downgraded:bool,
- *   expires_ts:int,
- *   expires_label:string,
- *   days_left:int,
- *   next_tier:array|null,
- *   spent_to_next:float,
- *   points_to_next:int
- * }
- */
-function nexxi_kids_get_user_tier_info( $user_id ) {
-	$user_id = (int) $user_id;
-	$tiers   = nexxi_kids_get_member_tiers_config();
-	$rules   = nexxi_kids_get_tier_rules_settings();
-	$keys    = array_keys( $tiers );
-	$base_k  = ! empty( $keys[0] ) ? $keys[0] : 'member';
-
-	if ( $user_id <= 0 ) {
-		return array(
-			'tier_slug'      => $base_k,
-			'tier'           => $tiers[ $base_k ],
-			'is_manual'      => false,
-			'is_downgraded'  => false,
-			'expires_ts'     => 0,
-			'expires_label'  => 'Không giới hạn',
-			'days_left'      => 999,
-			'next_tier'      => isset( $keys[1] ) ? $tiers[ $keys[1] ] : null,
-			'spent_to_next'  => isset( $keys[1] ) ? (float) $tiers[ $keys[1] ]['min_spent'] : 0.0,
-			'points_to_next' => isset( $keys[1] ) ? (int) $tiers[ $keys[1] ]['min_points'] : 0,
-		);
-	}
-
-	$stats      = nexxi_kids_get_customer_order_stats( $user_id );
-	$spent      = (float) $stats['total_spent'];
-	$points     = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $user_id ) : (int) get_user_meta( $user_id, 'nexxi_member_points', true );
-	$manual_lck = ( '1' === (string) get_user_meta( $user_id, 'nexxi_tier_manual_lock', true ) );
-	$saved_slug = (string) get_user_meta( $user_id, 'nexxi_member_tier', true );
-
-	// Calculate earned tier from thresholds
-	$metric      = $rules['upgrade_metric'];
-	$earned_idx  = 0;
-	foreach ( $keys as $idx => $k ) {
-		$t     = $tiers[ $k ];
-		$req_s = (float) ( $t['min_spent'] ?? 0 );
-		$req_p = (int) ( $t['min_points'] ?? 0 );
-		if ( $req_s <= 0 && $req_p <= 0 ) {
-			$earned_idx = $idx;
-			continue;
-		}
-		$ok = false;
-		if ( 'spent' === $metric ) {
-			$ok = ( $req_s > 0 && $spent >= $req_s );
-		} elseif ( 'points' === $metric ) {
-			$ok = ( $req_p > 0 && $points >= $req_p );
-		} elseif ( 'both' === $metric ) {
-			$ok = ( $spent >= $req_s && $points >= $req_p );
-		} else {
-			// 'either'
-			$ok = ( ( $req_s > 0 && $spent >= $req_s ) || ( $req_p > 0 && $points >= $req_p ) );
-		}
-		if ( $ok ) {
-			$earned_idx = $idx;
-		}
-	}
-
-	$active_idx    = $earned_idx;
-	$is_downgraded = false;
-
-	if ( $manual_lck && isset( $tiers[ $saved_slug ] ) ) {
-		$found = array_search( $saved_slug, $keys, true );
-		if ( false !== $found ) {
-			$active_idx = (int) $found;
-		}
-	}
-
-	// Reference activity timestamp for downgrade expiration
-	$user_obj      = get_userdata( $user_id );
-	$joined_custom = (string) get_user_meta( $user_id, 'nexxi_club_joined_date', true );
-	$reg_ts        = $joined_custom ? strtotime( $joined_custom ) : ( $user_obj && $user_obj->user_registered ? strtotime( $user_obj->user_registered ) : time() );
-	$tier_upd_ts   = (int) get_user_meta( $user_id, 'nexxi_tier_updated_ts', true );
-	$ref_ts        = max( (int) $stats['last_order_ts'], $tier_upd_ts, (int) $reg_ts );
-	$months        = max( 1, (int) $rules['downgrade_months'] );
-	$expires_ts    = strtotime( '+' . $months . ' months', $ref_ts );
-	$days_left     = (int) ceil( ( $expires_ts - time() ) / DAY_IN_SECONDS );
-
-	// Evaluate downgrade if enabled and user is above base tier
-	if ( '1' === (string) $rules['downgrade_enabled'] && $active_idx > 0 ) {
-		$protected = ( $manual_lck && '1' === (string) $rules['protect_manual_override'] );
-		if ( ! $protected && $days_left < 0 ) {
-			$overdue_cycles = max( 1, (int) floor( abs( $days_left ) / ( $months * 30 ) ) + 1 );
-			if ( 'reset_base' === $rules['downgrade_mode'] ) {
-				$active_idx    = 0;
-				$is_downgraded = true;
-			} elseif ( 'period_spend' === $rules['downgrade_mode'] ) {
-				// No order in the last $months months -> period spend is 0 -> base tier
-				$active_idx    = 0;
-				$is_downgraded = true;
-			} else {
-				// step_down_1 per cycle
-				$active_idx    = max( 0, $active_idx - $overdue_cycles );
-				$is_downgraded = true;
-			}
-		}
-	}
-
-	$active_slug = isset( $keys[ $active_idx ] ) ? $keys[ $active_idx ] : $base_k;
-	$active_tier = $tiers[ $active_slug ];
-
-	// Persist current tier slug if changed
-	if ( $saved_slug !== $active_slug && ! $manual_lck ) {
-		update_user_meta( $user_id, 'nexxi_member_tier', $active_slug );
-	}
-
-	$next_tier      = isset( $keys[ $active_idx + 1 ] ) ? $tiers[ $keys[ $active_idx + 1 ] ] : null;
-	$spent_to_next  = $next_tier ? max( 0.0, (float) $next_tier['min_spent'] - $spent ) : 0.0;
-	$points_to_next = $next_tier ? max( 0, (int) $next_tier['min_points'] - $points ) : 0;
-
-	$expires_label = 'Không giới hạn';
-	if ( $active_idx > 0 && '1' === (string) $rules['downgrade_enabled'] ) {
-		if ( $manual_lck && '1' === (string) $rules['protect_manual_override'] ) {
-			$expires_label = 'Cố định vĩnh viễn';
-		} elseif ( $days_left >= 0 ) {
-			$expires_label = wp_date( 'd/m/Y', $expires_ts ) . ' (còn ' . $days_left . ' ngày)';
-		} else {
-			$expires_label = 'Quá hạn ' . abs( $days_left ) . ' ngày (Đã hạ hạng)';
-		}
-	}
-
-	return array(
-		'tier_slug'      => $active_slug,
-		'tier'           => $active_tier,
-		'is_manual'      => $manual_lck,
-		'is_downgraded'  => $is_downgraded,
-		'expires_ts'     => $expires_ts,
-		'expires_label'  => $expires_label,
-		'days_left'      => $days_left,
-		'next_tier'      => $next_tier,
-		'spent_to_next'  => $spent_to_next,
-		'points_to_next' => $points_to_next,
-	);
-}
-
-/**
- * Apply tier point multiplier when awarding order points, and apply Cart/Checkout tier discount + Points-to-Money redemption.
+ * Apply Points-to-Money redemption on Cart/Checkout when customer opts to use points.
  */
 add_action(
 	'woocommerce_cart_calculate_fees',
@@ -393,25 +140,7 @@ add_action(
 		if ( ! is_user_logged_in() ) {
 			return;
 		}
-		$uid       = get_current_user_id();
-		$rules     = nexxi_kids_get_tier_rules_settings();
-		$tier_info = nexxi_kids_get_user_tier_info( $uid );
-		$tier      = $tier_info['tier'];
-
-		// 1. Membership Tier Discount (% on post-sale subtotal)
-		if ( '1' === (string) $rules['apply_tier_discount'] && ! empty( $tier['discount_pct'] ) && (float) $tier['discount_pct'] > 0 ) {
-			$pct  = min( 90.0, (float) $tier['discount_pct'] );
-			$base = (float) $cart->get_subtotal();
-			if ( $base > 0 ) {
-				$disc = round( $base * ( $pct / 100.0 ) );
-				if ( $disc > 0 ) {
-					$label = sprintf( '%s Ưu đãi %s (-%s%%)', $tier['icon'] ?? '👑', $tier['name'], rtrim( rtrim( number_format( $pct, 1 ), '0' ), '.' ) );
-					$cart->add_fee( $label, -$disc, false );
-				}
-			}
-		}
-
-		// 2. Points = Money Redemption if customer opted to redeem points in session
+		$uid     = get_current_user_id();
 		$pts_cfg = nexxi_kids_get_points_settings();
 		if ( '1' === (string) $pts_cfg['redeem_enabled'] && WC()->session ) {
 			$use_pts = (int) WC()->session->get( 'nexxi_redeem_points', 0 );
@@ -419,12 +148,12 @@ add_action(
 				$avail_pts = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : (int) get_user_meta( $uid, 'nexxi_member_points', true );
 				$use_pts   = min( $use_pts, $avail_pts );
 				if ( $use_pts >= (int) $pts_cfg['min_points_redeem'] ) {
-					$base_sub    = max( 0.0, (float) $cart->get_subtotal() );
-					$max_vnd     = round( $base_sub * ( (int) $pts_cfg['max_redeem_pct'] / 100.0 ) );
-					$pt_val      = (int) $pts_cfg['point_value_vnd'];
-					$redeem_vnd  = min( $max_vnd, $use_pts * $pt_val );
-					$actual_pts  = $pt_val > 0 ? (int) floor( $redeem_vnd / $pt_val ) : 0;
-					$redeem_vnd  = $actual_pts * $pt_val;
+					$base_sub   = max( 0.0, (float) $cart->get_subtotal() );
+					$max_vnd    = round( $base_sub * ( (int) $pts_cfg['max_redeem_pct'] / 100.0 ) );
+					$pt_val     = (int) $pts_cfg['point_value_vnd'];
+					$redeem_vnd = min( $max_vnd, $use_pts * $pt_val );
+					$actual_pts = $pt_val > 0 ? (int) floor( $redeem_vnd / $pt_val ) : 0;
+					$redeem_vnd = $actual_pts * $pt_val;
 					if ( $actual_pts > 0 && $redeem_vnd > 0 ) {
 						WC()->session->set( 'nexxi_redeem_points_actual', $actual_pts );
 						$cart->add_fee(
@@ -587,15 +316,6 @@ function nexxi_kids_customer_crm_admin_menu() {
 
 	add_submenu_page(
 		'nexxi-customer-manager',
-		'Hạng thành viên & Điểm thưởng — NEXXI Club',
-		'👑 Hạng thành viên',
-		'manage_woocommerce',
-		'nexxi-member-tiers',
-		'nexxi_kids_member_tiers_admin_page'
-	);
-
-	add_submenu_page(
-		'nexxi-customer-manager',
 		'Quản lý đơn hàng — NEXXI',
 		'📦 Quản lý đơn hàng',
 		'manage_woocommerce',
@@ -648,21 +368,17 @@ function nexxi_kids_render_crm_top_nav( $active_slug ) {
 	$tabs = array(
 		'nexxi-customer-manager' => array(
 			'label' => '👤 1. Quản lý khách hàng',
-			'desc'  => 'Tài khoản, Điểm, Hạng, Đơn hàng, Chi tiêu & Sinh nhật bé',
-		),
-		'nexxi-member-tiers'     => array(
-			'label' => '👑 2. Hạng thành viên',
-			'desc'  => 'Cài đặt Hạng & Ưu đãi, Mức thăng hạng, Thời hạn tụt hạng & Điểm = Tiền',
+			'desc'  => 'Tài khoản khách hàng, Điểm tích lũy, Tổng đơn, Chi tiêu, Ngày tham gia & Sinh nhật của bé',
 		),
 		'nexxi-order-manager'    => array(
-			'label' => '📦 3. Quản lý đơn hàng',
-			'desc'  => 'Danh sách đơn hàng, Đổi trạng thái nhanh & Thao tác hàng loạt',
+			'label' => '📦 2. Quản lý đơn hàng',
+			'desc'  => 'Danh sách đơn hàng, Quản lý trạng thái đơn & Thao tác hàng loạt đơn',
 		),
 	);
 	?>
 	<style>
 		.nexxi-crm-wrap { max-width: 1460px; margin: 18px 20px 40px 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; }
-		.nexxi-crm-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+		.nexxi-crm-nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
 		.nexxi-crm-nav-item { display: flex; flex-direction: column; gap: 3px; padding: 14px 18px; border-radius: 14px; background: #fff; border: 2px solid #e2e8f0; text-decoration: none; color: #0f172a; transition: all .15s ease; box-shadow: 0 2px 6px rgba(15,23,42,.03); }
 		.nexxi-crm-nav-item:hover { border-color: #fd6a49; color: #0f172a; transform: translateY(-1px); }
 		.nexxi-crm-nav-item.is-active { background: linear-gradient(135deg, #031444 0%, #1e293b 100%); color: #fff; border-color: #031444; box-shadow: 0 8px 20px rgba(3,20,68,.16); }
@@ -731,8 +447,6 @@ function nexxi_kids_handle_customer_manager_post() {
 		$ward          = isset( $_POST['ward'] ) ? sanitize_text_field( wp_unslash( $_POST['ward'] ) ) : '';
 		$city          = isset( $_POST['city'] ) ? sanitize_text_field( wp_unslash( $_POST['city'] ) ) : '';
 		$points        = isset( $_POST['member_points'] ) ? max( 0, (int) $_POST['member_points'] ) : 0;
-		$tier_slug     = isset( $_POST['member_tier'] ) ? sanitize_key( wp_unslash( $_POST['member_tier'] ) ) : 'member';
-		$tier_lock     = ! empty( $_POST['tier_manual_lock'] ) ? '1' : '0';
 		$joined_date   = isset( $_POST['club_joined_date'] ) ? sanitize_text_field( wp_unslash( $_POST['club_joined_date'] ) ) : '';
 		$baby_name     = isset( $_POST['baby_name'] ) ? sanitize_text_field( wp_unslash( $_POST['baby_name'] ) ) : '';
 		$baby_birthday = isset( $_POST['baby_birthday'] ) ? sanitize_text_field( wp_unslash( $_POST['baby_birthday'] ) ) : '';
@@ -808,9 +522,6 @@ function nexxi_kids_handle_customer_manager_post() {
 
 		update_user_meta( $target_uid, 'nexxi_member_points', $points );
 		update_user_meta( $target_uid, 'nexxi_points_backfilled', '1' );
-		update_user_meta( $target_uid, 'nexxi_member_tier', $tier_slug );
-		update_user_meta( $target_uid, 'nexxi_tier_manual_lock', $tier_lock );
-		update_user_meta( $target_uid, 'nexxi_tier_updated_ts', time() );
 
 		if ( '' !== $joined_date ) {
 			update_user_meta( $target_uid, 'nexxi_club_joined_date', $joined_date );
@@ -847,6 +558,16 @@ function nexxi_kids_handle_customer_manager_post() {
 			$edit_uid > 0 ? 'Đã cập nhật thông tin tài khoản khách hàng #' . $target_uid . ' thành công!' : 'Đã tạo tài khoản khách hàng mới #' . $target_uid . ' thành công!',
 			'updated'
 		);
+	} elseif ( 'save_points_settings' === $action ) {
+		$pts_settings = array(
+			'earn_unit_vnd'     => isset( $_POST['earn_unit_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['earn_unit_vnd'] ) ) ) ) ) : 10000,
+			'redeem_enabled'    => ! empty( $_POST['redeem_enabled'] ) ? '1' : '0',
+			'point_value_vnd'   => isset( $_POST['point_value_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['point_value_vnd'] ) ) ) ) ) : 1000,
+			'min_points_redeem' => isset( $_POST['min_points_redeem'] ) ? max( 1, absint( $_POST['min_points_redeem'] ) ) : 10,
+			'max_redeem_pct'    => isset( $_POST['max_redeem_pct'] ) ? min( 100, max( 1, absint( $_POST['max_redeem_pct'] ) ) ) : 50,
+		);
+		update_option( 'nexxi_points_settings', $pts_settings );
+		add_settings_error( 'nexxi_crm', 'points_saved', 'Đã lưu cài đặt Mức tích điểm & Quy đổi Điểm = Tiền thành công!', 'updated' );
 	} elseif ( 'delete_customer' === $action ) {
 		$del_uid = isset( $_POST['delete_user_id'] ) ? absint( $_POST['delete_user_id'] ) : 0;
 		if ( $del_uid > 0 && $del_uid !== get_current_user_id() && ! user_can( $del_uid, 'manage_options' ) ) {
@@ -868,16 +589,6 @@ function nexxi_kids_handle_customer_manager_post() {
 					wp_delete_user( $u_id );
 					$count++;
 				}
-			} elseif ( 0 === strpos( $bulk_type, 'set_tier_' ) ) {
-				$t_slug = substr( $bulk_type, 9 );
-				update_user_meta( $u_id, 'nexxi_member_tier', $t_slug );
-				update_user_meta( $u_id, 'nexxi_tier_manual_lock', '1' );
-				update_user_meta( $u_id, 'nexxi_tier_updated_ts', time() );
-				$count++;
-			} elseif ( 'unlock_tier' === $bulk_type ) {
-				update_user_meta( $u_id, 'nexxi_tier_manual_lock', '0' );
-				nexxi_kids_get_user_tier_info( $u_id );
-				$count++;
 			} elseif ( 'add_points' === $bulk_type ) {
 				$delta = isset( $_POST['bulk_points_delta'] ) ? (int) $_POST['bulk_points_delta'] : 0;
 				if ( 0 !== $delta ) {
@@ -893,14 +604,12 @@ function nexxi_kids_handle_customer_manager_post() {
 add_action( 'admin_init', 'nexxi_kids_handle_customer_manager_post' );
 
 function nexxi_kids_customer_manager_admin_page() {
-	$tiers       = nexxi_kids_get_member_tiers_config();
-	$pts_cfg     = nexxi_kids_get_points_settings();
-	$search      = isset( $_GET['s_cust'] ) ? sanitize_text_field( wp_unslash( $_GET['s_cust'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$filter_tier = isset( $_GET['f_tier'] ) ? sanitize_key( wp_unslash( $_GET['f_tier'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$pts_cfg       = nexxi_kids_get_points_settings();
+	$search        = isset( $_GET['s_cust'] ) ? sanitize_text_field( wp_unslash( $_GET['s_cust'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$filter_bmonth = isset( $_GET['f_bmonth'] ) ? absint( $_GET['f_bmonth'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$sort_by     = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'joined_desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$edit_uid    = isset( $_GET['edit_customer'] ) ? absint( $_GET['edit_customer'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$is_new_form = isset( $_GET['new_customer'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$sort_by       = isset( $_GET['sort_by'] ) ? sanitize_key( wp_unslash( $_GET['sort_by'] ) ) : 'joined_desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$edit_uid      = isset( $_GET['edit_customer'] ) ? absint( $_GET['edit_customer'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$is_new_form   = isset( $_GET['new_customer'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 	$all_users = get_users(
 		array(
@@ -921,7 +630,6 @@ function nexxi_kids_customer_manager_admin_page() {
 		$uid       = (int) $u->ID;
 		$stats     = nexxi_kids_get_customer_order_stats( $uid );
 		$points    = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : (int) get_user_meta( $uid, 'nexxi_member_points', true );
-		$tier_info = nexxi_kids_get_user_tier_info( $uid );
 		$phone     = (string) get_user_meta( $uid, 'billing_phone', true );
 		$addr1     = (string) get_user_meta( $uid, 'billing_address_1', true );
 		$ward      = (string) get_user_meta( $uid, 'billing_ward', true );
@@ -963,9 +671,6 @@ function nexxi_kids_customer_manager_admin_page() {
 				continue;
 			}
 		}
-		if ( '' !== $filter_tier && $tier_info['tier_slug'] !== $filter_tier ) {
-			continue;
-		}
 		if ( $filter_bmonth > 0 && $bday_month !== $filter_bmonth ) {
 			continue;
 		}
@@ -979,7 +684,6 @@ function nexxi_kids_customer_manager_admin_page() {
 			'addr_full'   => implode( ', ', array_filter( array( $addr1, $ward, $city ) ) ),
 			'points'      => $points,
 			'points_vnd'  => $points * (int) $pts_cfg['point_value_vnd'],
-			'tier_info'   => $tier_info,
 			'order_count' => (int) $stats['order_count'],
 			'total_spent' => (float) $stats['total_spent'],
 			'joined_ts'   => $joined_ts,
@@ -1019,7 +723,7 @@ function nexxi_kids_customer_manager_admin_page() {
 		<!-- KPI Summary Bar -->
 		<div class="nexxi-crm-kpis">
 			<div class="nexxi-crm-kpi">
-				<small>👥 Tổng tài khoản thành viên</small>
+				<small>👥 Tổng tài khoản khách hàng</small>
 				<strong><?php echo esc_html( number_format_i18n( $kpi_total_members ) ); ?> khách hàng</strong>
 				<span>Tự động đồng bộ từ đơn hàng &amp; đăng ký</span>
 			</div>
@@ -1031,13 +735,45 @@ function nexxi_kids_customer_manager_admin_page() {
 			<div class="nexxi-crm-kpi">
 				<small>💰 Tổng chi tiêu tích lũy</small>
 				<strong style="color:#0b6b2f;"><?php echo esc_html( nexxi_kids_money( $kpi_total_spent ) ); ?></strong>
-				<span>Cơ sở xét thăng hạng NEXXI Club</span>
+				<span>Tổng giá trị đơn hàng đã mua</span>
 			</div>
 			<div class="nexxi-crm-kpi">
 				<small>🎂 Sinh nhật của bé tháng <?php echo (int) $cur_month; ?></small>
 				<strong style="color:#9d174d;"><?php echo (int) $kpi_bday_month; ?> bé</strong>
 				<span><a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-customer-manager&f_bmonth=' . $cur_month ) ); ?>">Lọc danh sách bé sinh nhật tháng này &rarr;</a></span>
 			</div>
+		</div>
+
+		<!-- Points = Money Quick Config Card -->
+		<div class="nexxi-crm-card" style="padding:16px 20px;">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-customer-manager' ) ); ?>" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;">
+				<?php wp_nonce_field( 'nexxi_crm_customer_nonce', 'nexxi_crm_nonce' ); ?>
+				<input type="hidden" name="nexxi_crm_customer_action" value="save_points_settings">
+				<div style="min-width:190px;">
+					<strong style="font-size:14px;color:#031444;display:block;margin-bottom:4px;">💎 Cài đặt Điểm = Tiền</strong>
+					<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#475569;cursor:pointer;">
+						<input type="checkbox" name="redeem_enabled" value="1" <?php checked( $pts_cfg['redeem_enabled'], '1' ); ?>>
+						Cho phép đổi điểm trừ tiền
+					</label>
+				</div>
+				<div class="nexxi-form-field" style="flex:1;min-width:160px;">
+					<label>Mức tích điểm (VNĐ = 1 điểm)</label>
+					<input type="number" name="earn_unit_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['earn_unit_vnd']; ?>">
+				</div>
+				<div class="nexxi-form-field" style="flex:1;min-width:160px;">
+					<label>Giá trị đổi (1 Điểm = VNĐ)</label>
+					<input type="number" name="point_value_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['point_value_vnd']; ?>">
+				</div>
+				<div class="nexxi-form-field" style="width:130px;">
+					<label>Điểm đổi tối thiểu</label>
+					<input type="number" name="min_points_redeem" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['min_points_redeem']; ?>">
+				</div>
+				<div class="nexxi-form-field" style="width:130px;">
+					<label>Giảm tối đa (% đơn)</label>
+					<input type="number" name="max_redeem_pct" min="1" max="100" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['max_redeem_pct']; ?>">
+				</div>
+				<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--navy" style="height:36px;">💾 Lưu mức tích điểm</button>
+			</form>
 		</div>
 
 		<?php
@@ -1054,9 +790,6 @@ function nexxi_kids_customer_manager_admin_page() {
 			$e_ward   = $e_uid ? (string) get_user_meta( $e_uid, 'billing_ward', true ) : '';
 			$e_city   = $e_uid ? (string) get_user_meta( $e_uid, 'billing_city', true ) : '';
 			$e_pts    = $e_uid ? (int) nexxi_kids_get_user_points( $e_uid ) : 0;
-			$e_tinfo  = $e_uid ? nexxi_kids_get_user_tier_info( $e_uid ) : null;
-			$e_tier   = $e_tinfo ? $e_tinfo['tier_slug'] : 'member';
-			$e_lock   = $e_uid ? ( '1' === (string) get_user_meta( $e_uid, 'nexxi_tier_manual_lock', true ) ) : false;
 			$e_joined = $e_uid ? (string) get_user_meta( $e_uid, 'nexxi_club_joined_date', true ) : '';
 			if ( '' === $e_joined && $editing_user && $editing_user->user_registered ) {
 				$e_joined = gmdate( 'Y-m-d', strtotime( $editing_user->user_registered ) );
@@ -1101,21 +834,7 @@ function nexxi_kids_customer_manager_admin_page() {
 
 						<div class="nexxi-form-field">
 							<label>💎 Điểm thành viên NEXXI hiện có</label>
-							<input type="number" name="member_points" min="0" class="nexxi-crm-input" value="<?php echo (int) $e_pts; ?>">
-						</div>
-						<div class="nexxi-form-field">
-							<label>👑 Hạng thành viên NEXXI Club</label>
-							<select name="member_tier" class="nexxi-crm-select">
-								<?php foreach ( $tiers as $t_slug => $t_info ) : ?>
-									<option value="<?php echo esc_attr( $t_slug ); ?>" <?php selected( $e_tier, $t_slug ); ?>>
-										<?php echo esc_html( ( $t_info['icon'] ?? '👑' ) . ' ' . $t_info['name'] ); ?>
-									</option>
-								<?php endforeach; ?>
-							</select>
-							<label style="font-weight:500;font-size:12px;margin-top:3px;display:inline-flex;align-items:center;gap:5px;">
-								<input type="checkbox" name="tier_manual_lock" value="1" <?php checked( $e_lock ); ?>>
-								Cố định hạng này (không tự động tụt hạng)
-							</label>
+							<input type="number" name="member_points" min="0" step="any" class="nexxi-crm-input" value="<?php echo (int) $e_pts; ?>">
 						</div>
 						<div class="nexxi-form-field">
 							<label>📅 Ngày tham gia NEXXI Club</label>
@@ -1174,15 +893,7 @@ function nexxi_kids_customer_manager_admin_page() {
 			<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
 				<form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;">
 					<input type="hidden" name="page" value="nexxi-customer-manager">
-					<input type="search" name="s_cust" value="<?php echo esc_attr( $search ); ?>" class="nexxi-crm-input" style="min-width:250px;" placeholder="🔍 Tìm tên khách, SĐT, email, tên bé...">
-					<select name="f_tier" class="nexxi-crm-select">
-						<option value="">-- Tất cả hạng thành viên --</option>
-						<?php foreach ( $tiers as $t_slug => $t_info ) : ?>
-							<option value="<?php echo esc_attr( $t_slug ); ?>" <?php selected( $filter_tier, $t_slug ); ?>>
-								<?php echo esc_html( ( $t_info['icon'] ?? '👑' ) . ' ' . $t_info['name'] ); ?>
-							</option>
-						<?php endforeach; ?>
-					</select>
+					<input type="search" name="s_cust" value="<?php echo esc_attr( $search ); ?>" class="nexxi-crm-input" style="min-width:260px;" placeholder="🔍 Tìm tên khách, SĐT, email, tên bé...">
 					<select name="f_bmonth" class="nexxi-crm-select">
 						<option value="0">-- Tháng sinh nhật của bé --</option>
 						<?php for ( $m = 1; $m <= 12; $m++ ) : ?>
@@ -1196,7 +907,7 @@ function nexxi_kids_customer_manager_admin_page() {
 						<option value="orders_desc" <?php selected( $sort_by, 'orders_desc' ); ?>>Sắp xếp: Nhiều đơn nhất</option>
 					</select>
 					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--navy">Lọc danh sách</button>
-					<?php if ( '' !== $search || '' !== $filter_tier || $filter_bmonth > 0 ) : ?>
+					<?php if ( '' !== $search || $filter_bmonth > 0 ) : ?>
 						<a href="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-customer-manager' ) ); ?>" class="nexxi-crm-btn nexxi-crm-btn--ghost">Xóa lọc</a>
 					<?php endif; ?>
 				</form>
@@ -1212,15 +923,11 @@ function nexxi_kids_customer_manager_admin_page() {
 					<strong style="font-size:12.5px;color:#031444;">⚡ Thao tác hàng loạt:</strong>
 					<select name="bulk_customer_op" class="nexxi-crm-select" onchange="document.getElementById('nx-bulk-pts-wrap').style.display=(this.value==='add_points'?'inline-flex':'none');">
 						<option value="">-- Chọn thao tác --</option>
-						<?php foreach ( $tiers as $t_slug => $t_info ) : ?>
-							<option value="<?php echo esc_attr( 'set_tier_' . $t_slug ); ?>">Gán hạng cố định: <?php echo esc_html( $t_info['name'] ); ?></option>
-						<?php endforeach; ?>
-						<option value="unlock_tier">Mở khóa hạng (Tự động xét theo chi tiêu/điểm)</option>
-						<option value="add_points">Cộng / Trừ điểm thành viên hàng loạt</option>
+						<option value="add_points">💎 Cộng / Trừ điểm thành viên hàng loạt</option>
 						<option value="delete">🗑️ Xóa các tài khoản đã chọn</option>
 					</select>
 					<span id="nx-bulk-pts-wrap" style="display:none;align-items:center;gap:6px;">
-						<input type="number" name="bulk_points_delta" class="nexxi-crm-input" style="width:130px;" placeholder="VD: +50 hoặc -20">
+						<input type="number" name="bulk_points_delta" step="any" class="nexxi-crm-input" style="width:130px;" placeholder="VD: +50 hoặc -20">
 					</span>
 					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--ghost" onclick="return confirm('Xác nhận thực hiện thao tác hàng loạt cho các khách hàng đã tích chọn?');">Áp dụng</button>
 					<span style="margin-left:auto;font-size:12.5px;color:#64748b;">Hiển thị <strong><?php echo count( $rows ); ?></strong> khách hàng</span>
@@ -1232,7 +939,6 @@ function nexxi_kids_customer_manager_admin_page() {
 							<tr>
 								<th style="width:32px;"><input type="checkbox" onclick="document.querySelectorAll('.nx-cust-cb').forEach(c=>c.checked=this.checked)"></th>
 								<th>Khách hàng &amp; Liên hệ</th>
-								<th>Hạng thành viên</th>
 								<th>Điểm NEXXI</th>
 								<th>Tổng đơn đã đặt</th>
 								<th>Tổng tiền chi tiêu</th>
@@ -1243,12 +949,9 @@ function nexxi_kids_customer_manager_admin_page() {
 						</thead>
 						<tbody>
 							<?php if ( empty( $rows ) ) : ?>
-								<tr><td colspan="9" style="text-align:center;padding:30px;color:#64748b;">Chưa có khách hàng nào khớp điều kiện lọc.</td></tr>
+								<tr><td colspan="8" style="text-align:center;padding:30px;color:#64748b;">Chưa có khách hàng nào khớp điều kiện lọc.</td></tr>
 							<?php else : ?>
-								<?php foreach ( $rows as $r ) :
-									$ti   = $r['tier_info'];
-									$tier = $ti['tier'];
-									?>
+								<?php foreach ( $rows as $r ) : ?>
 									<tr>
 										<td><input type="checkbox" class="nx-cust-cb" name="customer_ids[]" value="<?php echo (int) $r['uid']; ?>"></td>
 										<td>
@@ -1270,15 +973,6 @@ function nexxi_kids_customer_manager_admin_page() {
 											<?php endif; ?>
 										</td>
 										<td>
-											<span class="nexxi-crm-badge" style="background:<?php echo esc_attr( $tier['bg_color'] ?? '#f1f5f9' ); ?>;color:<?php echo esc_attr( $tier['color'] ?? '#0f172a' ); ?>;">
-												<?php echo esc_html( ( $tier['icon'] ?? '👑' ) . ' ' . $tier['name'] ); ?>
-											</span>
-											<?php if ( $ti['is_manual'] ) : ?>
-												<span style="font-size:10.5px;color:#7c3aed;font-weight:700;display:block;margin-top:3px;">🔒 Đã khóa hạng cố định</span>
-											<?php endif; ?>
-											<div style="font-size:11px;color:#64748b;margin-top:2px;">Hạn: <?php echo esc_html( $ti['expires_label'] ); ?></div>
-										</td>
-										<td>
 											<strong style="color:#fd6a49;font-size:14px;"><?php echo esc_html( number_format_i18n( $r['points'] ) ); ?> điểm</strong>
 											<div style="font-size:11px;color:#64748b;">≈ <?php echo esc_html( nexxi_kids_money( $r['points_vnd'] ) ); ?></div>
 										</td>
@@ -1289,9 +983,6 @@ function nexxi_kids_customer_manager_admin_page() {
 										</td>
 										<td>
 											<strong style="color:#0b6b2f;font-size:13.5px;"><?php echo esc_html( nexxi_kids_money( $r['total_spent'] ) ); ?></strong>
-											<?php if ( $ti['next_tier'] ) : ?>
-												<div style="font-size:11px;color:#64748b;">Còn <?php echo esc_html( nexxi_kids_money( $ti['spent_to_next'] ) ); ?> lên <?php echo esc_html( $ti['next_tier']['name'] ); ?></div>
-											<?php endif; ?>
 										</td>
 										<td>
 											<div style="font-weight:700;color:#1e293b;"><?php echo esc_html( $r['joined_str'] ); ?></div>
@@ -1347,379 +1038,7 @@ function nexxi_kids_customer_manager_admin_page() {
 }
 
 /* ==========================================================================
- * 5. SUBMENU 2: HẠNG THÀNH VIÊN (TIERS, UPGRADE, DOWNGRADE, POINTS = MONEY)
- * ========================================================================== */
-
-function nexxi_kids_handle_member_tiers_post() {
-	if ( empty( $_POST['nexxi_crm_tiers_action'] ) || ! current_user_can( 'manage_woocommerce' ) ) {
-		return;
-	}
-	check_admin_referer( 'nexxi_crm_tiers_nonce', 'nexxi_tiers_nonce' );
-
-	$action = sanitize_key( wp_unslash( $_POST['nexxi_crm_tiers_action'] ) );
-
-	// 1. Save Points = Money + Upgrade/Downgrade Settings + Tiers Table
-	if ( 'save_all_tier_settings' === $action ) {
-		$pts_settings = array(
-			'earn_unit_vnd'     => isset( $_POST['earn_unit_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['earn_unit_vnd'] ) ) ) ) ) : 10000,
-			'redeem_enabled'    => ! empty( $_POST['redeem_enabled'] ) ? '1' : '0',
-			'point_value_vnd'   => isset( $_POST['point_value_vnd'] ) ? max( 1, absint( str_replace( array( '.', ',' ), '', sanitize_text_field( wp_unslash( $_POST['point_value_vnd'] ) ) ) ) ) : 1000,
-			'min_points_redeem' => isset( $_POST['min_points_redeem'] ) ? max( 1, absint( $_POST['min_points_redeem'] ) ) : 10,
-			'max_redeem_pct'    => isset( $_POST['max_redeem_pct'] ) ? min( 100, max( 1, absint( $_POST['max_redeem_pct'] ) ) ) : 50,
-		);
-		update_option( 'nexxi_points_settings', $pts_settings );
-
-		$rules_settings = array(
-			'upgrade_metric'          => isset( $_POST['upgrade_metric'] ) ? sanitize_key( wp_unslash( $_POST['upgrade_metric'] ) ) : 'either',
-			'downgrade_enabled'       => ! empty( $_POST['downgrade_enabled'] ) ? '1' : '0',
-			'downgrade_months'        => isset( $_POST['downgrade_months'] ) ? max( 1, absint( $_POST['downgrade_months'] ) ) : 6,
-			'downgrade_mode'          => isset( $_POST['downgrade_mode'] ) ? sanitize_key( wp_unslash( $_POST['downgrade_mode'] ) ) : 'step_down_1',
-			'protect_manual_override' => ! empty( $_POST['protect_manual_override'] ) ? '1' : '0',
-			'apply_tier_discount'     => ! empty( $_POST['apply_tier_discount'] ) ? '1' : '0',
-		);
-		update_option( 'nexxi_tier_rules_settings', $rules_settings );
-
-		// Parse tiers array
-		$slugs  = isset( $_POST['t_slug'] ) && is_array( $_POST['t_slug'] ) ? array_map( 'sanitize_key', wp_unslash( $_POST['t_slug'] ) ) : array();
-		$names  = isset( $_POST['t_name'] ) && is_array( $_POST['t_name'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_name'] ) ) : array();
-		$icons  = isset( $_POST['t_icon'] ) && is_array( $_POST['t_icon'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_icon'] ) ) : array();
-		$colors = isset( $_POST['t_color'] ) && is_array( $_POST['t_color'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_color'] ) ) : array();
-		$bgs    = isset( $_POST['t_bg'] ) && is_array( $_POST['t_bg'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_bg'] ) ) : array();
-		$spents = isset( $_POST['t_spent'] ) && is_array( $_POST['t_spent'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_spent'] ) ) : array();
-		$pts    = isset( $_POST['t_points'] ) && is_array( $_POST['t_points'] ) ? array_map( 'absint', wp_unslash( $_POST['t_points'] ) ) : array();
-		$discs  = isset( $_POST['t_disc'] ) && is_array( $_POST['t_disc'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_disc'] ) ) : array();
-		$mults  = isset( $_POST['t_mult'] ) && is_array( $_POST['t_mult'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_mult'] ) ) : array();
-		$gifts  = isset( $_POST['t_gift'] ) && is_array( $_POST['t_gift'] ) ? array_map( 'absint', wp_unslash( $_POST['t_gift'] ) ) : array();
-		$perks  = isset( $_POST['t_perks'] ) && is_array( $_POST['t_perks'] ) ? array_map( 'sanitize_text_field', wp_unslash( $_POST['t_perks'] ) ) : array();
-
-		$new_tiers = array();
-		foreach ( $names as $idx => $t_name ) {
-			$t_name = trim( $t_name );
-			if ( '' === $t_name ) {
-				continue;
-			}
-			$slug = ! empty( $slugs[ $idx ] ) ? $slugs[ $idx ] : sanitize_title( $t_name );
-			if ( '' === $slug ) {
-				$slug = 'tier_' . $idx;
-			}
-			$raw_spent = isset( $spents[ $idx ] ) ? str_replace( array( '.', ',' ), '', $spents[ $idx ] ) : '0';
-			$new_tiers[ $slug ] = array(
-				'slug'          => $slug,
-				'name'          => $t_name,
-				'icon'          => ! empty( $icons[ $idx ] ) ? $icons[ $idx ] : '👑',
-				'color'         => ! empty( $colors[ $idx ] ) ? $colors[ $idx ] : '#031444',
-				'bg_color'      => ! empty( $bgs[ $idx ] ) ? $bgs[ $idx ] : '#f1f5f9',
-				'min_spent'     => max( 0, (float) $raw_spent ),
-				'min_points'    => isset( $pts[ $idx ] ) ? (int) $pts[ $idx ] : 0,
-				'discount_pct'  => isset( $discs[ $idx ] ) ? min( 90.0, max( 0.0, (float) str_replace( ',', '.', $discs[ $idx ] ) ) ) : 0.0,
-				'point_mult'    => isset( $mults[ $idx ] ) ? max( 1.0, (float) str_replace( ',', '.', $mults[ $idx ] ) ) : 1.0,
-				'birthday_gift' => isset( $gifts[ $idx ] ) ? (int) $gifts[ $idx ] : 0,
-				'perks'         => isset( $perks[ $idx ] ) ? $perks[ $idx ] : '',
-			);
-		}
-		if ( ! empty( $new_tiers ) ) {
-			uasort(
-				$new_tiers,
-				static function ( $a, $b ) {
-					return ( (float) $a['min_spent'] ) <=> ( (float) $b['min_spent'] );
-				}
-			);
-			update_option( 'nexxi_member_tiers_config', $new_tiers );
-		}
-
-		add_settings_error( 'nexxi_tiers', 'tiers_saved', 'Đã lưu toàn bộ cài đặt Hạng thành viên, Mức thăng hạng, Thời hạn tụt hạng và Quy đổi Điểm = Tiền!', 'updated' );
-	} elseif ( 'update_account_tier_row' === $action ) {
-		$uid       = isset( $_POST['account_uid'] ) ? absint( $_POST['account_uid'] ) : 0;
-		$tier_slug = isset( $_POST['account_tier'] ) ? sanitize_key( wp_unslash( $_POST['account_tier'] ) ) : 'member';
-		$mode      = isset( $_POST['account_mode'] ) ? sanitize_key( wp_unslash( $_POST['account_mode'] ) ) : 'auto';
-		$pts       = isset( $_POST['account_points'] ) ? max( 0, (int) $_POST['account_points'] ) : 0;
-		if ( $uid > 0 ) {
-			update_user_meta( $uid, 'nexxi_member_points', $pts );
-			update_user_meta( $uid, 'nexxi_member_tier', $tier_slug );
-			update_user_meta( $uid, 'nexxi_tier_manual_lock', 'manual' === $mode ? '1' : '0' );
-			update_user_meta( $uid, 'nexxi_tier_updated_ts', time() );
-			if ( 'auto' === $mode ) {
-				nexxi_kids_get_user_tier_info( $uid );
-			}
-			add_settings_error( 'nexxi_tiers', 'acc_updated', 'Đã cập nhật hạng thành viên & điểm cho tài khoản #' . $uid . '!', 'updated' );
-		}
-	} elseif ( 'recalc_all_tiers' === $action ) {
-		$users = get_users( array( 'fields' => 'ID', 'number' => 1000 ) );
-		$cnt   = 0;
-		foreach ( $users as $u_id ) {
-			nexxi_kids_get_user_tier_info( (int) $u_id );
-			$cnt++;
-		}
-		add_settings_error( 'nexxi_tiers', 'recalc_done', 'Đã rà soát thăng hạng & xét thời hạn tụt hạng cho ' . $cnt . ' tài khoản khách hàng!', 'updated' );
-	}
-}
-add_action( 'admin_init', 'nexxi_kids_handle_member_tiers_post' );
-
-function nexxi_kids_member_tiers_admin_page() {
-	$tiers   = nexxi_kids_get_member_tiers_config();
-	$rules   = nexxi_kids_get_tier_rules_settings();
-	$pts_cfg = nexxi_kids_get_points_settings();
-	$users   = get_users( array( 'orderby' => 'registered', 'order' => 'DESC', 'number' => 200 ) );
-	?>
-	<div class="wrap nexxi-crm-wrap">
-		<?php nexxi_kids_render_crm_top_nav( 'nexxi-member-tiers' ); ?>
-		<?php settings_errors( 'nexxi_tiers' ); ?>
-
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-member-tiers' ) ); ?>">
-			<?php wp_nonce_field( 'nexxi_crm_tiers_nonce', 'nexxi_tiers_nonce' ); ?>
-			<input type="hidden" name="nexxi_crm_tiers_action" value="save_all_tier_settings">
-
-			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px;">
-				<!-- Card 1: Cài đặt Điểm = Tiền -->
-				<div class="nexxi-crm-card">
-					<h2 style="margin:0 0 12px;font-size:16.5px;color:#031444;">💎 1. Cài đặt Tích Điểm &amp; Quy Đổi Điểm = Tiền</h2>
-					<div class="nexxi-form-grid">
-						<div class="nexxi-form-field">
-							<label>Mức tích điểm (Bao nhiêu VNĐ = 1 điểm)</label>
-							<input type="number" name="earn_unit_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['earn_unit_vnd']; ?>">
-							<span style="font-size:11.5px;color:#64748b;">VD: Nhập <code>1000</code> hoặc <code>10000</code> nghĩa là khách mua bấy nhiêu VNĐ được +1 điểm.</span>
-						</div>
-						<div class="nexxi-form-field">
-							<label>Giá trị tiêu điểm (1 Điểm = Bao nhiêu VNĐ)</label>
-							<input type="number" name="point_value_vnd" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['point_value_vnd']; ?>">
-							<span style="font-size:11.5px;color:#64748b;">VD: Nhập <code>1000</code> nghĩa là 1 điểm trừ trực tiếp 1.000₫ trên đơn.</span>
-						</div>
-						<div class="nexxi-form-field">
-							<label>Số điểm tối thiểu để được đổi</label>
-							<input type="number" name="min_points_redeem" min="1" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['min_points_redeem']; ?>">
-						</div>
-						<div class="nexxi-form-field">
-							<label>Giới hạn trừ bằng điểm tối đa (% đơn hàng)</label>
-							<input type="number" name="max_redeem_pct" min="1" max="100" step="any" class="nexxi-crm-input" value="<?php echo (int) $pts_cfg['max_redeem_pct']; ?>">
-						</div>
-					</div>
-					<label style="display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-weight:700;color:#031444;cursor:pointer;">
-						<input type="checkbox" name="redeem_enabled" value="1" <?php checked( $pts_cfg['redeem_enabled'], '1' ); ?>>
-						Cho phép khách hàng bấm "Dùng điểm trừ tiền ngay" tại trang Thanh toán
-					</label>
-				</div>
-
-				<!-- Card 2: Cài đặt Mức Thăng Hạng & Thời Hạn Tụt Hạng -->
-				<div class="nexxi-crm-card">
-					<h2 style="margin:0 0 12px;font-size:16.5px;color:#031444;">⏳ 2. Cài đặt Điều Kiện Thăng Hạng &amp; Thời Hạn Tụt Hạng</h2>
-					<div class="nexxi-form-grid">
-						<div class="nexxi-form-field">
-							<label>Tiêu chí xét thăng hạng thành viên</label>
-							<select name="upgrade_metric" class="nexxi-crm-select">
-								<option value="either" <?php selected( $rules['upgrade_metric'], 'either' ); ?>>Đạt 1 trong 2: Tổng chi tiêu HOẶC Điểm tích lũy</option>
-								<option value="spent" <?php selected( $rules['upgrade_metric'], 'spent' ); ?>>Chỉ xét theo Tổng tiền chi tiêu (VNĐ)</option>
-								<option value="points" <?php selected( $rules['upgrade_metric'], 'points' ); ?>>Chỉ xét theo Điểm tích lũy</option>
-								<option value="both" <?php selected( $rules['upgrade_metric'], 'both' ); ?>>Cần đạt cả Tổng chi tiêu VÀ Điểm tích lũy</option>
-							</select>
-						</div>
-						<div class="nexxi-form-field">
-							<label>Thời hạn duy trì hạng trước khi tụt hạng (Tháng)</label>
-							<input type="number" name="downgrade_months" min="1" max="60" class="nexxi-crm-input" value="<?php echo (int) $rules['downgrade_months']; ?>">
-							<span style="font-size:11.5px;color:#64748b;">Nếu quá số tháng này không phát sinh đơn mới sẽ xét tụt hạng.</span>
-						</div>
-						<div class="nexxi-form-field">
-							<label>Hình thức tụt hạng khi hết thời hạn</label>
-							<select name="downgrade_mode" class="nexxi-crm-select">
-								<option value="step_down_1" <?php selected( $rules['downgrade_mode'], 'step_down_1' ); ?>>Hạ xuống 1 bậc hạng liền kề</option>
-								<option value="period_spend" <?php selected( $rules['downgrade_mode'], 'period_spend' ); ?>>Xét lại hạng theo chi tiêu trong chu kỳ</option>
-								<option value="reset_base" <?php selected( $rules['downgrade_mode'], 'reset_base' ); ?>>Hạ về hạng Thành Viên Mới ban đầu</option>
-							</select>
-						</div>
-						<div class="nexxi-form-field" style="justify-content:center;">
-							<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
-								<input type="checkbox" name="downgrade_enabled" value="1" <?php checked( $rules['downgrade_enabled'], '1' ); ?>>
-								Bật tự động kiểm tra &amp; tụt hạng khi quá hạn
-							</label>
-							<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;">
-								<input type="checkbox" name="protect_manual_override" value="1" <?php checked( $rules['protect_manual_override'], '1' ); ?>>
-								Không tụt hạng các tài khoản do Admin khóa cố định
-							</label>
-							<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;">
-								<input type="checkbox" name="apply_tier_discount" value="1" <?php checked( $rules['apply_tier_discount'], '1' ); ?>>
-								Tự động giảm thêm % ưu đãi hạng trên hóa đơn
-							</label>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Card 3: Bảng Cài Đặt Hạng Thành Viên, Mức Thăng Hạng & Ưu Đãi -->
-			<div class="nexxi-crm-card">
-				<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-					<div>
-						<h2 style="margin:0;font-size:16.5px;color:#031444;">👑 3. Cài đặt Các Hạng Thành Viên, Mức Thăng Hạng &amp; Ưu Đãi Tương Ứng</h2>
-						<p style="margin:3px 0 0;font-size:12.5px;color:#64748b;">Chỉnh sửa mức chi tiêu/điểm thăng hạng và ưu đãi riêng của từng hạng, hoặc bấm "+ Thêm hạng mới".</p>
-					</div>
-					<button type="button" class="nexxi-crm-btn nexxi-crm-btn--ghost" onclick="nexxiAddTierRow()">+ Thêm hạng thành viên mới</button>
-				</div>
-
-				<div style="overflow-x:auto;">
-					<table class="nexxi-crm-table" id="nexxi-tiers-config-table">
-						<thead>
-							<tr>
-								<th>Biểu tượng</th>
-								<th>Tên Hạng Thành Viên</th>
-								<th>Mức thăng hạng (Chi tiêu VNĐ)</th>
-								<th>Mức thăng hạng (Điểm)</th>
-								<th>Ưu đãi giảm trên Bill (%)</th>
-								<th>Hệ số nhân điểm</th>
-								<th>Quà sinh nhật bé (VNĐ)</th>
-								<th>Mô tả đặc quyền hiển thị cho khách</th>
-								<th>Màu chữ / nền</th>
-								<th></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ( $tiers as $slug => $t ) : ?>
-								<tr>
-									<td>
-										<input type="hidden" name="t_slug[]" value="<?php echo esc_attr( $slug ); ?>">
-										<input type="text" name="t_icon[]" value="<?php echo esc_attr( $t['icon'] ?? '👑' ); ?>" class="nexxi-crm-input" style="width:52px;text-align:center;">
-									</td>
-									<td><input type="text" name="t_name[]" value="<?php echo esc_attr( $t['name'] ); ?>" class="nexxi-crm-input" style="width:170px;font-weight:700;"></td>
-									<td><input type="number" name="t_spent[]" value="<?php echo esc_attr( (int) $t['min_spent'] ); ?>" min="0" step="any" class="nexxi-crm-input" style="width:135px;"></td>
-									<td><input type="number" name="t_points[]" value="<?php echo (int) $t['min_points']; ?>" min="0" step="any" class="nexxi-crm-input" style="width:95px;"></td>
-									<td><input type="number" name="t_disc[]" value="<?php echo esc_attr( $t['discount_pct'] ); ?>" min="0" max="90" step="any" class="nexxi-crm-input" style="width:90px;"></td>
-									<td><input type="number" name="t_mult[]" value="<?php echo esc_attr( $t['point_mult'] ); ?>" min="1" max="10" step="any" class="nexxi-crm-input" style="width:80px;"></td>
-									<td><input type="number" name="t_gift[]" value="<?php echo (int) $t['birthday_gift']; ?>" min="0" step="any" class="nexxi-crm-input" style="width:115px;"></td>
-									<td><input type="text" name="t_perks[]" value="<?php echo esc_attr( $t['perks'] ); ?>" class="nexxi-crm-input" style="width:250px;"></td>
-									<td style="white-space:nowrap;">
-										<input type="color" name="t_color[]" value="<?php echo esc_attr( $t['color'] ?? '#031444' ); ?>" title="Màu chữ">
-										<input type="color" name="t_bg[]" value="<?php echo esc_attr( $t['bg_color'] ?? '#f1f5f9' ); ?>" title="Màu nền">
-									</td>
-									<td>
-										<button type="button" onclick="if(document.querySelectorAll('#nexxi-tiers-config-table tbody tr').length>1)this.closest('tr').remove();" class="nexxi-crm-btn nexxi-crm-btn--danger" style="padding:4px 8px;">✕</button>
-									</td>
-								</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
-				</div>
-
-				<div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--primary">💾 Lưu toàn bộ cài đặt Hạng &amp; Điểm thưởng</button>
-				</div>
-			</div>
-		</form>
-
-		<script>
-		function nexxiAddTierRow() {
-			var tb = document.querySelector('#nexxi-tiers-config-table tbody');
-			if (!tb) return;
-			var tr = document.createElement('tr');
-			tr.innerHTML =
-				'<td><input type="hidden" name="t_slug[]" value=""><input type="text" name="t_icon[]" value="👑" class="nexxi-crm-input" style="width:52px;text-align:center;"></td>' +
-				'<td><input type="text" name="t_name[]" value="Hạng VIP Mới" class="nexxi-crm-input" style="width:170px;font-weight:700;"></td>' +
-				'<td><input type="number" name="t_spent[]" value="20000000" min="0" step="any" class="nexxi-crm-input" style="width:135px;"></td>' +
-				'<td><input type="number" name="t_points[]" value="2000" min="0" step="any" class="nexxi-crm-input" style="width:95px;"></td>' +
-				'<td><input type="number" name="t_disc[]" value="12" min="0" max="90" step="any" class="nexxi-crm-input" style="width:90px;"></td>' +
-				'<td><input type="number" name="t_mult[]" value="2.5" min="1" max="10" step="any" class="nexxi-crm-input" style="width:80px;"></td>' +
-				'<td><input type="number" name="t_gift[]" value="300000" min="0" step="any" class="nexxi-crm-input" style="width:115px;"></td>' +
-				'<td><input type="text" name="t_perks[]" value="Ưu đãi đặc quyền VIP" class="nexxi-crm-input" style="width:250px;"></td>' +
-				'<td style="white-space:nowrap;"><input type="color" name="t_color[]" value="#7c2d12"><input type="color" name="t_bg[]" value="#ffedd5"></td>' +
-				'<td><button type="button" onclick="this.closest(\'tr\').remove()" class="nexxi-crm-btn nexxi-crm-btn--danger" style="padding:4px 8px;">✕</button></td>';
-			tb.appendChild(tr);
-		}
-		</script>
-
-		<!-- Card 4: Quản lý Hạng Thành Viên Theo Tài Khoản -->
-		<div class="nexxi-crm-card">
-			<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-				<div>
-					<h2 style="margin:0;font-size:16.5px;color:#031444;">👥 4. Quản Lý Hạng Thành Viên Theo Tài Khoản Khách Hàng</h2>
-					<p style="margin:3px 0 0;font-size:12.5px;color:#64748b;">Đổi hạng trực tiếp, chỉnh sửa điểm hoặc khóa/mở khóa hạng cho từng tài khoản khách hàng ngay trên bảng.</p>
-				</div>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-member-tiers' ) ); ?>" style="margin:0;">
-					<?php wp_nonce_field( 'nexxi_crm_tiers_nonce', 'nexxi_tiers_nonce' ); ?>
-					<input type="hidden" name="nexxi_crm_tiers_action" value="recalc_all_tiers">
-					<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--navy">🔄 Đồng bộ &amp; Xét hạng toàn bộ tài khoản ngay</button>
-				</form>
-			</div>
-
-			<div style="overflow-x:auto;">
-				<table class="nexxi-crm-table">
-					<thead>
-						<tr>
-							<th>Tài khoản khách hàng</th>
-							<th>Tổng chi tiêu</th>
-							<th>Điểm hiện tại</th>
-							<th>Hạng hiện tại &amp; Ưu đãi</th>
-							<th>Thời hạn duy trì / Tụt hạng</th>
-							<th>Thiết lập Hạng &amp; Chế độ</th>
-							<th style="text-align:right;">Lưu nhanh</th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ( $users as $u ) :
-							$uid   = (int) $u->ID;
-							$stats = nexxi_kids_get_customer_order_stats( $uid );
-							$pts   = function_exists( 'nexxi_kids_get_user_points' ) ? (int) nexxi_kids_get_user_points( $uid ) : (int) get_user_meta( $uid, 'nexxi_member_points', true );
-							$ti    = nexxi_kids_get_user_tier_info( $uid );
-							$tier  = $ti['tier'];
-							$name  = trim( $u->first_name . ' ' . $u->last_name );
-							if ( '' === $name ) {
-								$name = $u->display_name;
-							}
-							$phone = (string) get_user_meta( $uid, 'billing_phone', true );
-							$fid   = 'nx-tier-row-' . $uid;
-							?>
-							<tr>
-								<td>
-									<strong><?php echo esc_html( $name ); ?></strong> <span style="color:#94a3b8;">#<?php echo (int) $uid; ?></span>
-									<div style="font-size:11.5px;color:#64748b;"><?php echo esc_html( $u->user_email ); ?><?php echo $phone ? ' · ' . esc_html( $phone ) : ''; ?></div>
-								</td>
-								<td><strong style="color:#0b6b2f;"><?php echo esc_html( nexxi_kids_money( $stats['total_spent'] ) ); ?></strong> (<?php echo (int) $stats['order_count']; ?> đơn)</td>
-								<td>
-									<input type="number" form="<?php echo esc_attr( $fid ); ?>" name="account_points" value="<?php echo (int) $pts; ?>" min="0" class="nexxi-crm-input" style="width:95px;font-weight:700;color:#fd6a49;">
-								</td>
-								<td>
-									<span class="nexxi-crm-badge" style="background:<?php echo esc_attr( $tier['bg_color'] ?? '#f1f5f9' ); ?>;color:<?php echo esc_attr( $tier['color'] ?? '#0f172a' ); ?>;">
-										<?php echo esc_html( ( $tier['icon'] ?? '👑' ) . ' ' . $tier['name'] ); ?>
-									</span>
-									<div style="font-size:11px;color:#475569;margin-top:3px;">
-										Giảm bill: <strong>-<?php echo esc_html( $tier['discount_pct'] ); ?>%</strong> · Nhân điểm: <strong>x<?php echo esc_html( $tier['point_mult'] ); ?></strong>
-									</div>
-								</td>
-								<td>
-									<div style="font-size:12px;font-weight:600;color:<?php echo $ti['is_downgraded'] ? '#b91c1c' : '#334155'; ?>;">
-										<?php echo esc_html( $ti['expires_label'] ); ?>
-									</div>
-								</td>
-								<td>
-									<div style="display:flex;gap:6px;align-items:center;">
-										<select form="<?php echo esc_attr( $fid ); ?>" name="account_tier" class="nexxi-crm-select">
-											<?php foreach ( $tiers as $t_slug => $t_info ) : ?>
-												<option value="<?php echo esc_attr( $t_slug ); ?>" <?php selected( $ti['tier_slug'], $t_slug ); ?>>
-													<?php echo esc_html( ( $t_info['icon'] ?? '👑' ) . ' ' . $t_info['name'] ); ?>
-												</option>
-											<?php endforeach; ?>
-										</select>
-										<select form="<?php echo esc_attr( $fid ); ?>" name="account_mode" class="nexxi-crm-select">
-											<option value="auto" <?php selected( ! $ti['is_manual'] ); ?>>🔄 Tự động</option>
-											<option value="manual" <?php selected( $ti['is_manual'] ); ?>>🔒 Cố định hạng</option>
-										</select>
-									</div>
-								</td>
-								<td style="text-align:right;">
-									<form id="<?php echo esc_attr( $fid ); ?>" method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=nexxi-member-tiers' ) ); ?>" style="margin:0;">
-										<?php wp_nonce_field( 'nexxi_crm_tiers_nonce', 'nexxi_tiers_nonce' ); ?>
-										<input type="hidden" name="nexxi_crm_tiers_action" value="update_account_tier_row">
-										<input type="hidden" name="account_uid" value="<?php echo (int) $uid; ?>">
-										<button type="submit" class="nexxi-crm-btn nexxi-crm-btn--primary" style="padding:6px 12px;font-size:12px;">Lưu</button>
-									</form>
-								</td>
-							</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
-			</div>
-		</div>
-	</div>
-	<?php
-}
-
-/* ==========================================================================
- * 6. SUBMENU 3: QUẢN LÝ ĐƠN HÀNG (LIST, STATUS SWITCH, BULK ACTIONS, CSV)
+ * 5. SUBMENU 2: QUẢN LÝ ĐƠN HÀNG (LIST, STATUS SWITCH, BULK ACTIONS, CSV)
  * ========================================================================== */
 
 function nexxi_kids_handle_order_manager_post() {
@@ -2062,7 +1381,7 @@ function nexxi_kids_order_manager_admin_page() {
 }
 
 /* ==========================================================================
- * 7. CUSTOMER ACCOUNT DASHBOARD: BABY BIRTHDAY & MEMBERSHIP TIER CARD
+ * 6. CUSTOMER ACCOUNT DASHBOARD: BABY BIRTHDAY PROFILE SAVER
  * ========================================================================== */
 
 /**

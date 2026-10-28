@@ -34,27 +34,16 @@ function nexxi_kids_account_heading( WP_User $user, $endpoint ) {
 	$sub = $endpoint ? 'Quản lý đơn hàng, sổ địa chỉ và thông tin tài khoản NEXXI Club của mẹ.' : 'Theo dõi đơn hàng, sổ địa chỉ và thiết lập tài khoản của mẹ tại một nơi.';
 	$crumb = $endpoint ? '<a class="hover:text-secondary transition-colors" href="' . esc_url( wc_get_page_permalink( 'myaccount' ) ) . '">Tài Khoản NEXXI Club</a><span>/</span><span class="text-primary font-bold">' . esc_html( wp_strip_all_tags( $h1 ) ) . '</span>' : '<span class="text-primary font-bold">Tài Khoản NEXXI Club</span>';
 	$since = $user->user_registered ? mysql2date( 'm/Y', $user->user_registered ) : '';
-	$tier_info = function_exists( 'nexxi_kids_get_user_tier_info' ) ? nexxi_kids_get_user_tier_info( $user->ID ) : null;
-	$tier_name = $tier_info && ! empty( $tier_info['tier']['name'] ) ? $tier_info['tier']['name'] : 'Thành Viên Mới';
-	$tier_icon = $tier_info && ! empty( $tier_info['tier']['icon'] ) ? $tier_info['tier']['icon'] : '👑';
-	$tier_bg   = $tier_info && ! empty( $tier_info['tier']['bg_color'] ) ? $tier_info['tier']['bg_color'] : '#ffdad2';
-	$tier_col  = $tier_info && ! empty( $tier_info['tier']['color'] ) ? $tier_info['tier']['color'] : '#ae3115';
 	ob_start(); ?>
 <div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-lg">
 <div>
 <div class="flex items-center gap-space-xs text-on-surface-variant font-label-sm text-label-sm mb-space-xs"><?php echo $crumb; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
-<div class="flex flex-wrap items-center gap-2.5">
-	<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight"><?php echo esc_html( wp_strip_all_tags( $h1 ) ); ?></h1>
-	<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:999px;font-size:12.5px;font-weight:800;background:<?php echo esc_attr( $tier_bg ); ?>;color:<?php echo esc_attr( $tier_col ); ?>;border:1px solid <?php echo esc_attr( $tier_col ); ?>33;box-shadow:0 2px 6px rgba(3,20,68,0.06);">
-		<span style="font-size:15px;line-height:1;"><?php echo esc_html( $tier_icon ); ?></span>
-		<span><?php echo esc_html( $tier_name ); ?></span>
-	</span>
-</div>
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight"><?php echo esc_html( wp_strip_all_tags( $h1 ) ); ?></h1>
 <p class="font-body-md text-body-md text-on-surface-variant mt-1"><?php echo esc_html( $sub ); ?></p>
 </div>
 <div class="flex items-center gap-space-sm bg-surface-container-lowest px-space-md py-space-xs rounded-full shadow-sm self-start md:self-auto">
-<div class="w-8 h-8 rounded-full flex items-center justify-center text-[17px]" style="background:<?php echo esc_attr( $tier_bg ); ?>;color:<?php echo esc_attr( $tier_col ); ?>;"><?php echo esc_html( $tier_icon ); ?></div>
-<div class="flex flex-col"><span class="font-label-sm text-label-sm uppercase tracking-wider font-bold" style="color:<?php echo esc_attr( $tier_col ); ?>;"><?php echo esc_html( $tier_name ); ?> • NEXXI Club</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo $since ? esc_html( 'Đồng hành từ ' . $since ) : 'Chào mừng mẹ'; ?></span></div>
+<div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary"><span class="material-symbols-outlined text-[18px]">verified</span></div>
+<div class="flex flex-col"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Thành Viên NEXXI Club</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo $since ? esc_html( 'Đồng hành từ ' . $since ) : 'Chào mừng mẹ'; ?></span></div>
 </div>
 </div>
 	<?php
@@ -105,13 +94,6 @@ function nexxi_kids_award_order_points( WC_Order $order, $user_id = 0 ) {
 		return (int) $order->get_meta( '_nexxi_points_earned' );
 	}
 	$points = nexxi_kids_calculate_order_points( $order );
-	if ( function_exists( 'nexxi_kids_get_user_tier_info' ) ) {
-		$t_info = nexxi_kids_get_user_tier_info( $user_id );
-		$mult   = isset( $t_info['tier']['point_mult'] ) ? (float) $t_info['tier']['point_mult'] : 1.0;
-		if ( $mult > 1.0 ) {
-			$points = (int) round( $points * $mult );
-		}
-	}
 	if ( $points <= 0 ) {
 		return 0;
 	}
@@ -181,12 +163,6 @@ function nexxi_kids_account_sidebar( WP_User $user ) {
 	$orders = nexxi_kids_account_order_count( $user->ID );
 	$wishlist = nexxi_kids_account_wishlist_count( $user->ID );
 	$points = nexxi_kids_get_user_points( $user->ID );
-	$tier_info = function_exists( 'nexxi_kids_get_user_tier_info' ) ? nexxi_kids_get_user_tier_info( $user->ID ) : null;
-	$tier_name = $tier_info && ! empty( $tier_info['tier']['name'] ) ? $tier_info['tier']['name'] : 'Thành Viên Mới';
-	$tier_icon = $tier_info && ! empty( $tier_info['tier']['icon'] ) ? $tier_info['tier']['icon'] : '🌱';
-	$tier_bg   = $tier_info && ! empty( $tier_info['tier']['bg_color'] ) ? $tier_info['tier']['bg_color'] : '#f1f5f9';
-	$tier_col  = $tier_info && ! empty( $tier_info['tier']['color'] ) ? $tier_info['tier']['color'] : '#475569';
-	$tier_disc = $tier_info && ! empty( $tier_info['tier']['discount_pct'] ) ? (float) $tier_info['tier']['discount_pct'] : 0.0;
 	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
 	$icons = array( 'dashboard' => 'dashboard', 'orders' => 'shopping_bag', 'downloads' => 'download', 'edit-address' => 'home_pin', 'payment-methods' => 'credit_card', 'edit-account' => 'manage_accounts' );
 	$link_idle = 'flex items-center justify-between px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-colors';
@@ -205,33 +181,8 @@ function nexxi_kids_account_sidebar( WP_User $user ) {
 	ob_start(); ?>
 <div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center text-center relative overflow-hidden">
 <div class="absolute -top-12 -right-12 w-28 h-28 bg-secondary-fixed/50 rounded-full blur-xl pointer-events-none"></div>
-<!-- Top-right corner Tier Tag inside Account Frame -->
-<div style="position:absolute;top:12px;right:12px;z-index:2;">
-	<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:800;background:<?php echo esc_attr( $tier_bg ); ?>;color:<?php echo esc_attr( $tier_col ); ?>;border:1px solid <?php echo esc_attr( $tier_col ); ?>33;box-shadow:0 2px 6px rgba(3,20,68,0.06);">
-		<span style="font-size:13px;line-height:1;"><?php echo esc_html( $tier_icon ); ?></span>
-		<span><?php echo esc_html( $tier_name ); ?></span>
-	</span>
-</div>
-<div class="relative mt-4 mb-space-sm">
-	<div class="w-24 h-24 rounded-full p-1 shadow-inner" style="background:<?php echo esc_attr( $tier_bg ); ?>;border:2px solid <?php echo esc_attr( $tier_col ); ?>40;">
-		<img class="w-full h-full object-cover rounded-full shadow-sm" src="<?php echo esc_url( get_avatar_url( $user->ID, array( 'size' => 192 ) ) ); ?>" alt="<?php echo esc_attr( nexxi_kids_account_name( $user ) ); ?>">
-	</div>
-	<!-- Floating Tier Icon Badge on Avatar -->
-	<span title="<?php echo esc_attr( $tier_name ); ?>" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:999px;background:<?php echo esc_attr( $tier_bg ); ?>;color:<?php echo esc_attr( $tier_col ); ?>;border:2.5px solid #ffffff;display:inline-flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 8px rgba(3,20,68,0.18);">
-		<?php echo esc_html( $tier_icon ); ?>
-	</span>
-</div>
+<div class="relative mb-space-sm"><div class="w-24 h-24 rounded-full bg-surface-container-high p-1 shadow-inner"><img class="w-full h-full object-cover rounded-full shadow-sm" src="<?php echo esc_url( get_avatar_url( $user->ID, array( 'size' => 192 ) ) ); ?>" alt="<?php echo esc_attr( nexxi_kids_account_name( $user ) ); ?>"></div></div>
 <h2 class="font-headline-sm text-headline-sm text-primary mb-1"><?php echo esc_html( nexxi_kids_account_name( $user ) ); ?></h2>
-<!-- Prominent Membership Tier Tag Pill below Account Name -->
-<div style="margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">
-	<span style="display:inline-flex;align-items:center;gap:5px;padding:3.5px 12px;border-radius:999px;font-size:12px;font-weight:800;background:<?php echo esc_attr( $tier_bg ); ?>;color:<?php echo esc_attr( $tier_col ); ?>;border:1px solid <?php echo esc_attr( $tier_col ); ?>33;">
-		<span style="font-size:14px;line-height:1;"><?php echo esc_html( $tier_icon ); ?></span>
-		<span><?php echo esc_html( $tier_name ); ?></span>
-		<?php if ( $tier_disc > 0 ) : ?>
-			<span style="background:<?php echo esc_attr( $tier_col ); ?>;color:#fff;font-size:10px;padding:1px 6px;border-radius:999px;margin-left:2px;">-<?php echo esc_html( rtrim( rtrim( number_format( $tier_disc, 1 ), '0' ), '.' ) ); ?>%</span>
-		<?php endif; ?>
-	</span>
-</div>
 <p class="font-body-sm text-body-sm text-on-surface-variant mb-space-sm break-all"><?php echo esc_html( $user->user_email ); ?></p>
 <div class="w-full grid grid-cols-3 gap-space-xs pt-space-sm mt-space-xs bg-surface-container-low rounded-lg p-space-sm">
 <div class="flex flex-col items-center"><span class="font-label-sm text-label-sm text-outline">Đơn hàng</span><span class="font-label-md text-label-md text-primary font-bold"><?php echo (int) $orders; ?> đơn</span></div>
@@ -850,7 +801,6 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	$recent = wc_get_orders( array( 'customer_id' => $uid, 'limit' => 3, 'orderby' => 'date', 'order' => 'DESC' ) );
 	$wishlist = nexxi_kids_account_wishlist_count( $uid );
 	$points = nexxi_kids_get_user_points( $uid );
-	$tier_info = function_exists( 'nexxi_kids_get_user_tier_info' ) ? nexxi_kids_get_user_tier_info( $uid ) : null;
 	$pts_cfg   = function_exists( 'nexxi_kids_get_points_settings' ) ? nexxi_kids_get_points_settings() : array( 'earn_unit_vnd' => 10000, 'point_value_vnd' => 1000 );
 	$baby_name = (string) get_user_meta( $uid, 'nexxi_baby_name', true );
 	$baby_bday = (string) get_user_meta( $uid, 'nexxi_baby_birthday', true );
@@ -861,14 +811,14 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 	$wishlist_url = nexxi_kids_page_url( 'yeu-thich' );
 	$stats = array(
 		array( 'stars', 'Điểm thành viên NEXXI', number_format_i18n( $points ) . ' điểm', '#nexxi-member-points' ),
-		array( 'workspace_premium', 'Hạng thành viên', $tier_info ? ( ( $tier_info['tier']['icon'] ?? '👑' ) . ' ' . $tier_info['tier']['name'] ) : 'Thành Viên Mới', '#nexxi-member-points' ),
 		array( 'shopping_bag', 'Tổng đơn đã đặt', $count . ' đơn', $orders_url ),
+		array( 'local_shipping', 'Đang xử lý', count( $open ) . ' đơn', $orders_url ),
 		array( 'payments', 'Tổng tiền chi tiêu', wc_price( $spent ), $orders_url ),
 	);
 	$book = nexxi_kids_get_address_book( $uid );
 	ob_start(); ?>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm" id="nexxi-member-points">
-<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản, Hạng Thành Viên & Điểm NEXXI Club' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+<?php echo nexxi_kids_account_section_head( 'Mục 01', 'Tổng Quan Tài Khoản & Điểm Thành Viên NEXXI Club' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
 <?php foreach ( $stats as $stat ) : ?>
 <a class="bg-surface-container-low hover:bg-surface-container-high/60 rounded-lg p-space-md flex flex-col gap-1 transition-colors" href="<?php echo esc_url( $stat[3] ); ?>"><span class="w-9 h-9 rounded-full bg-secondary-fixed text-secondary flex items-center justify-center"><span class="material-symbols-outlined text-[20px]"><?php echo esc_html( $stat[0] ); ?></span></span><span class="font-label-sm text-label-sm text-outline mt-1"><?php echo esc_html( $stat[1] ); ?></span><span class="font-title-md text-title-md text-primary font-bold"><?php echo wp_kses_post( $stat[2] ); ?></span></a>
@@ -885,14 +835,7 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 				(Quy đổi: <strong class="text-primary"><?php echo esc_html( nexxi_kids_money( $points * (int) $pts_cfg['point_value_vnd'] ) ); ?></strong>)
 			</span>
 			<span class="font-body-sm text-body-sm text-on-surface-variant block">
-				<?php if ( $tier_info && ! empty( $tier_info['tier']['perks'] ) ) : ?>
-					Đặc quyền <strong><?php echo esc_html( $tier_info['tier']['name'] ); ?></strong>: <?php echo esc_html( $tier_info['tier']['perks'] ); ?>.
-					<?php if ( ! empty( $tier_info['next_tier'] ) ) : ?>
-						Mua thêm <strong><?php echo esc_html( nexxi_kids_money( $tier_info['spent_to_next'] ) ); ?></strong> để thăng hạng <strong><?php echo esc_html( $tier_info['next_tier']['name'] ); ?></strong>!
-					<?php endif; ?>
-				<?php else : ?>
-					Tích lũy tự động từ mọi đơn hàng (<?php echo esc_html( nexxi_kids_money( $pts_cfg['earn_unit_vnd'] ) ); ?> = 1 điểm) và dùng điểm trừ tiền trực tiếp khi thanh toán!
-				<?php endif; ?>
+				Tích lũy tự động từ mọi đơn hàng (<?php echo esc_html( nexxi_kids_money( $pts_cfg['earn_unit_vnd'] ) ); ?> = 1 điểm) và dùng điểm trừ tiền trực tiếp khi thanh toán!
 			</span>
 		</div>
 	</div>
