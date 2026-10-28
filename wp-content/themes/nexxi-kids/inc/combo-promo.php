@@ -160,6 +160,19 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 		return $empty_result;
 	}
 
+	// Sort all unit slots by active unit_price DESCENDING (highest price first)
+	// so the highest-priced items are always placed into the highest-discount Combo first,
+	// and the lowest-priced item(s) remain as single items (sản phẩm lẻ) — maximizing buyer savings!
+	usort(
+		$unit_slots,
+		static function ( $a, $b ) {
+			if ( (float) $b['unit_price'] !== (float) $a['unit_price'] ) {
+				return (float) $b['unit_price'] <=> (float) $a['unit_price'];
+			}
+			return strcmp( (string) $a['cart_item_key'], (string) $b['cart_item_key'] );
+		}
+	);
+
 	// Sort tiers descending by qty for greedy largest-combo-first matching
 	$tiers_desc = $settings['tiers'];
 	usort(
@@ -170,17 +183,14 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 	);
 	$min_tier_qty = (int) end( $tiers_desc )['qty'];
 
-	$combos            = array();
-	$item_combo_badges = array(); // cart_item_key => array of badge texts + counts
-	$total_discount    = 0.0;
-	$cursor            = 0;
-	$combo_index       = 1;
-
-	while ( ( $total_qty - $cursor ) >= $min_tier_qty ) {
-		$remaining    = $total_qty - $cursor;
+	// Determine the list of matched combo tiers first, then sort them so the tier with the highest discount %
+	// receives the most expensive unit_slots first!
+	$chosen_tiers = array();
+	$sim_rem      = $total_qty;
+	while ( $sim_rem >= $min_tier_qty ) {
 		$matched_tier = null;
 		foreach ( $tiers_desc as $t ) {
-			if ( (int) $t['qty'] <= $remaining ) {
+			if ( (int) $t['qty'] <= $sim_rem ) {
 				$matched_tier = $t;
 				break;
 			}
@@ -188,7 +198,31 @@ function nexxi_kids_calculate_cart_combos( $cart = null ) {
 		if ( ! $matched_tier ) {
 			break;
 		}
+		$chosen_tiers[] = $matched_tier;
+		$sim_rem       -= (int) $matched_tier['qty'];
+	}
 
+	if ( count( $chosen_tiers ) > 1 ) {
+		usort(
+			$chosen_tiers,
+			static function ( $a, $b ) {
+				$a_is_pct = ( 'fixed' !== ( $a['type'] ?? 'percent' ) );
+				$b_is_pct = ( 'fixed' !== ( $b['type'] ?? 'percent' ) );
+				if ( $a_is_pct && $b_is_pct && (float) $b['value'] !== (float) $a['value'] ) {
+					return (float) $b['value'] <=> (float) $a['value'];
+				}
+				return (int) $b['qty'] <=> (int) $a['qty'];
+			}
+		);
+	}
+
+	$combos            = array();
+	$item_combo_badges = array(); // cart_item_key => array of badge texts + counts
+	$total_discount    = 0.0;
+	$cursor            = 0;
+	$combo_index       = 1;
+
+	foreach ( $chosen_tiers as $matched_tier ) {
 		$take_qty    = (int) $matched_tier['qty'];
 		$slice_units = array_slice( $unit_slots, $cursor, $take_qty );
 		$cursor     += $take_qty;
