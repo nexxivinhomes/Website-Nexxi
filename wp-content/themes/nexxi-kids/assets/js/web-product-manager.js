@@ -311,7 +311,7 @@
 	async function runImport(dry) {
 		const input = $('#nxwpmImportFile');
 		const file = input.files[0];
-		if (!file) { alert('Vui lòng chọn file CSV cần nhập.'); input.click(); return; }
+		if (!file) { alert('Vui lòng chọn file CSV hoặc Excel (.xlsx) cần nhập.'); input.click(); return; }
 		if (!dry && !confirm('Cập nhật lên Website các mục CÓ THAY ĐỔI trong file "' + file.name + '"?\n(Ô trống được giữ nguyên, các mục giống dữ liệu hiện tại sẽ bỏ qua.)')) return;
 
 		const btns = [$('#nxwpmBtnDryRun'), $('#nxwpmBtnImport')];
@@ -396,6 +396,30 @@
 	$('#nxwpmBtnImport').addEventListener('click', () => runImport(false));
 	$('#nxwpmImportFile').addEventListener('change', () => { state.importToken = ''; state.importKey = ''; });
 	prog.summary.addEventListener('click', (e) => { if (e.target.id === 'nxwpmBtnApplyDry') runImport(false); });
+
+	const btnSyncSkuSeo = $('#nxwpmBtnSyncSkuSeo');
+	if (btnSyncSkuSeo) {
+		btnSyncSkuSeo.addEventListener('click', async () => {
+			if (!confirm('Đối chiếu toàn bộ sản phẩm trên Website với kho 705+ mã SKU chuẩn để điền Tên sản phẩm, Mô tả & tối ưu toàn bộ thẻ SEO ngay bây giờ?')) return;
+			const origLabel = btnSyncSkuSeo.textContent;
+			btnSyncSkuSeo.disabled = true;
+			btnSyncSkuSeo.textContent = '⏳ Đang đồng bộ Tên, Mô tả & SEO…';
+			const res = await post('sync_sku_seo', {});
+			btnSyncSkuSeo.disabled = false;
+			btnSyncSkuSeo.textContent = origLabel;
+			if (!res.success) {
+				toast(res.data?.message || 'Lỗi đồng bộ SKU & SEO', 'err');
+				return;
+			}
+			const rep = res.data?.report || {};
+			const stEl = $('#nxwpmSkuSeoStatus');
+			if (stEl && rep.synced_at) {
+				stEl.innerHTML = 'Lần đồng bộ gần nhất (<strong>' + esc(rep.synced_at) + '</strong>): Đã điền Tên, Mô tả &amp; SEO chuẩn cho <strong>' + Number(rep.updated_matched || 0) + '</strong> sản phẩm khớp mã SKU (trên kho ' + Number(rep.catalog_sku_count || 705) + ' SKU) + tối ưu SEO cho <strong>' + Number(rep.fallback_seo_fixed || 0) + '</strong> sản phẩm khác.';
+			}
+			toast(res.data?.message || 'Đã đồng bộ hoàn tất!');
+			loadList();
+		});
+	}
 
 	/* ======================================================================
 	 * CỬA SỔ SỬA TOÀN BỘ THÔNG TIN SẢN PHẨM

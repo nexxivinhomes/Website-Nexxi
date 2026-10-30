@@ -36,9 +36,12 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261030_admin_perf_v32';
+	$purge_ver = '20261030_sku_seo_v33';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+			Nexxi_SKU_SEO_Sync::maybe_auto_sync();
+		}
 		if ( function_exists( 'nexxi_kids_sync_all_flash_sale_products' ) ) {
 			nexxi_kids_sync_all_flash_sale_products();
 		}

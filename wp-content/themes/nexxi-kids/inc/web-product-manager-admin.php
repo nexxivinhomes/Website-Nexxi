@@ -31,7 +31,7 @@ final class Nexxi_Web_Product_Manager {
 			add_action( 'admin_menu', array( __CLASS__, 'register_submenu' ), 30 );
 			add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 			add_action( 'admin_post_nxwpm_export', array( __CLASS__, 'handle_export' ) );
-			foreach ( array( 'list', 'get', 'save', 'delete', 'bulk_status', 'import_upload', 'import_process' ) as $action ) {
+			foreach ( array( 'list', 'get', 'save', 'delete', 'bulk_status', 'import_upload', 'import_process', 'sync_sku_seo' ) as $action ) {
 				add_action( 'wp_ajax_nxwpm_' . $action, array( __CLASS__, 'ajax_' . $action ) );
 			}
 		}
@@ -1246,41 +1246,106 @@ final class Nexxi_Web_Product_Manager {
 		return self::import_dir() . '/' . preg_replace( '/[^a-z0-9]/', '', strtolower( (string) $token ) ) . '.json';
 	}
 
+	/**
+	 * Đọc trực tiếp file Excel .xlsx (hỗ trợ cả file xuất từ NEXXI lẫn file mass_update_basic_info từ Shopee).
+	 *
+	 * @param string $path Đường dẫn file tạm .xlsx.
+	 * @return array|WP_Error Mảng các dòng chuỗi phẳng [ [cell0, cell1, ...], ... ].
+	 */
+	private static function parse_xlsx_matrix( $path ) {
+		if ( ! class_exists( 'ZipArchive' ) || ! function_exists( 'simplexml_load_string' ) ) {
+			return new WP_Error( 'no_xlsx_ext', 'Máy chủ chưa bật ZipArchive/SimpleXML để đọc trực tiếp .xlsx. Vui lòng lưu sang CSV UTF-8 rồi tải lên.' );
+		}
+		$zip = new ZipArchive();
+		if ( true !== $zip->open( $path ) ) {
+			return new WP_Error( 'bad_xlsx', 'Không mở được file Excel (.xlsx).' );
+		}
+		$shared = array();
+		$ss_xml = $zip->getFromName( 'xl/sharedStrings.xml' );
+		if ( false !== $ss_xml ) {
+			$sx = @simplexml_load_string( $ss_xml ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			if ( $sx ) {
+				$sx->registerXPathNamespace( 'm', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' );
+				foreach ( (array) $sx->xpath( '//m:si' ) as $si ) {
+					$si->registerXPathNamespace( 'm', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' );
+					$parts = array();
+					foreach ( (array) $si->xpath( './/m:t' ) as $t ) {
+						$parts[] = (string) $t;
+					}
+					$shared[] = implode( '', $parts );
+				}
+			}
+			unset( $ss_xml, $sx );
+		}
+
+		$sheet_xml = $zip->getFromName( 'xl/worksheets/sheet1.xml' );
+		$zip->close();
+		if ( false === $sheet_xml ) {
+			return new WP_Error( 'no_sheet', 'Không tìm thấy Sheet1 trong file .xlsx.' );
+		}
+		$sh = @simplexml_load_string( $sheet_xml ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		unset( $sheet_xml );
+		if ( ! $sh ) {
+			return new WP_Error( 'bad_sheet', 'Nội dung Sheet1 không hợp lệ.' );
+		}
+		$sh->registerXPathNamespace( 'm', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' );
+		$matrix = array();
+		foreach ( (array) $sh->xpath( '//m:sheetData/m:row' ) as $row_el ) {
+			$row_el->registerXPathNamespace( 'm', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' );
+			$cells   = array();
+			$max_col = -1;
+			foreach ( (array) $row_el->xpath( 'm:c' ) as $c ) {
+				$ref     = (string) ( $c['r'] ?? '' );
+				$letters = preg_replace( '/[^A-Z]/', '', strtoupper( $ref ) );
+				$col_idx = 0;
+				for ( $i = 0, $n = strlen( $letters ); $i < $n; $i++ ) {
+					$col_idx = $col_idx * 26 + ( ord( $letters[ $i ] ) - 64 );
+				}
+				$col_idx = max( 0, $col_idx - 1 );
+				$type    = (string) ( $c['t'] ?? '' );
+				$val     = '';
+				if ( 's' === $type && isset( $c->v ) ) {
+					$idx = (int) $c->v;
+					$val = $shared[ $idx ] ?? '';
+				} elseif ( 'inlineStr' === $type && isset( $c->is ) ) {
+					$c->is->registerXPathNamespace( 'm', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' );
+					$tp = array();
+					foreach ( (array) $c->is->xpath( './/m:t' ) as $tn ) {
+						$tp[] = (string) $tn;
+					}
+					$val = implode( '', $tp );
+				} elseif ( isset( $c->v ) ) {
+					$val = (string) $c->v;
+				}
+				$cells[ $col_idx ] = $val;
+				if ( $col_idx > $max_col ) {
+					$max_col = $col_idx;
+				}
+			}
+			if ( $max_col >= 0 ) {
+				$flat = array();
+				for ( $ci = 0; $ci <= $max_col; $ci++ ) {
+					$flat[] = $cells[ $ci ] ?? '';
+				}
+				$matrix[] = $flat;
+			}
+		}
+		return $matrix;
+	}
+
 	public static function ajax_import_upload() {
 		self::check_ajax();
 		if ( empty( $_FILES['file']['tmp_name'] ) || ! is_uploaded_file( $_FILES['file']['tmp_name'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
-			wp_send_json_error( array( 'message' => 'Vui lòng chọn file CSV.' ) );
+			wp_send_json_error( array( 'message' => 'Vui lòng chọn file CSV hoặc Excel (.xlsx).' ) );
 		}
 		$name = sanitize_file_name( wp_unslash( $_FILES['file']['name'] ?? '' ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
 		$ext  = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
-		if ( in_array( $ext, array( 'xlsx', 'xls' ), true ) ) {
-			wp_send_json_error( array( 'message' => 'File Excel (.xlsx) chưa được hỗ trợ trực tiếp. Trong Excel chọn File → Save As → "CSV UTF-8 (Comma delimited) (*.csv)" rồi tải lên lại.' ) );
+		if ( 'xls' === $ext ) {
+			wp_send_json_error( array( 'message' => 'Định dạng .xls cũ chưa hỗ trợ trực tiếp. Vui lòng lưu thành .xlsx hoặc .csv rồi tải lên.' ) );
 		}
-		if ( ! in_array( $ext, array( 'csv', 'txt' ), true ) ) {
-			wp_send_json_error( array( 'message' => 'Chỉ hỗ trợ file .csv' ) );
+		if ( ! in_array( $ext, array( 'csv', 'txt', 'xlsx' ), true ) ) {
+			wp_send_json_error( array( 'message' => 'Chỉ hỗ trợ file .csv hoặc .xlsx' ) );
 		}
-		$content = file_get_contents( $_FILES['file']['tmp_name'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.Security.ValidatedSanitizedInput
-		if ( false === $content || '' === trim( $content ) ) {
-			wp_send_json_error( array( 'message' => 'File rỗng.' ) );
-		}
-		if ( 0 === strpos( $content, "\xEF\xBB\xBF" ) ) {
-			$content = substr( $content, 3 );
-		} elseif ( 0 === strpos( $content, "\xFF\xFE" ) || 0 === strpos( $content, "\xFE\xFF" ) ) {
-			$content = mb_convert_encoding( $content, 'UTF-8', 'UTF-16' );
-		}
-		if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $content, 'UTF-8' ) ) {
-			$conv    = function_exists( 'iconv' ) ? @iconv( 'CP1258', 'UTF-8//IGNORE', $content ) : false; // phpcs:ignore
-			$content = $conv ? $conv : mb_convert_encoding( $content, 'UTF-8', 'Windows-1252' );
-		}
-
-		$first_line = strtok( $content, "\n" );
-		$delims     = array( ',' => substr_count( $first_line, ',' ), ';' => substr_count( $first_line, ';' ), "\t" => substr_count( $first_line, "\t" ) );
-		arsort( $delims );
-		$delim = key( $delims );
-
-		$fh = fopen( 'php://temp', 'r+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		fwrite( $fh, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		rewind( $fh );
 
 		$cols      = self::columns();
 		$label_map = array();
@@ -1288,10 +1353,67 @@ final class Nexxi_Web_Product_Manager {
 			$label_map[ mb_strtolower( trim( $label ) ) ] = $k;
 			$label_map[ $k ]                              = $k;
 		}
-		$header = fgetcsv( $fh, 0, $delim );
-		$keys   = array();
-		$known  = array();
-		$unknown = array();
+		// Hỗ trợ nhận diện trực tiếp cột từ file xuất thông tin cơ bản Shopee (basic_info)
+		$shopee_aliases = array(
+			'et_title_parent_sku'          => 'sku',
+			'parent sku'                   => 'sku',
+			'sku sản phẩm'                 => 'sku',
+			'et_title_product_name'        => 'name',
+			'product name'                 => 'name',
+			'tên sản phẩm'                 => 'name',
+			'et_title_product_description' => 'description',
+			'product description'          => 'description',
+			'mô tả sản phẩm'               => 'description',
+		);
+		foreach ( $shopee_aliases as $sa => $sk ) {
+			$label_map[ $sa ] = $sk;
+		}
+
+		$raw_matrix = array();
+		if ( 'xlsx' === $ext ) {
+			$parsed = self::parse_xlsx_matrix( $_FILES['file']['tmp_name'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			if ( is_wp_error( $parsed ) ) {
+				wp_send_json_error( array( 'message' => $parsed->get_error_message() ) );
+			}
+			$raw_matrix = $parsed;
+		} else {
+			$content = file_get_contents( $_FILES['file']['tmp_name'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.Security.ValidatedSanitizedInput
+			if ( false === $content || '' === trim( $content ) ) {
+				wp_send_json_error( array( 'message' => 'File rỗng.' ) );
+			}
+			if ( 0 === strpos( $content, "\xEF\xBB\xBF" ) ) {
+				$content = substr( $content, 3 );
+			} elseif ( 0 === strpos( $content, "\xFF\xFE" ) || 0 === strpos( $content, "\xFE\xFF" ) ) {
+				$content = mb_convert_encoding( $content, 'UTF-8', 'UTF-16' );
+			}
+			if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $content, 'UTF-8' ) ) {
+				$conv    = function_exists( 'iconv' ) ? @iconv( 'CP1258', 'UTF-8//IGNORE', $content ) : false; // phpcs:ignore
+				$content = $conv ? $conv : mb_convert_encoding( $content, 'UTF-8', 'Windows-1252' );
+			}
+
+			$first_line = strtok( $content, "\n" );
+			$delims     = array( ',' => substr_count( $first_line, ',' ), ';' => substr_count( $first_line, ';' ), "\t" => substr_count( $first_line, "\t" ) );
+			arsort( $delims );
+			$delim = key( $delims );
+
+			$fh = fopen( 'php://temp', 'r+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			fwrite( $fh, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+			rewind( $fh );
+			while ( false !== ( $cells = fgetcsv( $fh, 0, $delim ) ) ) {
+				$raw_matrix[] = (array) $cells;
+			}
+			fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		}
+
+		if ( empty( $raw_matrix ) ) {
+			wp_send_json_error( array( 'message' => 'File rỗng.' ) );
+		}
+
+		$header     = array_shift( $raw_matrix );
+		$is_shopee  = isset( $header[0] ) && 'et_title_product_id' === strtolower( trim( (string) $header[0] ) );
+		$keys       = array();
+		$known      = array();
+		$unknown    = array();
 		foreach ( (array) $header as $i => $h ) {
 			$h = mb_strtolower( trim( (string) $h ) );
 			$h = ltrim( $h, "# \t" );
@@ -1300,20 +1422,22 @@ final class Nexxi_Web_Product_Manager {
 				$known[]    = $label_map[ $h ];
 			} else {
 				$keys[ $i ] = '';
-				if ( '' !== $h ) {
+				if ( '' !== $h && ! in_array( $h, array( 'et_title_product_id', 'et_title_reason', 'fail reason', 'lý do thất bại' ), true ) ) {
 					$unknown[] = $h;
 				}
 			}
 		}
 		if ( ! in_array( 'product_id', $known, true ) && ! in_array( 'sku', $known, true ) ) {
-			fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-			wp_send_json_error( array( 'message' => 'File thiếu cột "product_id" hoặc "sku" để nhận diện sản phẩm. Hãy dùng file được tải về từ chức năng "Tải file" rồi chỉnh sửa.' ) );
+			wp_send_json_error( array( 'message' => 'File thiếu cột "product_id" hoặc "sku" để nhận diện sản phẩm. Hãy dùng file được tải về từ chức năng "Tải file" hoặc file xuất SKU chuẩn.' ) );
 		}
 
 		$rows = array();
 		$line = 1;
-		while ( false !== ( $cells = fgetcsv( $fh, 0, $delim ) ) ) {
+		foreach ( $raw_matrix as $cells ) {
 			$line++;
+			if ( $is_shopee && $line <= 6 ) {
+				continue; // Bỏ qua các dòng tiêu đề phụ / dòng trống đầu file basic_info Shopee
+			}
 			if ( ! is_array( $cells ) || ( 1 === count( $cells ) && '' === trim( (string) $cells[0] ) ) ) {
 				continue;
 			}
@@ -1329,9 +1453,31 @@ final class Nexxi_Web_Product_Manager {
 			if ( '' === trim( (string) ( $r['product_id'] ?? '' ) ) && '' === trim( (string) ( $r['sku'] ?? '' ) ) ) {
 				continue;
 			}
+			// Nếu là file basic_info chỉ có SKU + Tên + Mô tả (chưa có cột SEO), tự động chuẩn hóa & sinh luôn SEO tối ưu
+			if ( $is_shopee && class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+				$norm_s  = Nexxi_SKU_SEO_Sync::normalize_sku( $r['sku'] ?? '' );
+				$r['sku'] = $norm_s;
+				$cat_hit = $norm_s ? Nexxi_SKU_SEO_Sync::lookup_by_sku( $norm_s ) : null;
+				if ( $cat_hit ) {
+					foreach ( array( 'name', 'short_description', 'description', 'tags', 'seo_title', 'seo_description', 'seo_keywords', 'seo_robots', 'og_title', 'og_description' ) as $ck ) {
+						if ( empty( $r[ $ck ] ) || in_array( $ck, array( 'name', 'description' ), true ) ) {
+							$r[ $ck ] = $cat_hit[ $ck ] ?? '';
+						}
+					}
+				} else {
+					$fb = Nexxi_SKU_SEO_Sync::build_smart_fallback_seo( $r['name'] ?? '', '', $r['description'] ?? '', $norm_s );
+					$r['name']              = $fb['clean_title'];
+					$r['short_description'] = $fb['short_description'];
+					$r['seo_title']         = $fb['seo_title'];
+					$r['seo_description']   = $fb['seo_description'];
+					$r['seo_keywords']      = $fb['seo_keywords'];
+					$r['seo_robots']        = $fb['seo_robots'];
+					$r['og_title']          = $fb['og_title'];
+					$r['og_description']    = $fb['og_description'];
+				}
+			}
 			$rows[] = $r;
 		}
-		fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 
 		if ( ! $rows ) {
 			wp_send_json_error( array( 'message' => 'Không tìm thấy dòng dữ liệu nào trong file.' ) );
@@ -1413,7 +1559,39 @@ final class Nexxi_Web_Product_Manager {
 			$product = wc_get_product( $id );
 		}
 		if ( ! $product && '' !== $sku ) {
-			$pid     = (int) wc_get_product_id_by_sku( $sku );
+			$clean_sku = 'HQTBN01-NA' === strtoupper( $sku ) ? 'HQTBN01-NA' : rtrim( $sku, "- \t" );
+			$pid       = (int) wc_get_product_id_by_sku( $sku );
+			if ( ! $pid && $clean_sku !== $sku ) {
+				$pid = (int) wc_get_product_id_by_sku( $clean_sku );
+			}
+			if ( ! $pid && '' !== $clean_sku ) {
+				global $wpdb;
+				$is_var_row = isset( $r['row_type'] ) && 'variation' === strtolower( trim( (string) $r['row_type'] ) );
+				if ( ! $is_var_row ) {
+					$pid = (int) $wpdb->get_var(
+						$wpdb->prepare(
+							"SELECT p.ID FROM {$wpdb->posts} p
+							 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+							 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
+							   AND pm.meta_key IN ('_sku', '_nexxi_pancake_sku') AND UPPER(TRIM(pm.meta_value)) = %s
+							 ORDER BY p.ID ASC LIMIT 1",
+							strtoupper( $clean_sku )
+						)
+					); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+					if ( ! $pid ) {
+						$like_var = $wpdb->esc_like( strtoupper( $clean_sku ) . '-' ) . '%';
+						$pid      = (int) $wpdb->get_var(
+							$wpdb->prepare(
+								"SELECT v.post_parent FROM {$wpdb->posts} v
+								 INNER JOIN {$wpdb->postmeta} pm ON v.ID = pm.post_id AND pm.meta_key = '_sku'
+								 WHERE v.post_type = 'product_variation' AND v.post_parent > 0 AND UPPER(pm.meta_value) LIKE %s
+								 ORDER BY v.post_parent ASC LIMIT 1",
+								$like_var
+							)
+						); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+					}
+				}
+			}
 			$product = $pid ? wc_get_product( $pid ) : null;
 		}
 		if ( ! $product ) {
@@ -1530,12 +1708,148 @@ final class Nexxi_Web_Product_Manager {
 			echo '<meta property="og:image" content="' . esc_url( $og_img ) . '">' . "\n";
 		}
 		$price = $product->get_price();
+		$curr  = function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'VND';
 		if ( '' !== (string) $price ) {
 			echo '<meta property="product:price:amount" content="' . esc_attr( $price ) . '">' . "\n";
-			echo '<meta property="product:price:currency" content="' . esc_attr( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : 'VND' ) . '">' . "\n";
+			echo '<meta property="product:price:currency" content="' . esc_attr( $curr ) . '">' . "\n";
 		}
 		echo '<meta name="twitter:card" content="summary_large_image">' . "\n";
+
+		// Schema.org Product + BreadcrumbList JSON-LD giúp Google hiển thị Rich Snippets (giá, tình trạng kho, đánh giá sao, thương hiệu NEXXI Kids)
+		$images = array();
+		if ( $og_img ) {
+			$images[] = $og_img;
+		}
+		foreach ( $product->get_gallery_image_ids() as $gid ) {
+			$gu = self::image_url( $gid );
+			if ( $gu && ! in_array( $gu, $images, true ) && count( $images ) < 6 ) {
+				$images[] = $gu;
+			}
+		}
+		$eff_price = $price;
+		if ( function_exists( 'nexxi_kids_get_program_sale' ) ) {
+			$prog = nexxi_kids_get_program_sale( $product, 'combined' );
+			if ( ! empty( $prog['sale'] ) && (float) $prog['sale'] > 0 ) {
+				$eff_price = (float) $prog['sale'];
+			}
+		}
+		$sku_val = $product->get_sku();
+		if ( '' === $sku_val ) {
+			$sku_val = (string) get_post_meta( $id, '_nexxi_pancake_sku', true );
+		}
+		$schema_product = array(
+			'@context'    => 'https://schema.org',
+			'@type'       => 'Product',
+			'name'        => $product->get_name(),
+			'description' => $desc,
+			'url'         => $canonical,
+			'brand'       => array(
+				'@type' => 'Brand',
+				'name'  => 'NEXXI Kids',
+			),
+		);
+		if ( '' !== $sku_val ) {
+			$schema_product['sku'] = $sku_val;
+			$schema_product['mpn'] = $sku_val;
+		}
+		if ( ! empty( $images ) ) {
+			$schema_product['image'] = $images;
+		}
+		if ( '' !== (string) $eff_price && (float) $eff_price > 0 ) {
+			$schema_product['offers'] = array(
+				'@type'           => 'Offer',
+				'url'             => $canonical,
+				'priceCurrency'   => $curr,
+				'price'           => (string) round( (float) $eff_price ),
+				'priceValidUntil' => gmdate( 'Y-12-31', strtotime( '+1 year' ) ),
+				'itemCondition'   => 'https://schema.org/NewCondition',
+				'availability'    => $product->is_in_stock() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+				'seller'          => array(
+					'@type' => 'Organization',
+					'name'  => get_bloginfo( 'name' ),
+				),
+			);
+		}
+		$rev_count = (int) $product->get_review_count();
+		$avg_rate  = (float) $product->get_average_rating();
+		if ( $rev_count > 0 && $avg_rate > 0 ) {
+			$schema_product['aggregateRating'] = array(
+				'@type'       => 'AggregateRating',
+				'ratingValue' => number_format( $avg_rate, 1, '.', '' ),
+				'reviewCount' => $rev_count,
+				'bestRating'  => '5',
+				'worstRating' => '1',
+			);
+		}
+		echo '<script type="application/ld+json">' . wp_json_encode( $schema_product, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . '</script>' . "\n";
+
+		$crumb_items = array(
+			array(
+				'@type'    => 'ListItem',
+				'position' => 1,
+				'name'     => 'Trang chủ',
+				'item'     => home_url( '/' ),
+			),
+			array(
+				'@type'    => 'ListItem',
+				'position' => 2,
+				'name'     => 'Cửa hàng',
+				'item'     => function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/shop/' ),
+			),
+		);
+		$pos   = 3;
+		$terms = get_the_terms( $id, 'product_cat' );
+		if ( $terms && ! is_wp_error( $terms ) ) {
+			$primary_cat = reset( $terms );
+			$t_link      = get_term_link( $primary_cat );
+			if ( ! is_wp_error( $t_link ) ) {
+				$crumb_items[] = array(
+					'@type'    => 'ListItem',
+					'position' => $pos++,
+					'name'     => $primary_cat->name,
+					'item'     => $t_link,
+				);
+			}
+		}
+		$crumb_items[] = array(
+			'@type'    => 'ListItem',
+			'position' => $pos,
+			'name'     => $product->get_name(),
+			'item'     => $canonical,
+		);
+		echo '<script type="application/ld+json">' . wp_json_encode(
+			array(
+				'@context'        => 'https://schema.org',
+				'@type'           => 'BreadcrumbList',
+				'itemListElement' => $crumb_items,
+			),
+			JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+		) . '</script>' . "\n";
 		echo "<!-- /NEXXI SEO -->\n";
+	}
+
+	/**
+	 * AJAX: Đồng bộ Tên, Mô tả ngắn, Mô tả chi tiết & Tối ưu SEO theo mã SKU từ bộ dữ liệu chuẩn.
+	 */
+	public static function ajax_sync_sku_seo() {
+		self::check_ajax();
+		if ( ! class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+			wp_send_json_error( array( 'message' => 'Mô-đun Nexxi_SKU_SEO_Sync chưa được nạp.' ) );
+		}
+		$rep = Nexxi_SKU_SEO_Sync::sync_all_wc_products( true );
+		$msg = sprintf(
+			'Đã đối chiếu %d sản phẩm trên Website (với kho %d mã SKU chuẩn): cập nhật Tên + Mô tả + SEO cho %d SP khớp mã SKU và tối ưu SEO tự động cho %d SP còn lại!',
+			(int) ( $rep['total_web_products'] ?? 0 ),
+			(int) ( $rep['catalog_sku_count'] ?? 0 ),
+			(int) ( $rep['updated_matched'] ?? 0 ),
+			(int) ( $rep['fallback_seo_fixed'] ?? 0 )
+		);
+		wp_send_json_success(
+			array(
+				'message' => $msg,
+				'report'  => $rep,
+			)
+		);
 	}
 
 	/* ==========================================================================
@@ -1566,13 +1880,30 @@ final class Nexxi_Web_Product_Manager {
 					</div>
 				</div>
 				<div class="nxp-card">
-					<h2>⬆️ Chỉnh sửa hàng loạt bằng file</h2>
-					<p class="nxwpm-muted">Tải file về → sửa trong Excel → lưu dạng <strong>CSV UTF-8</strong> → tải lên. Hệ thống so sánh từng ô với dữ liệu hiện tại và <strong>chỉ cập nhật những mục có thay đổi</strong>. Ô để trống = giữ nguyên; nhập <code>[XOA]</code> để xóa trống một mục. Nhận diện theo cột <code>product_id</code> (hoặc <code>sku</code>).</p>
+					<h2>⬆️ Chỉnh sửa hàng loạt bằng file (.csv / .xlsx)</h2>
+					<p class="nxwpm-muted">Hỗ trợ tải lên cả <strong>CSV UTF-8</strong> lẫn <strong>Excel (.xlsx)</strong> (bao gồm cả file <code>basic_info</code> xuất theo SKU). Hệ thống đối chiếu thông minh và <strong>chỉ cập nhật những mục có thay đổi</strong>. Ô để trống = giữ nguyên; nhập <code>[XOA]</code> để xóa trống một mục.</p>
 					<div class="nxwpm-actions">
-						<input type="file" id="nxwpmImportFile" accept=".csv,text/csv">
+						<input type="file" id="nxwpmImportFile" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
 						<button type="button" class="nxp-btn nxp-btn-outline" id="nxwpmBtnDryRun">🔍 Kiểm tra thay đổi (chưa lưu)</button>
 						<button type="button" class="nxp-btn nxp-btn-primary" id="nxwpmBtnImport">⬆️ Cập nhật thay đổi lên Website</button>
 					</div>
+				</div>
+			</div>
+
+			<?php $sku_seo_rep = get_option( 'nexxi_sku_seo_last_report', array() ); ?>
+			<div class="nxp-card" style="margin-bottom:16px;border-left:4px solid #ea580c;background:linear-gradient(90deg,#fff7ed 0%,#ffffff 100%);">
+				<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+					<div>
+						<h2 style="margin:0 0 4px;">✨ Đồng bộ Tên, Mô tả &amp; Tối ưu SEO chuẩn theo Mã SKU</h2>
+						<p class="nxwpm-muted" id="nxwpmSkuSeoStatus" style="margin:0;">
+							<?php if ( ! empty( $sku_seo_rep['synced_at'] ) ) : ?>
+								Lần đồng bộ gần nhất (<strong><?php echo esc_html( $sku_seo_rep['synced_at'] ); ?></strong>): Đã điền Tên, Mô tả &amp; SEO chuẩn cho <strong><?php echo (int) ( $sku_seo_rep['updated_matched'] ?? 0 ); ?></strong> sản phẩm khớp mã SKU (trên kho <?php echo (int) ( $sku_seo_rep['catalog_sku_count'] ?? 705 ); ?> SKU) + tối ưu SEO cho <strong><?php echo (int) ( $sku_seo_rep['fallback_seo_fixed'] ?? 0 ); ?></strong> sản phẩm khác.
+							<?php else : ?>
+								Kho dữ liệu <strong>705+ mã SKU chuẩn</strong> đã sẵn sàng (tự động điền Tên sản phẩm, Mô tả ngắn, Mô tả HTML chi tiết, SEO Title, Meta Description, Từ khóa, OpenGraph, Alt ảnh &amp; Product Schema).
+							<?php endif; ?>
+						</p>
+					</div>
+					<button type="button" class="nxp-btn nxp-btn-primary" id="nxwpmBtnSyncSkuSeo">✨ Đồng bộ Tên, Mô tả &amp; SEO theo SKU ngay</button>
 				</div>
 			</div>
 
