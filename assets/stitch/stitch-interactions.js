@@ -55,6 +55,7 @@
     }
     const fragments = data.fragments || {};
     if (fragments['nexxi-cart-count'] !== undefined) paintCartCount(fragments['nexxi-cart-count']);
+    if (fragments['nexxi-fbq-atc'] && typeof window.fbq === 'function') window.fbq('track', 'AddToCart', fragments['nexxi-fbq-atc']);
     if (window.jQuery) window.jQuery(document.body).trigger('added_to_cart', [fragments, data.cart_hash]);
     return data;
   };
