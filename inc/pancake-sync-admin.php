@@ -3148,6 +3148,13 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				if ( '' !== $pancake_id ) {
 					update_post_meta( $wc_id, '_nexxi_pancake_product_id', $pancake_id );
 				}
+				if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+					Nexxi_SKU_SEO_Sync::apply_to_wc_product( $wc_id, $parent_sku, false );
+					$clean_t = get_the_title( $wc_id );
+					if ( '' !== trim( (string) $clean_t ) ) {
+						$prod_name = $clean_t;
+					}
+				}
 
 				$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
@@ -3182,6 +3189,12 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		$parent_sku = trim( (string) ( $pancake_item['sku'] ?? '' ) );
 		$pancake_id = trim( (string) ( $pancake_item['id'] ?? '' ) );
 		$prod_name  = trim( (string) ( $pancake_item['name'] ?? '' ) );
+		if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+			$cat_entry = Nexxi_SKU_SEO_Sync::lookup_by_sku( $parent_sku ?: $lookup_sku );
+			if ( is_array( $cat_entry ) && ! empty( $cat_entry['name'] ) ) {
+				$prod_name = $cat_entry['name'];
+			}
+		}
 		if ( '' === $prod_name ) {
 			$prod_name = 'Sản phẩm ' . $parent_sku;
 		}
@@ -3230,6 +3243,10 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 				$product = new WC_Product_Variable( $wc_id );
 			} else {
 				$product = $existing_prod;
+			}
+			// Preserve existing curated Website title when Pancake POS only has a raw batch code name
+			if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) && Nexxi_SKU_SEO_Sync::is_raw_pos_title( $prod_name ) && ! Nexxi_SKU_SEO_Sync::is_raw_pos_title( $existing_prod->get_name() ) ) {
+				$prod_name = $existing_prod->get_name();
 			}
 			$product->set_name( $prod_name );
 			$product->set_date_created( time() );
@@ -3509,6 +3526,15 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 		}
 
 		wp_defer_term_counting( false );
+
+		// Apply curated Name, Short/Full Description & SEO by SKU right after images are synced
+		if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
+			Nexxi_SKU_SEO_Sync::apply_to_wc_product( $wc_id, $parent_sku ?: $lookup_sku, $created_new );
+			$synced_title = get_the_title( $wc_id );
+			if ( '' !== trim( (string) $synced_title ) ) {
+				$prod_name = $synced_title;
+			}
+		}
 
 		// Bump post_date & post_modified so newly synced/updated Pancake products immediately sort first under 'Newest'
 		$now_local = current_time( 'mysql' );
