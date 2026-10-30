@@ -25,8 +25,79 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @param int $user_id WordPress User ID.
  * @return array{order_count:int,completed_count:int,total_spent:float,last_order_date:string,last_order_ts:int}
  */
+/**
+ * Tính số đơn & tổng chi tiêu cho NHIỀU khách hàng chỉ bằng 1 truy vấn SQL gộp nhóm
+ * (trước đây mỗi khách hàng gọi wc_get_orders() riêng và nạp toàn bộ đơn hàng → rất chậm).
+ * Hỗ trợ cả bảng đơn hàng HPOS (wc_orders) lẫn kiểu lưu cũ (wp_posts).
+ *
+ * @param int[] $user_ids Danh sách User ID.
+ */
+function nexxi_kids_prime_customer_order_stats( array $user_ids ) {
+	global $wpdb;
+	if ( ! isset( $GLOBALS['nexxi_crm_order_stats'] ) || ! is_array( $GLOBALS['nexxi_crm_order_stats'] ) ) {
+		$GLOBALS['nexxi_crm_order_stats'] = array();
+	}
+	$cache = &$GLOBALS['nexxi_crm_order_stats'];
+	$ids   = array();
+	foreach ( $user_ids as $uid ) {
+		$uid = (int) $uid;
+		if ( $uid > 0 && ! isset( $cache[ $uid ] ) ) {
+			$ids[ $uid ] = $uid;
+		}
+	}
+	if ( ! $ids ) {
+		return;
+	}
+	foreach ( $ids as $uid ) {
+		$cache[ $uid ] = array( 'order_count' => 0, 'completed_count' => 0, 'total_spent' => 0.0, 'last_order_date' => '', 'last_order_ts' => 0 );
+	}
+
+	$statuses = "'wc-pending','wc-processing','wc-on-hold','wc-completed'";
+	$hpos     = class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' ) && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+
+	foreach ( array_chunk( array_values( $ids ), 400 ) as $chunk ) {
+		if ( $hpos ) {
+			$in    = implode( ',', array_map( 'intval', $chunk ) );
+			$table = $wpdb->prefix . 'wc_orders';
+			$sql   = "SELECT customer_id AS uid, COUNT(*) AS cnt, SUM(total_amount) AS spent, SUM(status = 'wc-completed') AS done, MAX(date_created_gmt) AS last_gmt
+				FROM {$table}
+				WHERE type = 'shop_order' AND status IN ({$statuses}) AND customer_id IN ({$in})
+				GROUP BY customer_id";
+		} else {
+			$in  = "'" . implode( "','", array_map( 'intval', $chunk ) ) . "'";
+			$sql = "SELECT cu.meta_value AS uid, COUNT(*) AS cnt, SUM(CAST(tot.meta_value AS DECIMAL(20,4))) AS spent, SUM(p.post_status = 'wc-completed') AS done, MAX(p.post_date_gmt) AS last_gmt
+				FROM {$wpdb->posts} p
+				INNER JOIN {$wpdb->postmeta} cu ON cu.post_id = p.ID AND cu.meta_key = '_customer_user'
+				LEFT JOIN {$wpdb->postmeta} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total'
+				WHERE p.post_type = 'shop_order' AND p.post_status IN ({$statuses}) AND cu.meta_value IN ({$in})
+				GROUP BY cu.meta_value";
+		}
+		$rows = $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
+		foreach ( (array) $rows as $r ) {
+			$uid = (int) $r->uid;
+			if ( ! isset( $cache[ $uid ] ) ) {
+				continue;
+			}
+			$last_gmt = (string) $r->last_gmt;
+			$has_last = '' !== $last_gmt && '0000-00-00 00:00:00' !== $last_gmt;
+			$cache[ $uid ] = array(
+				'order_count'     => (int) $r->cnt,
+				'completed_count' => (int) $r->done,
+				'total_spent'     => (float) $r->spent,
+				'last_order_date' => $has_last ? get_date_from_gmt( $last_gmt, 'Y-m-d H:i:s' ) : '',
+				'last_order_ts'   => $has_last ? (int) strtotime( $last_gmt . ' UTC' ) : 0,
+			);
+		}
+	}
+}
+
+/**
+ * Calculate total spent & order count for a customer.
+ *
+ * @param int $user_id WordPress User ID.
+ * @return array{order_count:int,completed_count:int,total_spent:float,last_order_date:string,last_order_ts:int}
+ */
 function nexxi_kids_get_customer_order_stats( $user_id ) {
-	static $runtime_cache = array();
 	$user_id = (int) $user_id;
 	if ( $user_id <= 0 ) {
 		return array(
@@ -37,60 +108,17 @@ function nexxi_kids_get_customer_order_stats( $user_id ) {
 			'last_order_ts'   => 0,
 		);
 	}
-	if ( isset( $runtime_cache[ $user_id ] ) ) {
-		return $runtime_cache[ $user_id ];
+	if ( ! isset( $GLOBALS['nexxi_crm_order_stats'][ $user_id ] ) ) {
+		nexxi_kids_prime_customer_order_stats( array( $user_id ) );
 	}
-
-	$order_count     = 0;
-	$completed_count = 0;
-	$total_spent     = 0.0;
-	$last_order_date = '';
-	$last_order_ts   = 0;
-
-	if ( function_exists( 'wc_get_orders' ) ) {
-		$orders = wc_get_orders(
-			array(
-				'customer_id' => $user_id,
-				'status'      => array( 'wc-pending', 'wc-processing', 'wc-on-hold', 'wc-completed' ),
-				'limit'       => -1,
-				'orderby'     => 'date',
-				'order'       => 'DESC',
-			)
-		);
-		foreach ( $orders as $ord ) {
-			if ( ! $ord instanceof WC_Order ) {
-				continue;
-			}
-			$order_count++;
-			$st = $ord->get_status();
-			if ( in_array( $st, array( 'completed', 'processing', 'on-hold', 'pending' ), true ) ) {
-				$total_spent += (float) $ord->get_total();
-			}
-			if ( 'completed' === $st ) {
-				$completed_count++;
-			}
-			$dt = $ord->get_date_created();
-			if ( $dt && 0 === $last_order_ts ) {
-				$last_order_ts   = $dt->getTimestamp();
-				$last_order_date = $dt->date_i18n( 'Y-m-d H:i:s' );
-			}
-		}
-	}
+	$stats = $GLOBALS['nexxi_crm_order_stats'][ $user_id ];
 
 	// Allow manual adjustment / historical spend override if admin set one
 	$manual_base_spent = (float) get_user_meta( $user_id, 'nexxi_manual_spent_adjust', true );
-	if ( $manual_base_spent > 0 && $total_spent < $manual_base_spent ) {
-		$total_spent = $manual_base_spent;
+	if ( $manual_base_spent > 0 && $stats['total_spent'] < $manual_base_spent ) {
+		$stats['total_spent'] = $manual_base_spent;
 	}
-
-	$runtime_cache[ $user_id ] = array(
-		'order_count'     => $order_count,
-		'completed_count' => $completed_count,
-		'total_spent'     => $total_spent,
-		'last_order_date' => $last_order_date,
-		'last_order_ts'   => $last_order_ts,
-	);
-	return $runtime_cache[ $user_id ];
+	return $stats;
 }
 
 /* ==========================================================================
@@ -410,6 +438,9 @@ function nexxi_kids_customer_manager_admin_page() {
 	$kpi_total_orders  = 0;
 	$kpi_total_spent   = 0.0;
 	$kpi_bday_month    = 0;
+
+	// 1 truy vấn SQL cho số đơn & chi tiêu của toàn bộ khách hàng trong danh sách.
+	nexxi_kids_prime_customer_order_stats( wp_list_pluck( $all_users, 'ID' ) );
 
 	foreach ( $all_users as $u ) {
 		$uid       = (int) $u->ID;
@@ -895,28 +926,41 @@ function nexxi_kids_order_manager_admin_page() {
 		$q_args['date_created'] = $from_str . '...' . $to_str . ' 23:59:59';
 	}
 
-	$orders = function_exists( 'wc_get_orders' ) ? wc_get_orders( $q_args ) : array();
-
-	if ( '' !== $s_order ) {
-		$needle = strtolower( ltrim( trim( $s_order ), '#' ) );
-		$orders = array_values(
-			array_filter(
-				$orders,
-				static function ( $ord ) use ( $needle ) {
-					if ( ! $ord instanceof WC_Order ) {
-						return false;
-					}
-					$hay = strtolower(
-						$ord->get_order_number() . ' ' .
-						$ord->get_billing_first_name() . ' ' .
-						$ord->get_billing_last_name() . ' ' .
-						$ord->get_billing_phone() . ' ' .
-						$ord->get_billing_email()
-					);
-					return false !== strpos( $hay, $needle );
-				}
-			)
-		);
+	if ( '' !== $s_order && function_exists( 'wc_order_search' ) ) {
+		// Tìm kiếm bằng chỉ mục tìm kiếm của WooCommerce trên TOÀN BỘ đơn hàng (trước đây chỉ lọc trong 150 đơn mới nhất).
+		$needle    = ltrim( trim( $s_order ), '#' );
+		$found_ids = array_map( 'intval', (array) wc_order_search( $needle ) );
+		if ( ctype_digit( $needle ) ) {
+			$found_ids[] = (int) $needle;
+		}
+		$found_ids = array_values( array_unique( array_filter( $found_ids ) ) );
+		rsort( $found_ids );
+		$orders    = array();
+		$from_ts   = '' !== $date_from ? strtotime( $date_from . ' 00:00:00' ) : 0;
+		$to_ts     = '' !== $date_to ? strtotime( $date_to . ' 23:59:59' ) : 0;
+		foreach ( $found_ids as $oid ) {
+			$ord = wc_get_order( $oid );
+			if ( ! $ord instanceof WC_Order || 'shop_order' !== $ord->get_type() ) {
+				continue;
+			}
+			if ( ! in_array( 'wc-' . $ord->get_status(), (array) $q_args['status'], true ) ) {
+				continue;
+			}
+			if ( $cust_id > 0 && (int) $ord->get_customer_id() !== $cust_id ) {
+				continue;
+			}
+			$created = $ord->get_date_created();
+			$c_ts    = $created ? $created->getOffsetTimestamp() : 0;
+			if ( ( $from_ts && $c_ts < $from_ts ) || ( $to_ts && $c_ts > $to_ts ) ) {
+				continue;
+			}
+			$orders[] = $ord;
+			if ( count( $orders ) >= 150 ) {
+				break;
+			}
+		}
+	} else {
+		$orders = function_exists( 'wc_get_orders' ) ? wc_get_orders( $q_args ) : array();
 	}
 
 	$badge_colors = array(

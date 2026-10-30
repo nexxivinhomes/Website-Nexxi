@@ -909,6 +909,34 @@ final class Nexxi_Web_Product_Manager {
 		return array_map( 'intval', $query->posts );
 	}
 
+	/**
+	 * Nạp sẵn post + meta của SP, biến thể và ảnh đại diện bằng vài truy vấn gộp
+	 * (tránh mỗi SP / biến thể phát sinh 2-3 truy vấn riêng khi hiển thị danh sách hoặc xuất file).
+	 */
+	private static function prime_products( array $ids ) {
+		global $wpdb;
+		$ids = array_values( array_filter( array_map( 'absint', $ids ) ) );
+		if ( ! $ids ) {
+			return;
+		}
+		_prime_post_caches( $ids, true, true );
+		$in       = implode( ',', $ids );
+		$children = $wpdb->get_col( "SELECT ID FROM {$wpdb->posts} WHERE post_parent IN ({$in}) AND post_type = 'product_variation'" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $children ) {
+			_prime_post_caches( array_map( 'intval', $children ), false, true );
+		}
+		$thumbs = array();
+		foreach ( array_merge( $ids, array_map( 'intval', (array) $children ) ) as $pid ) {
+			$t = (int) get_post_meta( $pid, '_thumbnail_id', true );
+			if ( $t > 0 ) {
+				$thumbs[ $t ] = $t;
+			}
+		}
+		if ( $thumbs ) {
+			_prime_post_caches( array_values( $thumbs ), false, true );
+		}
+	}
+
 	private static function filters_from_request( $src ) {
 		$out = array();
 		foreach ( array( 'q', 'cat', 'status', 'stock', 'type', 'extra', 'orderby' ) as $k ) {
@@ -924,6 +952,7 @@ final class Nexxi_Web_Product_Manager {
 		$per_page = isset( $_POST['per_page'] ) ? min( 200, max( 10, absint( $_POST['per_page'] ) ) ) : 20;
 		$total    = 0;
 		$ids      = self::query_ids( $filters, $paged, $per_page, $total );
+		self::prime_products( $ids );
 		$rows     = array();
 		foreach ( $ids as $id ) {
 			$p = wc_get_product( $id );
@@ -1169,7 +1198,17 @@ final class Nexxi_Web_Product_Manager {
 		$labels[0]          = '# ' . $labels[0];
 		fputcsv( $out, $labels );
 
-		foreach ( $ids as $id ) {
+		$primed = array();
+		foreach ( $ids as $idx => $id ) {
+			if ( ! isset( $primed[ $id ] ) ) {
+				// Nạp sẵn dữ liệu theo từng lô 50 SP để xuất file nhanh và không tốn bộ nhớ.
+				$batch = array_slice( $ids, $idx, 50 );
+				if ( function_exists( 'wp_cache_flush_runtime' ) && $idx > 0 ) {
+					wp_cache_flush_runtime(); // Giải phóng bộ nhớ của lô trước.
+				}
+				self::prime_products( $batch );
+				$primed = array_fill_keys( $batch, true );
+			}
 			$p = wc_get_product( $id );
 			if ( ! $p || $p->is_type( 'variation' ) ) {
 				continue;
@@ -1182,9 +1221,6 @@ final class Nexxi_Web_Product_Manager {
 						fputcsv( $out, array_values( self::get_row( $v ) ) );
 					}
 				}
-			}
-			if ( function_exists( 'wp_cache_flush_runtime' ) ) {
-				wp_cache_flush_runtime();
 			}
 		}
 		fclose( $out ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose

@@ -249,7 +249,28 @@ function nexxi_kids_on_variation_saved( $variation_id ) {
 	nexxi_kids_flush_sale_cache();
 }
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
-add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache', 99 );
+add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache_on_product_update', 99 );
+
+/**
+ * Khi lưu sản phẩm: xóa cache toàn trang tối đa 1 lần / 60 giây.
+ * Đồng bộ / sửa hàng loạt hàng trăm SP trước đây xóa toàn bộ cache LiteSpeed sau MỖI SP (làm chậm cả admin lẫn web).
+ * Các lần lưu trong 60 giây đó được gộp thành 1 lần xóa cache chạy ngầm ngay sau đó.
+ */
+function nexxi_kids_flush_sale_cache_on_product_update() {
+	delete_transient( 'wc_products_onsale' );
+	if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+		nexxi_kids_reset_sale_runtime_cache();
+	}
+	if ( get_transient( 'nexxi_sale_purge_lock' ) ) {
+		if ( ! wp_next_scheduled( 'nexxi_deferred_sale_purge' ) ) {
+			wp_schedule_single_event( time() + 60, 'nexxi_deferred_sale_purge' );
+		}
+		return;
+	}
+	set_transient( 'nexxi_sale_purge_lock', 1, 60 );
+	nexxi_kids_flush_sale_cache();
+}
+add_action( 'nexxi_deferred_sale_purge', 'nexxi_kids_flush_sale_cache' );
 /**
  * Clear all Flash Sale discounts across every product, preserving Regular Product Discounts (🏷️ Giảm Giá SP).
  */
@@ -600,6 +621,10 @@ function nexxi_kids_flash_sale_admin_page() {
 	}
 
 	$wp_q = new WP_Query( $query_args );
+	// Nạp sẵn meta biến thể & ảnh của cả trang trong vài truy vấn (tránh mỗi dòng SP phát sinh nhiều truy vấn).
+	if ( function_exists( 'nexxi_kids_prime_products_cache' ) && ! empty( $wp_q->posts ) ) {
+		nexxi_kids_prime_products_cache( array_filter( array_map( 'wc_get_product', wp_list_pluck( $wp_q->posts, 'ID' ) ) ) );
+	}
 	$categories = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) );
 	?>
 	<div class="wrap" style="max-width:1280px;margin-top:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
