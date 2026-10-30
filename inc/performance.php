@@ -305,6 +305,22 @@ function nexxi_perf_page_cache_ttl() {
 	return (int) $ttl;
 }
 
+/* ==========================================================================
+ * 5. TRANG QUẢN TRỊ
+ * ========================================================================== */
+
+// Heartbeat: gửi yêu cầu nền mỗi 60 giây thay vì 15 giây (giảm tải server khi mở nhiều tab admin).
+add_filter(
+	'heartbeat_settings',
+	static function ( $settings ) {
+		$settings['interval'] = 60;
+		return $settings;
+	}
+);
+
+// Tắt gợi ý tiện ích trả phí của WooCommerce Marketplace (gọi API ngoài & chèn thêm HTML vào trang SP / đơn hàng).
+add_filter( 'woocommerce_allow_marketplace_suggestions', '__return_false' );
+
 /** Hậu xử lý toàn bộ HTML của màn hình Stitch trước khi gửi về trình duyệt. */
 function nexxi_perf_finalize_html( $html ) {
 	if ( ! is_string( $html ) || '' === $html || false === stripos( $html, '</head>' ) ) {

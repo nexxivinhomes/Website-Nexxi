@@ -804,6 +804,10 @@ function nexxi_kids_bulk_discount_admin_page() {
 	}
 
 	$wp_q       = new WP_Query( $query_args );
+	// Nạp sẵn meta biến thể & ảnh của cả trang trong vài truy vấn (tránh mỗi dòng SP phát sinh nhiều truy vấn).
+	if ( function_exists( 'nexxi_kids_prime_products_cache' ) && ! empty( $wp_q->posts ) ) {
+		nexxi_kids_prime_products_cache( array_filter( array_map( 'wc_get_product', wp_list_pluck( $wp_q->posts, 'ID' ) ) ) );
+	}
 	$categories = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) );
 	$sample_url = add_query_arg( array( 'page' => 'nexxi-bulk-discount', 'nexxi_bd_export' => 'sample' ), admin_url( 'admin.php' ) );
 	$export_url = add_query_arg( array( 'page' => 'nexxi-bulk-discount', 'nexxi_bd_export' => 'catalog' ), admin_url( 'admin.php' ) );
