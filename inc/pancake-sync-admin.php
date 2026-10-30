@@ -3483,6 +3483,33 @@ final class Nexxi_Pancake_Sync_Manager_V4 {
 			if ( class_exists( 'WC_Product_Variable' ) ) {
 				WC_Product_Variable::sync( $wc_id );
 			}
+			// Preserve & propagate active Giảm Giá SP / Flash Sale onto newly synced Pancake variations
+			if ( function_exists( 'nexxi_kids_get_program_sale' ) && ( '1' === (string) get_post_meta( $wc_id, '_nexxi_has_prod_sale', true ) || '1' === (string) get_post_meta( $wc_id, '_nexxi_is_flash_sale', true ) ) ) {
+				$re_prod = wc_get_product( $wc_id );
+				if ( $re_prod && $re_prod->is_type( 'variable' ) ) {
+					$comb         = nexxi_kids_get_program_sale( $re_prod, 'combined' );
+					$wc_sale_sync = ! empty( $comb['on_sale'] ) ? (float) $comb['sale'] : 0.0;
+					$comb_pct     = ! empty( $comb['pct'] ) ? (float) $comb['pct'] : 0.0;
+					if ( $wc_sale_sync > 0 ) {
+						foreach ( $re_prod->get_children() as $cid_sync ) {
+							$cid_sync = (int) $cid_sync;
+							$v_reg    = (float) get_post_meta( $cid_sync, '_regular_price', true );
+							$v_sale   = $wc_sale_sync;
+							if ( $v_reg > 0 && $v_sale >= $v_reg && $comb_pct > 0 ) {
+								$v_sale = round( $v_reg * ( 100 - $comb_pct ) / 100, -3 );
+							}
+							if ( $v_reg > 0 && $v_sale > 0 && $v_sale < $v_reg ) {
+								$s_str = (string) round( $v_sale );
+								update_post_meta( $cid_sync, '_sale_price', $s_str );
+								update_post_meta( $cid_sync, '_price', $s_str );
+							}
+						}
+						if ( class_exists( 'WC_Product_Variable' ) ) {
+							WC_Product_Variable::sync( $wc_id );
+						}
+					}
+				}
+			}
 		} else {
 			// Simple product price & stock sync
 			if ( $opts['sync_price'] && (float) ( $pancake_item['min_price'] ?? 0 ) > 0 ) {
