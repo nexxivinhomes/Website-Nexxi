@@ -967,9 +967,13 @@ function nexxi_kids_regular_sale_parent_ids() {
 	}
 	global $wpdb;
 	$meta_ids = $wpdb->get_col(
-		"SELECT p.ID FROM {$wpdb->posts} p
-		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_has_prod_sale'
-		 WHERE p.post_type = 'product' AND p.post_status = 'publish' AND pm.meta_value = '1'"
+		"SELECT DISTINCT p.ID FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_nexxi_has_prod_sale' AND pm.meta_value = '1'
+		 LEFT JOIN {$wpdb->postmeta} pm_sp ON p.ID = pm_sp.post_id AND pm_sp.meta_key = '_nexxi_prod_sale_price'
+		 LEFT JOIN {$wpdb->postmeta} pm_pct ON p.ID = pm_pct.post_id AND pm_pct.meta_key = '_nexxi_prod_sale_pct'
+		 WHERE p.post_type = 'product'
+		   AND p.post_status = 'publish'
+		   AND ( CAST(COALESCE(pm_sp.meta_value, '0') AS DECIMAL(12,2)) > 0 OR CAST(COALESCE(pm_pct.meta_value, '0') AS UNSIGNED) > 0 )"
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 	$GLOBALS['nexxi_cached_reg_ids'] = array_values( array_unique( array_filter( array_map( 'absint', (array) $meta_ids ) ) ) );
 	return $GLOBALS['nexxi_cached_reg_ids'];

@@ -976,10 +976,15 @@ function nexxi_kids_bulk_discount_admin_page() {
 						<option value="<?php echo esc_attr( $c_term->slug ); ?>" <?php selected( $cat, $c_term->slug ); ?>><?php echo esc_html( $c_term->name ); ?> (<?php echo (int) $c_term->count; ?>)</option>
 					<?php endforeach; endif; ?>
 				</select>
+				<?php
+				$prod_counts     = wp_count_posts( 'product' );
+				$total_published = isset( $prod_counts->publish ) ? (int) $prod_counts->publish : 0;
+				$no_sale_count   = max( 0, $total_published - count( $regular_sale_ids ) );
+				?>
 				<select name="sale_filter" style="min-height:34px;border-radius:8px;border:1px solid #d5d3ce;">
-					<option value="all" <?php selected( $status, 'all' ); ?>>Tất cả trạng thái</option>
+					<option value="all" <?php selected( $status, 'all' ); ?>>Tất cả trạng thái (<?php echo (int) $total_published; ?>)</option>
 					<option value="regular_sale" <?php selected( $status, 'regular_sale' ); ?>>🏷️ Đang giảm giá bán SP (<?php echo count( $regular_sale_ids ); ?>)</option>
-					<option value="no_sale" <?php selected( $status, 'no_sale' ); ?>>Chưa giảm giá SP</option>
+					<option value="no_sale" <?php selected( $status, 'no_sale' ); ?>>⚪ Chưa giảm giá SP (<?php echo (int) $no_sale_count; ?>)</option>
 				</select>
 				<select name="per_page" style="min-height:34px;border-radius:8px;border:1px solid #d5d3ce;">
 					<option value="25" <?php selected( $per_page, 25 ); ?>>25 mẫu / trang</option>

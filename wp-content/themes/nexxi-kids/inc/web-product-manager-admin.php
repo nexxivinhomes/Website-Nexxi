@@ -774,11 +774,113 @@ final class Nexxi_Web_Product_Manager {
 			}
 			WC_Product_Variable::sync( $parent->get_id() );
 			wc_delete_product_transients( $parent->get_id() );
+			if ( in_array( 'regular_price', $applied, true ) || in_array( 'sale_price', $applied, true ) ) {
+				self::sync_discount_meta_from_wc( $parent->get_id() );
+			}
+		} elseif ( ! $is_var && $id && ( in_array( 'regular_price', $applied, true ) || in_array( 'sale_price', $applied, true ) ) ) {
+			self::sync_discount_meta_from_wc( $id );
 		}
 		if ( $id ) {
 			wc_delete_product_transients( $id );
 		}
 		return array( 'errors' => $errors, 'applied' => $applied );
+	}
+
+	/**
+	 * Đồng bộ hai chiều cờ giảm giá của theme (_nexxi_has_prod_sale, _nexxi_prod_sale_price, _nexxi_prod_sale_pct)
+	 * khi quản trị viên chỉnh sửa giá gốc / giá khuyến mãi trực tiếp trong Quản lý SP trên Web hoặc qua file nhập.
+	 */
+	private static function sync_discount_meta_from_wc( $product_id ) {
+		$product_id = (int) $product_id;
+		if ( $product_id <= 0 ) {
+			return;
+		}
+		$p = wc_get_product( $product_id );
+		if ( ! $p || $p->is_type( 'variation' ) ) {
+			return;
+		}
+		$min_reg  = null;
+		$min_sale = null;
+		if ( $p->is_type( 'variable' ) ) {
+			foreach ( $p->get_children() as $cid ) {
+				$cid = (int) $cid;
+				$vr  = (float) get_post_meta( $cid, '_regular_price', true );
+				$vs  = (float) get_post_meta( $cid, '_sale_price', true );
+				if ( $vr > 0 && ( null === $min_reg || $vr < $min_reg ) ) {
+					$min_reg = $vr;
+				}
+				if ( $vs > 0 && $vr > 0 && $vs < $vr && ( null === $min_sale || $vs < $min_sale ) ) {
+					$min_sale = $vs;
+				}
+			}
+		} else {
+			$vr = (float) $p->get_regular_price( 'edit' );
+			$vs = (float) $p->get_sale_price( 'edit' );
+			if ( $vr > 0 ) {
+				$min_reg = $vr;
+			}
+			if ( $vs > 0 && $vr > 0 && $vs < $vr ) {
+				$min_sale = $vs;
+			}
+		}
+
+		$is_fs  = '1' === (string) get_post_meta( $product_id, '_nexxi_is_flash_sale', true );
+		$fs_live = $is_fs && function_exists( 'nexxi_kids_is_flash_sale_live' ) && nexxi_kids_is_flash_sale_live();
+		$fs_p   = $fs_live ? (float) get_post_meta( $product_id, '_nexxi_fs_sale_price', true ) : 0.0;
+
+		if ( null !== $min_sale && null !== $min_reg && $min_sale < $min_reg ) {
+			$prod_sale = $min_sale;
+			if ( $fs_live && $fs_p > 0 && $fs_p < $min_reg ) {
+				$fs_disc   = max( 0.0, $min_reg - $fs_p );
+				$rem_sale  = $min_sale + $fs_disc;
+				if ( $rem_sale >= $min_reg ) {
+					update_post_meta( $product_id, '_nexxi_has_prod_sale', '0' );
+					delete_post_meta( $product_id, '_nexxi_prod_sale_price' );
+					delete_post_meta( $product_id, '_nexxi_prod_sale_pct' );
+					if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+						nexxi_kids_reset_sale_runtime_cache( $product_id );
+					}
+					return;
+				}
+				$prod_sale = $rem_sale;
+			}
+			$pct = max( 1, min( 95, (int) round( ( 1 - $prod_sale / $min_reg ) * 100 ) ) );
+			update_post_meta( $product_id, '_nexxi_has_prod_sale', '1' );
+			update_post_meta( $product_id, '_nexxi_prod_sale_price', (string) round( $prod_sale ) );
+			update_post_meta( $product_id, '_nexxi_prod_sale_pct', (string) $pct );
+		} else {
+			update_post_meta( $product_id, '_nexxi_has_prod_sale', '0' );
+			delete_post_meta( $product_id, '_nexxi_prod_sale_price' );
+			delete_post_meta( $product_id, '_nexxi_prod_sale_pct' );
+		}
+		if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+			nexxi_kids_reset_sale_runtime_cache( $product_id );
+		}
+	}
+
+	/**
+	 * Hiển thị giá bán nhất quán với cửa hàng và công cụ Giảm Giá SP / Flash Sale.
+	 * Khắc phục điểm hạn chế của WC_Product_Variable::get_price_html() (tự ẩn giá gốc gạch ngang
+	 * khi sản phẩm có nhiều khung giá gốc theo size nhí/đại nhưng chung 1 mức giá sau giảm).
+	 */
+	private static function format_admin_price_html( WC_Product $p ) {
+		if ( function_exists( 'nexxi_kids_get_program_sale' ) ) {
+			$prog = nexxi_kids_get_program_sale( $p, 'combined' );
+			if ( ! empty( $prog['on_sale'] ) && (float) $prog['sale'] > 0 && (float) $prog['regular'] > (float) $prog['sale'] ) {
+				$pct   = (int) $prog['pct'];
+				$badge = $pct > 0 ? ' <span class="nxwpm-sale-pct">' . ( ! empty( $prog['flash_on_sale'] ) ? '⚡ ' : '' ) . '-' . $pct . '%</span>' : '';
+				return '<del>' . wc_price( (float) $prog['regular'] ) . '</del><ins>' . wc_price( (float) $prog['sale'] ) . '</ins>' . $badge;
+			}
+		}
+		if ( $p->is_on_sale() && function_exists( 'nexxi_kids_price_range' ) ) {
+			$range = nexxi_kids_price_range( $p );
+			if ( $range['min'] > 0 && $range['regular'] > $range['min'] ) {
+				$pct   = (int) round( ( 1 - $range['min'] / $range['regular'] ) * 100 );
+				$badge = $pct > 0 ? ' <span class="nxwpm-sale-pct">-' . $pct . '%</span>' : '';
+				return '<del>' . wc_price( (float) $range['regular'] ) . '</del><ins>' . wc_price( (float) $range['min'] ) . '</ins>' . $badge;
+			}
+		}
+		return $p->get_price_html();
 	}
 
 	/** Dữ liệu đầy đủ cho cửa sổ sửa sản phẩm. */
@@ -899,6 +1001,24 @@ final class Nexxi_Web_Product_Manager {
 				array( 'key' => '_sku', 'compare' => 'NOT EXISTS' ),
 				array( 'key' => '_sku', 'value' => '' ),
 			);
+		} elseif ( 'on_sale' === $extra || 'no_sale' === $extra ) {
+			$sale_ids = function_exists( 'nexxi_kids_all_sale_parent_ids' ) ? (array) nexxi_kids_all_sale_parent_ids() : ( function_exists( 'wc_get_product_ids_on_sale' ) ? (array) wc_get_product_ids_on_sale() : array() );
+			$sale_ids = array_values( array_filter( array_map( 'intval', $sale_ids ) ) );
+			if ( 'on_sale' === $extra ) {
+				if ( isset( $args['post__in'] ) ) {
+					$inter            = array_values( array_intersect( $args['post__in'], $sale_ids ) );
+					$args['post__in'] = $inter ? $inter : array( 0 );
+				} else {
+					$args['post__in'] = $sale_ids ? $sale_ids : array( 0 );
+				}
+			} elseif ( $sale_ids ) {
+				if ( isset( $args['post__in'] ) ) {
+					$diff             = array_values( array_diff( $args['post__in'], $sale_ids ) );
+					$args['post__in'] = $diff ? $diff : array( 0 );
+				} else {
+					$args['post__not_in'] = $sale_ids;
+				}
+			}
 		}
 		if ( $meta ) {
 			$args['meta_query'] = array_merge( array( 'relation' => 'AND' ), $meta ); // phpcs:ignore WordPress.DB.SlowDBQuery
@@ -989,7 +1109,7 @@ final class Nexxi_Web_Product_Manager {
 				'status'       => $p->get_status(),
 				'thumb'        => self::image_url( $p->get_image_id(), 'thumbnail' ),
 				'gallery'      => count( $p->get_gallery_image_ids() ),
-				'price_html'   => wp_kses_post( $p->get_price_html() ),
+				'price_html'   => wp_kses_post( self::format_admin_price_html( $p ) ),
 				'stock_status' => $p->get_stock_status(),
 				'stock'        => $managed ? $stock : null,
 				'variations'   => count( $children ),
@@ -1100,6 +1220,7 @@ final class Nexxi_Web_Product_Manager {
 			}
 			self::sync_parent_attrs( $id );
 			WC_Product_Variable::sync( $id );
+			self::sync_discount_meta_from_wc( $id );
 			wc_delete_product_transients( $id );
 		}
 		clean_post_cache( $id );
@@ -1535,6 +1656,7 @@ final class Nexxi_Web_Product_Manager {
 				self::sync_parent_attrs( $pid );
 			}
 			WC_Product_Variable::sync( $pid );
+			self::sync_discount_meta_from_wc( $pid );
 			wc_delete_product_transients( $pid );
 		}
 		$next = $offset + count( $slice );
@@ -1946,6 +2068,8 @@ final class Nexxi_Web_Product_Manager {
 					</select>
 					<select name="extra">
 						<option value="">Tất cả</option>
+						<option value="on_sale">🏷️ Đang giảm giá</option>
+						<option value="no_sale">⚪ Chưa giảm giá</option>
 						<option value="no_image">Thiếu ảnh đại diện</option>
 						<option value="no_seo">Chưa có Meta Description</option>
 						<option value="no_sku">Chưa có SKU</option>

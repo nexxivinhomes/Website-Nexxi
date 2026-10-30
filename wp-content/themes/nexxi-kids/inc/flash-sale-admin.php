@@ -172,6 +172,9 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 			update_post_meta( $pid, '_price', (string) round( $min_active_price ) );
 		}
 		update_post_meta( $pid, '_sale_price', $wc_sale > 0 ? (string) round( $wc_sale ) : '' );
+		if ( class_exists( 'WC_Product_Variable' ) ) {
+			WC_Product_Variable::sync( $pid );
+		}
 	} else {
 		$item_reg = (float) get_post_meta( $pid, '_regular_price', true );
 		if ( $item_reg <= 0 ) {
