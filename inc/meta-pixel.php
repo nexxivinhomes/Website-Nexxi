@@ -1,6 +1,6 @@
 <?php
 /**
- * NEXXI Kids — Meta Pixel (ID: 1019758880687993) & Sự kiện thương mại điện tử WooCommerce.
+ * NEXXI Kids — Meta Pixel (ID: 3331438223710770) & Sự kiện thương mại điện tử WooCommerce.
  *
  * 1. Gắn mã cơ sở Meta Pixel (PageView + <noscript>) vào giữa <head>...</head> trên mọi trang frontend.
  * 2. Tự động gửi các sự kiện chuẩn thương mại điện tử cho Meta Ads:
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'NEXXI_META_PIXEL_ID' ) ) {
-	define( 'NEXXI_META_PIXEL_ID', '1019758880687993' );
+	define( 'NEXXI_META_PIXEL_ID', '3331438223710770' );
 }
 
 /** Kiểm tra xem có plugin Pixel bên thứ 3 nào đang tự bắn sự kiện TMĐT hay không để tránh nhân đôi. */
