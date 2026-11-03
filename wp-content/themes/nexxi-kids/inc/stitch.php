@@ -26,7 +26,7 @@ add_filter( 'litespeed_optm_js_defer_exc', static function ( $list ) {
 	$list[] = 'NexxiStitch';
 	$list[] = 'fbevents.js';
 	$list[] = 'connect.facebook.net';
-	$list[] = '1019758880687993';
+	$list[] = '3331438223710770';
 	return $list;
 }, 999 );
 add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
@@ -39,7 +39,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261030_meta_pixel_v35';
+	$purge_ver = '20261103_meta_pixel_v36';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
