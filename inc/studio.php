@@ -187,6 +187,7 @@ function nexxi_studio_changed( $key ) {
 	if ( 'footer-col-1__t4' === $key && 'Đồ sơ sinh Organic' === $value ) { return null; }
 	$legacy_home_cats = array(
 		'home-categories__t2'  => 'Lối Nhỏ Vui Nhộn Cho Mẹ & Bé',
+		'home-categories__t3'  => 'Chọn Đồ Chuẩn Xinh Theo Độ Tuổi',
 		'home-categories__t4'  => 'Phân loại dễ dàng, từng bộ đồ được may đo vừa vặn với từng giai đoạn phát triển đầu đời của con',
 		'home-categories__t5'  => '0 - 12 Tháng',
 		'home-categories__t6'  => 'Bé Sơ Sinh Xinh',

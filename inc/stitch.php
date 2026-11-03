@@ -39,7 +39,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261103_meta_compliance_v37';
+	$purge_ver = '20261103_seo_p0_v38';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
@@ -203,6 +203,9 @@ add_action( 'init', static function () {
 					) );
 				}
 			}
+		}
+		if ( function_exists( 'nexxi_seo_run_p0_migration' ) ) {
+			nexxi_seo_run_p0_migration();
 		}
 		do_action( 'litespeed_purge_all' );
 		if ( class_exists( '\LiteSpeed\Purge' ) && method_exists( '\LiteSpeed\Purge', 'purge_all' ) ) {
@@ -626,7 +629,7 @@ function nexxi_kids_front_compliance_description( $desc ) {
 	if ( is_front_page() ) {
 		$trim = trim( (string) $desc );
 		if ( '' === $trim || 0 === strcasecmp( $trim, 'Phong cách khác, giá trị khác' ) ) {
-			return 'NEXXI — Website thương mại điện tử bán lẻ và bán sỉ thời trang may mặc thiết kế cảm hứng Hàn Quốc (12–45kg), dành riêng cho phụ huynh và đại lý kinh doanh từ 18 tuổi trở lên trên toàn quốc.';
+			return 'Thời trang trẻ em thiết kế NEXXI Kids (12–45kg): đầm bé gái, đồ bộ bé trai mềm mát. Bán lẻ & sỉ toàn quốc cho phụ huynh, đại lý 18+, đổi hàng 15 ngày.';
 		}
 	}
 	return $desc;
@@ -635,7 +638,7 @@ add_filter( 'wpseo_metadesc', 'nexxi_kids_front_compliance_description', 20 );
 add_filter( 'wpseo_opengraph_desc', 'nexxi_kids_front_compliance_description', 20 );
 add_filter( 'wpseo_schema_website', static function ( $data ) {
 	if ( is_array( $data ) && ( empty( $data['description'] ) || 0 === strcasecmp( trim( (string) $data['description'] ), 'Phong cách khác, giá trị khác' ) ) ) {
-		$data['description'] = 'NEXXI — Website thương mại điện tử bán lẻ và bán sỉ thời trang may mặc thiết kế cảm hứng Hàn Quốc (12–45kg), dành riêng cho phụ huynh và đại lý kinh doanh từ 18 tuổi trở lên trên toàn quốc.';
+		$data['description'] = 'Thời trang trẻ em thiết kế NEXXI Kids (12–45kg): đầm bé gái, đồ bộ bé trai mềm mát. Bán lẻ & sỉ toàn quốc cho phụ huynh, đại lý 18+, đổi hàng 15 ngày.';
 	}
 	return $data;
 }, 20 );

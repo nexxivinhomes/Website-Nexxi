@@ -8,23 +8,37 @@ function nexxi_kids_home_category_slugs() {
 }
 
 function nexxi_kids_stitch_home( $html ) {
-	$hero_order  = nexxi_studio_hero_slide_order();
-	$slides_html = '';
-	$first_found = false;
-	foreach ( $hero_order as $idx => $slot ) {
+	$hero_order   = nexxi_studio_hero_slide_order();
+	$slides_html  = '';
+	$first_found  = false;
+	$render_idx   = 0;
+	$in_customizer = function_exists( 'is_customize_preview' ) && is_customize_preview();
+	$hero_alts    = array(
+		1 => 'Thời trang trẻ em thiết kế Hàn Quốc NEXXI Kids – BST Đầm & Chân Váy',
+		2 => 'Thời trang trẻ em NEXXI Kids – BST Set Phối & Đồ Bộ Năng Động',
+		3 => 'Bộ sưu tập quần áo trẻ em thiết kế mới nhất NEXXI Kids',
+		4 => 'Trang phục cho bé 12–45kg mềm mát chuẩn phom NEXXI Kids',
+		5 => 'Banner ưu đãi thời trang trẻ em NEXXI Kids Fashion',
+	);
+	foreach ( $hero_order as $slot ) {
 		$url = nexxi_studio_hero_slide_url( $slot );
+		if ( '' === $url && ! $in_customizer ) {
+			continue;
+		}
 		$cls = 'nexxi-hero-bg__slide';
 		if ( '' === $url ) {
 			$cls .= ' is-empty';
 		} elseif ( ! $first_found ) {
-			$cls .= ' is-active';
+			$cls        .= ' is-active';
 			$first_found = true;
 		}
-		$loading = ( 0 === $idx ) ? ' loading="eager" fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"';
+		$loading = ( 0 === $render_idx && '' !== $url ) ? ' loading="eager" fetchpriority="high" decoding="async" data-no-lazy="1"' : ' loading="lazy" decoding="async"';
 		$srcset  = function_exists( 'nexxi_perf_srcset_attr_for_url' ) ? nexxi_perf_srcset_attr_for_url( $url, '100vw' ) : '';
-		$slides_html .= '<div class="' . esc_attr( $cls ) . '" data-hero-slide="' . (int) $idx . '" data-hero-slot="' . (int) $slot . '">'
-			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '"' . $srcset . ' alt="Banner NEXXI ' . (int) $slot . '"' . $loading . '>'
+		$alt_txt = isset( $hero_alts[ (int) $slot ] ) ? $hero_alts[ (int) $slot ] : ( 'Banner NEXXI Kids ' . (int) $slot );
+		$slides_html .= '<div class="' . esc_attr( $cls ) . '" data-hero-slide="' . (int) $render_idx . '" data-hero-slot="' . (int) $slot . '">'
+			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '"' . $srcset . ' alt="' . esc_attr( $alt_txt ) . '"' . $loading . '>'
 			. '</div>';
+		$render_idx++;
 	}
 	$html = nexxi_dom_set_attr( $html, 'data-nexxi-hero-slider', 'data-order', implode( ',', $hero_order ) );
 	$html = nexxi_dom_set_inner( $html, '<div class="nexxi-hero-bg__slides">', $slides_html );
