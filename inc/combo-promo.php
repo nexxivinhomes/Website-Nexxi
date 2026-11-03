@@ -496,47 +496,47 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 	}
 	$tiers_banner = implode(' · ', $tiers_text_parts );
 	?>
-	<div class="nexxi-combo-bill-box" style="margin:12px 0 16px;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,#fff8f5 0%,#fff 100%);border:2px dashed #fd6a49;box-shadow:0 4px 14px rgba(253,106,73,0.08);">
-		<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-			<div style="display:flex;align-items:center;gap:6px;font-weight:800;font-size:13.5px;color:#031444;">
-				<span style="background:#fd6a49;color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;letter-spacing:0.03em;">COMBO KHUYẾN MÃI</span>
-				<span>Cộng dồn Giảm Giá SP &amp; Flash Sale</span>
+	<div class="nexxi-combo-bill-box" style="width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;margin:8px 0 10px;padding:13px 14px;border-radius:14px;background:linear-gradient(135deg,#fff8f5 0%,#fff 100%);border:1.5px dashed #fd6a49;box-shadow:0 4px 14px rgba(253,106,73,0.08);">
+		<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-width:0;">
+			<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-weight:800;font-size:13px;color:#031444;min-width:0;">
+				<span style="background:#fd6a49;color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;letter-spacing:0.03em;white-space:nowrap;">COMBO KHUYẾN MÃI</span>
+				<span style="min-width:0;white-space:normal;">Cộng dồn Giảm Giá SP &amp; Flash Sale</span>
 			</div>
-			<span style="font-size:11.5px;font-weight:700;color:#ae3115;background:#ffdad2;padding:2px 9px;border-radius:999px;">
+			<span style="font-size:11px;font-weight:700;color:#ae3115;background:#ffdad2;padding:2px 9px;border-radius:999px;max-width:100%;white-space:normal;line-height:1.4;">
 				<?php echo esc_html( $tiers_banner ); ?>
 			</span>
 		</div>
 
 		<?php if ( ! empty( $res['combos'] ) ) : ?>
-			<div style="background:#e6f9ed;border:1px solid #86efac;color:#0b6b2f;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;margin-bottom:10px;">
+			<div style="background:#e6f9ed;border:1px solid #86efac;color:#0b6b2f;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;margin-bottom:10px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">
 				🎉 <strong>Đã áp dụng ưu đãi Combo trên hóa đơn (Tính trên giá sau giảm SP + Flash Sale):</strong>
 				Khách mua <strong><?php echo (int) $res['total_qty']; ?> món</strong> &rarr; Được áp
 				<strong><?php echo esc_html( implode( ' + ', $res['summary_labels'] ) ); ?></strong><?php if ( ! empty( $res['leftover_count'] ) ) : ?> và <strong><?php echo (int) $res['leftover_count']; ?> sản phẩm lẻ</strong><?php endif; ?>.
-				Tiết kiệm thêm: <strong style="color:#ae3115;font-size:13.5px;">-<?php echo esc_html( nexxi_kids_money( $res['total_discount'] ) ); ?></strong>!
+				Tiết kiệm thêm: <strong style="color:#ae3115;font-size:13.5px;white-space:nowrap;">-<?php echo esc_html( nexxi_kids_money( $res['total_discount'] ) ); ?></strong>!
 			</div>
 
 			<?php if ( 'checkout' === $context ) : ?>
 				<!-- Framed Combo Breakdown on Checkout Bill -->
-				<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+				<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;min-width:0;max-width:100%;">
 					<?php foreach ( $res['combos'] as $combo ) : ?>
-						<div style="border:1.5px solid #fd6a49;background:#fff;border-radius:10px;padding:9px 12px;position:relative;">
-							<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px dashed #ffdad2;">
-								<span style="font-weight:800;font-size:12px;color:#031444;">
+						<div style="width:100%;max-width:100%;box-sizing:border-box;border:1.5px solid #fd6a49;background:#fff;border-radius:10px;padding:9px 12px;position:relative;">
+							<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed #ffdad2;min-width:0;">
+								<span style="font-weight:800;font-size:12px;color:#031444;min-width:0;white-space:normal;line-height:1.4;">
 									📦 Khung Combo #<?php echo (int) $combo['index']; ?> (<?php echo (int) $combo['qty']; ?> sản phẩm · Giá sau giảm SP/FS: <?php echo esc_html( nexxi_kids_money( $combo['subtotal'] ) ); ?>)
 								</span>
-								<span style="background:#fd6a49;color:#fff;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px;">
+								<span style="background:#fd6a49;color:#fff;font-weight:800;font-size:11px;padding:2px 8px;border-radius:999px;max-width:100%;white-space:normal;line-height:1.35;">
 									<?php echo esc_html( $combo['badge_text'] ); ?> (-<?php echo esc_html( nexxi_kids_money( $combo['discount'] ) ); ?> &rarr; Còn <?php echo esc_html( nexxi_kids_money( $combo['total_after'] ) ); ?>)
 								</span>
 							</div>
-							<div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:#45464f;">
+							<div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#45464f;min-width:0;">
 								<?php foreach ( $combo['lines'] as $cline ) :
 									$c_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
 									?>
-									<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-										<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-											• <?php echo esc_html( $c_title ); ?> <strong>× <?php echo (int) $cline['qty_in_combo']; ?></strong>
+									<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;">
+										<span style="flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;">
+											• <?php echo esc_html( $c_title ); ?> <strong style="white-space:nowrap;color:#031444;">× <?php echo (int) $cline['qty_in_combo']; ?></strong>
 										</span>
-										<span style="white-space:nowrap;font-weight:700;color:#ae3115;font-size:12.5px;text-align:right;">
+										<span style="flex-shrink:0;white-space:nowrap;font-weight:700;color:#ae3115;font-size:12.5px;text-align:right;line-height:1.4;">
 											<?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?>
 										</span>
 									</div>
@@ -546,14 +546,14 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 					<?php endforeach; ?>
 
 					<?php if ( ! empty( $res['leftover_items'] ) ) : ?>
-						<div style="border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:12px;color:#475569;">
-							<div style="font-weight:700;color:#031444;margin-bottom:3px;">🛍️ Sản phẩm lẻ ngoài Combo (<?php echo (int) $res['leftover_count']; ?> món):</div>
+						<div style="width:100%;max-width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:12px;color:#475569;">
+							<div style="font-weight:700;color:#031444;margin-bottom:4px;">🛍️ Sản phẩm lẻ ngoài Combo (<?php echo (int) $res['leftover_count']; ?> món):</div>
 							<?php foreach ( $res['leftover_items'] as $litem ) :
 								$l_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
 								?>
-								<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-									<span>• <?php echo esc_html( $l_title ); ?> × <?php echo (int) $litem['qty_leftover']; ?></span>
-									<span style="font-weight:600;"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span>
+								<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;margin-top:3px;">
+									<span style="flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;">• <?php echo esc_html( $l_title ); ?> <strong style="white-space:nowrap;">× <?php echo (int) $litem['qty_leftover']; ?></strong></span>
+									<span style="flex-shrink:0;white-space:nowrap;font-weight:600;text-align:right;line-height:1.4;"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span>
 								</div>
 							<?php endforeach; ?>
 						</div>
@@ -563,7 +563,7 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 		<?php endif; ?>
 
 		<?php if ( ! empty( $res['next_tier_hint'] ) ) : ?>
-			<div style="margin-top:6px;font-size:12px;color:#9a3412;background:#ffedd5;border:1px solid #fed7aa;padding:6px 10px;border-radius:8px;font-weight:600;">
+			<div style="margin-top:6px;font-size:12px;color:#9a3412;background:#ffedd5;border:1px solid #fed7aa;padding:6px 10px;border-radius:8px;font-weight:600;white-space:normal;line-height:1.4;">
 				💡 <?php echo esc_html( $res['next_tier_hint'] ); ?>
 			</div>
 		<?php endif; ?>
@@ -616,7 +616,7 @@ add_action(
 	static function () {
 		$html = nexxi_kids_render_combo_bill_notice_html( 'checkout' );
 		if ( '' !== $html ) {
-			echo '<tr class="nexxi-combo-checkout-row"><td colspan="2" style="padding:6px 0;border:none;">' . $html . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			echo '<tr class="nexxi-combo-checkout-row"><td colspan="2" style="padding:8px 16px;border-top:1px dashed #e4e2de;max-width:100%;box-sizing:border-box;">' . $html . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		}
 	}
 );

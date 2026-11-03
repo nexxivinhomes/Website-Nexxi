@@ -63,16 +63,351 @@ body > header nav a span { white-space: nowrap !important; }
   body > header .hidden.md\\:flex { display: flex !important; width: 9rem !important; }
   body > header .w-10 { width: 2rem !important; height: 2rem !important; }
 }
-@media (min-width: 900px) {
-  .nexxi-stitch-commerce form.checkout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 18px 32px; align-items: start; }
-  .nexxi-stitch-commerce form.checkout #customer_details { grid-column: 1; grid-row: 1 / span 2; width: 100%; float: none; }
+.nexxi-stitch-commerce { overflow-x: clip; }
+.nexxi-stitch-commerce form.checkout,
+.nexxi-stitch-commerce form.checkout #customer_details,
+.nexxi-stitch-commerce form.checkout #customer_details .col-1,
+.nexxi-stitch-commerce form.checkout #customer_details .col-2,
+.nexxi-stitch-commerce form.checkout #order_review_heading,
+.nexxi-stitch-commerce form.checkout #order_review,
+.nexxi-stitch-commerce .woocommerce-checkout #payment {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  float: none !important;
+  width: 100%;
+}
+.nexxi-stitch-commerce form.checkout #order_review_heading {
+  font-size: 20px;
+  line-height: 1.3;
+  margin: 24px 0 12px;
+}
+@media (min-width: 960px) {
+  .nexxi-stitch-commerce form.checkout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+    gap: 14px 28px;
+    align-items: start;
+  }
+  .nexxi-stitch-commerce form.checkout #customer_details {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 100%;
+  }
   .nexxi-stitch-commerce form.checkout #customer_details .col-1,
-  .nexxi-stitch-commerce form.checkout #customer_details .col-2 { float: none; width: 100%; margin-bottom: 22px; }
-  .nexxi-stitch-commerce form.checkout #order_review_heading { grid-column: 2; grid-row: 1; margin: 0; }
-  .nexxi-stitch-commerce form.checkout #order_review { grid-column: 2; grid-row: 2; float: none; width: 100%; }
+  .nexxi-stitch-commerce form.checkout #customer_details .col-2 {
+    margin-bottom: 22px;
+  }
+  .nexxi-stitch-commerce form.checkout #order_review_heading {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+  .nexxi-stitch-commerce form.checkout #order_review {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+  }
+}
+@media (min-width: 1200px) {
+  .nexxi-stitch-commerce form.checkout {
+    grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
+    gap: 16px 36px;
+  }
 }
 .nexxi-stitch-commerce form.checkout #ship-to-different-address,
 .nexxi-stitch-commerce form.checkout .shipping_address { display: none !important; }
+
+/* Checkout Order Summary Table (#order_review table) — zero horizontal overflow, clean spacing */
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  border: 1px solid #e4e2de !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 30px rgba(3, 20, 68, 0.05) !important;
+  overflow: hidden;
+  margin: 0 0 20px !important;
+  box-sizing: border-box !important;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table thead th {
+  background: #fbf9f5;
+  color: #031444;
+  font-family: Quicksand, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 14px 18px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #e4e2de !important;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table thead th.product-name {
+  width: 68%;
+  text-align: left;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table thead th.product-total {
+  width: 32%;
+  text-align: right;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-name {
+  width: 68%;
+  padding: 13px 10px 13px 18px !important;
+  border: 0 !important;
+  border-top: 1px solid #f1efeb !important;
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #1b1c1a;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody tr:first-child td {
+  border-top: 0 !important;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-name .product-quantity {
+  color: #ae3115;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-total {
+  width: 32%;
+  padding: 13px 18px 13px 8px !important;
+  border: 0 !important;
+  border-top: 1px solid #f1efeb !important;
+  text-align: right !important;
+  vertical-align: top;
+  font-size: 13.5px;
+  line-height: 1.4;
+  white-space: normal !important;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-total del {
+  display: block;
+  margin-right: 0 !important;
+  margin-bottom: 2px;
+  font-size: 12px !important;
+  color: #94a3b8;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table .woocommerce-Price-amount {
+  white-space: nowrap;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot th {
+  padding: 12px 10px 12px 18px !important;
+  border: 0 !important;
+  border-top: 1px solid #e4e2de !important;
+  background: #ffffff;
+  color: #031444;
+  font-family: Quicksand, sans-serif;
+  font-weight: 700;
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: middle;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot td {
+  padding: 12px 18px 12px 8px !important;
+  border: 0 !important;
+  border-top: 1px solid #e4e2de !important;
+  background: #ffffff;
+  color: #031444;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: right !important;
+  white-space: normal !important;
+  vertical-align: middle;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.fee th,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.cart-discount th {
+  color: #0b6b2f;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.fee td,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.cart-discount td {
+  color: #ae3115;
+  font-weight: 800;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.nexxi-combo-checkout-row td {
+  padding: 10px 16px !important;
+  text-align: left !important;
+  border-top: 1px dashed #e4e2de !important;
+  overflow: hidden;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total th,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td {
+  background: #fff8f5 !important;
+  border-top: 2px solid #ffdad2 !important;
+  padding-top: 15px !important;
+  padding-bottom: 15px !important;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total th {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: #031444;
+}
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td .woocommerce-Price-amount {
+  font-family: Quicksand, sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  color: #ae3115;
+}
+
+/* Checkout Payment, Terms & Place Order Box (#payment) */
+.nexxi-stitch-commerce .woocommerce-checkout #payment {
+  background: #ffffff !important;
+  border: 1px solid #e4e2de !important;
+  border-radius: 24px !important;
+  padding: 20px 22px !important;
+  box-shadow: 0 8px 30px rgba(3, 20, 68, 0.05) !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment ul.wc_payment_methods {
+  padding: 0 0 16px !important;
+  margin: 0 0 16px !important;
+  border-bottom: 1px solid #eceae5 !important;
+  list-style: none !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment ul.wc_payment_methods li.wc_payment_method {
+  margin: 0 0 10px !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment ul.wc_payment_methods li.wc_payment_method:last-child {
+  margin-bottom: 0 !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment ul.wc_payment_methods li.wc_payment_method > input[type="radio"] {
+  accent-color: #fd6a49;
+  width: 16px;
+  height: 16px;
+  margin: 0 8px 0 0 !important;
+  vertical-align: middle;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment ul.wc_payment_methods li.wc_payment_method > label {
+  font-family: Quicksand, sans-serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #031444;
+  cursor: pointer;
+  display: inline;
+  vertical-align: middle;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment div.payment_box {
+  background: #fff8f5 !important;
+  color: #45464f !important;
+  border: 1px solid #ffdad2 !important;
+  border-radius: 14px !important;
+  padding: 12px 15px !important;
+  margin: 10px 0 0 !important;
+  font-size: 13.5px !important;
+  line-height: 1.5 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment div.payment_box::before {
+  display: none !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment div.payment_box p {
+  margin: 0 !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment div.form-row.place-order,
+.nexxi-stitch-commerce .woocommerce-checkout #payment .place-order {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-terms-and-conditions-wrapper {
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-privacy-policy-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #5c5e67;
+  margin: 0 !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-privacy-policy-text p {
+  margin: 0 !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-privacy-policy-text a,
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-terms-and-conditions-link {
+  color: #ae3115;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-terms-and-conditions-wrapper .validate-required {
+  margin: 0 !important;
+  padding: 11px 14px !important;
+  background: #fbf9f5;
+  border: 1px solid #e4e2de;
+  border-radius: 14px;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-terms-and-conditions-wrapper label.woocommerce-form__label-for-checkbox {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px;
+  margin: 0 !important;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #031444;
+  font-weight: 600;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .woocommerce-terms-and-conditions-wrapper input.woocommerce-form__input-checkbox,
+.nexxi-stitch-commerce .woocommerce-checkout #payment #terms {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  margin: 2px 0 0 !important;
+  accent-color: #fd6a49;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: static !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment .nexxi-checkout-adult-notice {
+  margin: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+  color: #64748b !important;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment #place_order {
+  width: 100% !important;
+  float: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 15px 24px !important;
+  margin: 2px 0 0 !important;
+  font-family: Quicksand, sans-serif;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em;
+  border-radius: 999px !important;
+  background: #fd6a49 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(253, 106, 73, 0.28);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+.nexxi-stitch-commerce .woocommerce-checkout #payment #place_order:hover {
+  background: #ae3115 !important;
+  box-shadow: 0 10px 24px rgba(174, 49, 21, 0.34);
+}
 
 /* Editor content (pages, product description) in Stitch typography. */
 .nexxi-prose { color: #45464f; font-size: 16px; line-height: 1.75; }
@@ -1021,10 +1356,32 @@ body.nexxi-mob-drawer-open {
   }
 
   /* Cart & Checkout tables on mobile */
-  .nexxi-stitch-commerce table.shop_table th,
-  .nexxi-stitch-commerce table.shop_table td {
+  .nexxi-stitch-commerce table.shop_table:not(.woocommerce-checkout-review-order-table) th,
+  .nexxi-stitch-commerce table.shop_table:not(.woocommerce-checkout-review-order-table) td {
     padding: 8px 6px !important;
     font-size: 13px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table thead th,
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-name,
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot th {
+    padding: 11px 8px 11px 14px !important;
+    font-size: 13px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tbody td.product-total,
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot td {
+    padding: 11px 14px 11px 6px !important;
+    font-size: 13px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.nexxi-combo-checkout-row td {
+    padding: 8px 10px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td,
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td .woocommerce-Price-amount {
+    font-size: 17.5px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce-checkout #payment {
+    padding: 16px 15px !important;
+    border-radius: 20px !important;
   }
 }
 
