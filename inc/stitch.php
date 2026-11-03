@@ -39,9 +39,21 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261103_meta_pixel_v36';
+	$purge_ver = '20261103_meta_compliance_v37';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
+			nexxi_kids_ensure_pages();
+			$priv_page = get_page_by_path( 'chinh-sach-bao-mat' );
+			if ( $priv_page instanceof WP_Post ) {
+				update_option( 'wp_page_for_privacy_policy', (int) $priv_page->ID );
+			}
+			$terms_page = get_page_by_path( 'dieu-khoan-su-dung' );
+			if ( $terms_page instanceof WP_Post && ! get_option( 'woocommerce_terms_page_id' ) ) {
+				update_option( 'woocommerce_terms_page_id', (int) $terms_page->ID );
+			}
+			flush_rewrite_rules( false );
+		}
 		if ( class_exists( 'Nexxi_SKU_SEO_Sync' ) ) {
 			Nexxi_SKU_SEO_Sync::maybe_auto_sync();
 		}
@@ -509,7 +521,11 @@ function nexxi_kids_stitch_footer( $html ) {
 		array( 'flash sale', nexxi_kids_flash_url() ),
 		array( 'size', home_url( '/#size-guide' ) ),
 		array( 'đổi trả', nexxi_kids_page_url( 'doi-tra' ) ),
+		array( 'đổi hàng', nexxi_kids_page_url( 'doi-tra' ) ),
 		array( 'bảo hành', nexxi_kids_page_url( 'doi-tra' ) . '#bao-hanh' ),
+		array( 'bảo mật', nexxi_kids_page_url( 'chinh-sach-bao-mat' ) ),
+		array( 'điều khoản', nexxi_kids_page_url( 'dieu-khoan-su-dung' ) ),
+		array( 'quy chế', nexxi_kids_page_url( 'dieu-khoan-su-dung' ) ),
 		array( 'tra cứu', $orders ),
 		array( 'faq', nexxi_kids_page_url( 'lien-he' ) . '#faq' ),
 		array( 'vận chuyển', nexxi_kids_page_url( 'van-chuyen' ) ),
@@ -591,8 +607,38 @@ function nexxi_kids_stitch_login_forms( $html ) {
 	if ( $chat ) {
 		$html = preg_replace( '~(<a\b[^>]*data-nexxi-login-zalo[^>]*href=")[^"]*(")~s', '$1' . esc_url( $chat ) . '$2', $html );
 	}
+	$html = preg_replace( '~(<a\b[^>]*data-nexxi-terms-link[^>]*href=")[^"]*(")~s', '$1' . esc_url( nexxi_kids_page_url( 'dieu-khoan-su-dung' ) ) . '$2', $html );
+	$html = preg_replace( '~(<a\b[^>]*data-nexxi-privacy-link[^>]*href=")[^"]*(")~s', '$1' . esc_url( nexxi_kids_page_url( 'chinh-sach-bao-mat' ) ) . '$2', $html );
 	return $html;
 }
+
+/** 18+ Adult Purchaser notice above WooCommerce Place Order button on Checkout. */
+add_action( 'woocommerce_review_order_before_submit', static function () {
+	$priv_url  = esc_url( nexxi_kids_page_url( 'chinh-sach-bao-mat' ) );
+	$terms_url = esc_url( nexxi_kids_page_url( 'dieu-khoan-su-dung' ) );
+	echo '<p class="nexxi-checkout-adult-notice font-label-sm text-label-sm text-on-surface-variant mb-3 leading-relaxed" style="font-size:12.5px;color:#475569;margin:0 0 12px;">'
+		. 'Bằng việc đặt hàng, Quý khách xác nhận mình <strong>từ đủ 18 tuổi trở lên</strong> và đồng ý với <a href="' . $priv_url . '" target="_blank" rel="noopener" style="color:#ae3115;text-decoration:underline;">Chính sách bảo mật</a> &amp; <a href="' . $terms_url . '" target="_blank" rel="noopener" style="color:#ae3115;text-decoration:underline;">Điều khoản mua hàng</a> của NEXXI.'
+		. '</p>';
+}, 5 );
+
+/** Clarify Adult-Operated Retail & Wholesale E-Commerce positioning in Homepage Meta Description & Schema JSON-LD. */
+function nexxi_kids_front_compliance_description( $desc ) {
+	if ( is_front_page() ) {
+		$trim = trim( (string) $desc );
+		if ( '' === $trim || 0 === strcasecmp( $trim, 'Phong cách khác, giá trị khác' ) ) {
+			return 'NEXXI — Website thương mại điện tử bán lẻ và bán sỉ thời trang may mặc thiết kế cảm hứng Hàn Quốc (12–45kg), dành riêng cho phụ huynh và đại lý kinh doanh từ 18 tuổi trở lên trên toàn quốc.';
+		}
+	}
+	return $desc;
+}
+add_filter( 'wpseo_metadesc', 'nexxi_kids_front_compliance_description', 20 );
+add_filter( 'wpseo_opengraph_desc', 'nexxi_kids_front_compliance_description', 20 );
+add_filter( 'wpseo_schema_website', static function ( $data ) {
+	if ( is_array( $data ) && ( empty( $data['description'] ) || 0 === strcasecmp( trim( (string) $data['description'] ), 'Phong cách khác, giá trị khác' ) ) ) {
+		$data['description'] = 'NEXXI — Website thương mại điện tử bán lẻ và bán sỉ thời trang may mặc thiết kế cảm hứng Hàn Quốc (12–45kg), dành riêng cho phụ huynh và đại lý kinh doanh từ 18 tuổi trở lên trên toàn quốc.';
+	}
+	return $data;
+}, 20 );
 
 /** Wrap WooCommerce shortcode output in the Stitch commerce main. */
 function nexxi_kids_stitch_commerce_main( $content, $heading = '' ) {

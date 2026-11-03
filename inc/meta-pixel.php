@@ -66,6 +66,9 @@ function nexxi_meta_pixel_print_head() {
 	if ( is_admin() || wp_doing_ajax() || is_feed() || defined( 'REST_REQUEST' ) ) {
 		return;
 	}
+	if ( function_exists( 'is_account_page' ) && is_account_page() && ! ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) ) {
+		return;
+	}
 	if ( defined( 'NEXXI_META_PIXEL_PRINTED' ) ) {
 		return;
 	}
