@@ -230,7 +230,7 @@ return array (
   array (
     'r' => 'home-categories',
     't' => 'text',
-    'd' => 'Chọn Đồ Chuẩn Xinh Theo Độ Tuổi',
+    'd' => 'NEXXI Kids Fashion – Thời Trang Trẻ Em Thiết Kế Hàn Quốc (12–45kg)',
     'l' => 'Tiêu đề khu vực',
     'g' => '',
   ),

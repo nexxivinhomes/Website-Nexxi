@@ -321,6 +321,75 @@ add_filter(
 // Tắt gợi ý tiện ích trả phí của WooCommerce Marketplace (gọi API ngoài & chèn thêm HTML vào trang SP / đơn hàng).
 add_filter( 'woocommerce_allow_marketplace_suggestions', '__return_false' );
 
+/**
+ * Chuẩn hóa Accessibility & SEO hình ảnh trên HTML cuối cùng (bỏ qua khối <script> và <style>):
+ * 1. Gắn aria-hidden="true" cho toàn bộ icon trang trí Material Symbols để tránh rác ligature với bot/screen reader.
+ * 2. Chuyển alt="logo.jpg" thành alt="NEXXI Kids Fashion" sau khi studio.php đã xử lý xong.
+ * 3. Bổ sung thuộc tính alt tiếng Việt chuẩn cho mọi thẻ <img> tĩnh còn thiếu alt thật (tránh nhầm với data-alt=).
+ */
+function nexxi_perf_polish_accessibility_and_seo( $html ) {
+	$parts = preg_split( '~(<script\b[^>]*>.*?</script\s*>|<style\b[^>]*>.*?</style\s*>)~is', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+	if ( ! is_array( $parts ) ) {
+		return $html;
+	}
+
+	$nxi_alts = array(
+		'shop-hero__i1'       => 'Bộ sưu tập trang phục trẻ em thiết kế Hàn Quốc NEXXI Kids',
+		'shop-hero__i2'       => 'Bé gái diện đầm thiết kế mềm mát NEXXI Kids Fashion',
+		'home-categories__i2' => 'Thời trang bé gái ngọt ngào 4-6 tuổi (16-22kg) NEXXI Kids',
+		'home-categories__i3' => 'Set phối năng động cá tính cho bé 6-9 tuổi (22-33kg) NEXXI Kids',
+		'home-categories__i4' => 'Thời trang bé lớn phong cách 9-12 tuổi (33-45kg) NEXXI Kids',
+		'home-lookbook__i1'   => 'Bộ sưu tập đầm xinh và chân váy chuẩn Hàn cho bé gái NEXXI Kids',
+		'home-lookbook__i2'   => 'Bộ sưu tập set phối và đồ bộ thun co giãn năng động cho bé NEXXI Kids',
+	);
+
+	foreach ( $parts as $idx => $chunk ) {
+		if ( 1 === ( $idx % 2 ) || '' === $chunk ) {
+			continue; // Giữ nguyên tuyệt đối nội dung bên trong <script> và <style>.
+		}
+
+		// 1. Thay thế alt="logo.jpg" -> alt="NEXXI Kids Fashion".
+		$chunk = preg_replace( '~(?<![a-zA-Z0-9_-])alt=(["\'])logo\.jpg\1~i', 'alt="NEXXI Kids Fashion"', $chunk );
+
+		// 2. Gắn aria-hidden="true" lên mọi thẻ <span class="...material-symbols-outlined..."> chưa có aria-hidden.
+		$chunk = preg_replace_callback(
+			'~<span\b[^>]*>~i',
+			static function ( $m ) {
+				$tag = $m[0];
+				if ( ! preg_match( '~(?<![a-zA-Z0-9_-])class=(["\'])[^"\']*material-symbols-(?:outlined|rounded)[^"\']*\1~i', $tag ) ) {
+					return $tag;
+				}
+				if ( preg_match( '~(?<![a-zA-Z0-9_-])aria-hidden\s*=~i', $tag ) ) {
+					return $tag;
+				}
+				return preg_replace( '~\s*(/?)>$~', ' aria-hidden="true"$1>', $tag, 1 );
+			},
+			$chunk
+		);
+
+		// 3. Bổ sung alt tiếng Việt cho mọi thẻ <img> thiếu thuộc tính alt thật (data-alt không phải alt).
+		$chunk = preg_replace_callback(
+			'~<img\b[^>]*>~i',
+			static function ( $m ) use ( $nxi_alts ) {
+				$tag = $m[0];
+				if ( preg_match( '~(?<![a-zA-Z0-9_-])alt\s*=~i', $tag ) ) {
+					return $tag;
+				}
+				$fallback_alt = 'Thời trang trẻ em thiết kế Hàn Quốc NEXXI Kids';
+				if ( preg_match( '~(?<![a-zA-Z0-9_-])data-nxi=(["\'])([^"\']+)\1~i', $tag, $nm ) && isset( $nxi_alts[ $nm[2] ] ) ) {
+					$fallback_alt = $nxi_alts[ $nm[2] ];
+				}
+				return preg_replace( '~\s*(/?)>$~', ' alt="' . esc_attr( $fallback_alt ) . '"$1>', $tag, 1 );
+			},
+			$chunk
+		);
+
+		$parts[ $idx ] = $chunk;
+	}
+
+	return implode( '', $parts );
+}
+
 /** Hậu xử lý toàn bộ HTML của màn hình Stitch trước khi gửi về trình duyệt. */
 function nexxi_perf_finalize_html( $html ) {
 	if ( ! is_string( $html ) || '' === $html || false === stripos( $html, '</head>' ) ) {
@@ -328,5 +397,6 @@ function nexxi_perf_finalize_html( $html ) {
 	}
 	$html = nexxi_perf_optimize_fonts( $html );
 	$html = nexxi_perf_prefer_webp( $html );
+	$html = nexxi_perf_polish_accessibility_and_seo( $html );
 	return $html;
 }
