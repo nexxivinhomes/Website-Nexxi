@@ -850,6 +850,7 @@ function nexxi_kids_account_dashboard( WP_User $user ) {
 		<span>Lưu sinh nhật bé</span>
 	</button>
 </form>
+<p class="mt-2 font-label-sm text-label-sm text-outline">Thông tin tùy chọn nội bộ dành riêng cho phụ huynh thành viên (18+) nhận ưu đãi sinh nhật từ NEXXI Club — tuyệt đối không chia sẻ cho bất kỳ công cụ quảng cáo hay bên thứ ba nào.</p>
 </section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm">
 <?php echo nexxi_kids_account_section_head( 'Mục 02', 'Đơn Hàng Gần Đây', $count ? '<a class="inline-flex items-center gap-1 font-label-md text-label-md text-secondary font-bold hover:underline self-start sm:self-auto" href="' . esc_url( $orders_url ) . '">Xem tất cả <span class="material-symbols-outlined text-[16px]">arrow_forward</span></a>' : '' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>

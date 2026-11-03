@@ -45,8 +45,65 @@ function nexxi_kids_page_content( $post ) {
 	return trim( wp_strip_all_tags( $content ) ) ? '<div class="bg-surface-container-lowest rounded-xl p-space-lg md:p-space-xl shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] nexxi-prose">' . $content . '</div>' : '';
 }
 
+/** Redirect standard English/Vietnamese legal URL aliases & guarantee zero-404 rendering for compliance pages. */
+function nexxi_kids_legal_route_guard() {
+	if ( is_admin() || ! is_404() ) {
+		return;
+	}
+	$req_path = isset( $_SERVER['REQUEST_URI'] ) ? trim( (string) wp_parse_url( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ), PHP_URL_PATH ), '/' ) : '';
+	$aliases  = array(
+		'privacy-policy'       => 'chinh-sach-bao-mat',
+		'privacy'              => 'chinh-sach-bao-mat',
+		'terms-of-service'     => 'dieu-khoan-su-dung',
+		'terms-and-conditions' => 'dieu-khoan-su-dung',
+		'terms'                => 'dieu-khoan-su-dung',
+		'dieu-khoan-dich-vu'   => 'dieu-khoan-su-dung',
+		'quy-che-hoat-dong'    => 'dieu-khoan-su-dung',
+	);
+	if ( isset( $aliases[ $req_path ] ) ) {
+		wp_safe_redirect( home_url( '/' . $aliases[ $req_path ] . '/' ), 301 );
+		exit;
+	}
+	if ( in_array( $req_path, array( 'chinh-sach-bao-mat', 'dieu-khoan-su-dung' ), true ) && function_exists( 'nexxi_kids_default_pages' ) ) {
+		$defs = nexxi_kids_default_pages();
+		if ( isset( $defs[ $req_path ] ) ) {
+			if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
+				nexxi_kids_ensure_pages();
+				flush_rewrite_rules( false );
+			}
+			global $wp_query;
+			if ( $wp_query ) {
+				$wp_query->is_404 = false;
+			}
+			status_header( 200 );
+			$GLOBALS['nexxi_virtual_legal_slug'] = $req_path;
+		}
+	}
+}
+add_action( 'template_redirect', 'nexxi_kids_legal_route_guard', 1 );
+
+/** Also filter <title> when rendering a virtual legal page before rewrite cache refreshes. */
+add_filter( 'pre_get_document_title', static function ( $title ) {
+	if ( ! empty( $GLOBALS['nexxi_virtual_legal_slug'] ) && function_exists( 'nexxi_kids_default_pages' ) ) {
+		$defs = nexxi_kids_default_pages();
+		$slug = $GLOBALS['nexxi_virtual_legal_slug'];
+		if ( isset( $defs[ $slug ]['title'] ) ) {
+			return $defs[ $slug ]['title'] . ' - ' . get_bloginfo( 'name' );
+		}
+	}
+	return $title;
+}, 99 );
+
 /** Main element for a page screen. */
 function nexxi_kids_page_main( $post = null ) {
+	if ( ! empty( $GLOBALS['nexxi_virtual_legal_slug'] ) && function_exists( 'nexxi_kids_default_pages' ) ) {
+		$defs = nexxi_kids_default_pages();
+		$slug = $GLOBALS['nexxi_virtual_legal_slug'];
+		if ( isset( $defs[ $slug ] ) ) {
+			$v_body = '<div class="bg-surface-container-lowest rounded-xl p-space-lg md:p-space-xl shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] nexxi-prose">' . apply_filters( 'the_content', $defs[ $slug ]['content'] ) . '</div>'; // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+			return nexxi_kids_page_shell( $defs[ $slug ]['title'], 'Chính Sách & Pháp Lý NEXXI', $v_body, 'Dành cho phụ huynh, người giám hộ hợp pháp và đối tác kinh doanh từ đủ 18 tuổi trở lên.' );
+		}
+	}
 	if ( is_404() ) {
 		return nexxi_kids_page_shell( 'Không tìm thấy trang', 'Lỗi 404', nexxi_kids_empty_state( 'Trang mẹ tìm không tồn tại', 'Đường dẫn có thể đã thay đổi hoặc trang đã bị gỡ. Mẹ quay lại cửa hàng để xem những mẫu mới nhất nhé.', 'Về cửa hàng', nexxi_kids_shop_url() ) );
 	}
@@ -66,8 +123,13 @@ function nexxi_kids_page_main( $post = null ) {
 		case 'wishlist':
 			return nexxi_kids_page_shell( $title, 'Tủ đồ mơ ước của bé', nexxi_kids_wishlist_body( $post ), $excerpt ? $excerpt : 'Những mẫu mẹ đã thả tim – lưu lại để chọn size và đặt hàng bất cứ lúc nào.' );
 	}
-	$body = nexxi_kids_page_content( $post );
-	return nexxi_kids_page_shell( $title, 'NEXXI Kids Boutique', $body ? $body : nexxi_kids_empty_state( 'Nội dung đang được cập nhật', 'NEXXI sẽ sớm bổ sung thông tin cho trang này.', 'Về trang chủ', home_url( '/' ) ), $excerpt );
+	$body    = nexxi_kids_page_content( $post );
+	$is_pol  = in_array( $post->post_name, array( 'chinh-sach-bao-mat', 'dieu-khoan-su-dung', 'doi-tra', 'van-chuyen' ), true );
+	$eyebrow = $is_pol ? 'Chính Sách & Pháp Lý NEXXI' : 'NEXXI';
+	if ( ! $excerpt && in_array( $post->post_name, array( 'chinh-sach-bao-mat', 'dieu-khoan-su-dung' ), true ) ) {
+		$excerpt = 'Áp dụng cho khách hàng là phụ huynh, người giám hộ hợp pháp và đối tác kinh doanh từ đủ 18 tuổi trở lên trên https://nexxi.vn.';
+	}
+	return nexxi_kids_page_shell( $title, $eyebrow, $body ? $body : nexxi_kids_empty_state( 'Nội dung đang được cập nhật', 'NEXXI sẽ sớm bổ sung thông tin cho trang này.', 'Về trang chủ', home_url( '/' ) ), $excerpt );
 }
 
 /** Stitch-designed About page (/gioi-thieu/): "NEXXI – Phong cách khác, giá trị khác". */
