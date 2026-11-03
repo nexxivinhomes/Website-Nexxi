@@ -39,7 +39,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261103_seo_p0_v38';
+	$purge_ver = '20261103_checkout_ui_v39';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
@@ -614,6 +614,55 @@ function nexxi_kids_stitch_login_forms( $html ) {
 	$html = preg_replace( '~(<a\b[^>]*data-nexxi-privacy-link[^>]*href=")[^"]*(")~s', '$1' . esc_url( nexxi_kids_page_url( 'chinh-sach-bao-mat' ) ) . '$2', $html );
 	return $html;
 }
+
+/** Default-check the WooCommerce Terms & Conditions checkbox on Checkout (and preserve manual user toggle across AJAX refreshes). */
+add_filter( 'woocommerce_terms_is_checked_default', static function () {
+	if ( isset( $_POST['post_data'] ) && is_string( $_POST['post_data'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$parsed_post = array();
+		parse_str( wp_unslash( $_POST['post_data'] ), $parsed_post ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		if ( isset( $parsed_post['terms-field'] ) ) {
+			return ! empty( $parsed_post['terms'] );
+		}
+	}
+	return true;
+}, 999 );
+
+/** Ensure Terms checkbox stays checked by default on Checkout load & after WooCommerce updated_checkout AJAX unless manually unchecked. */
+add_action( 'wp_footer', static function () {
+	if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || ( function_exists( 'is_wc_endpoint_url' ) && is_wc_endpoint_url( 'order-received' ) ) ) {
+		return;
+	}
+	?>
+	<script data-no-optimize="1" data-no-defer="1">
+	(function(){
+		var userToggledTerms = false;
+		function ensureTermsChecked() {
+			if (userToggledTerms) return;
+			var boxes = document.querySelectorAll('form.checkout input#terms, form.checkout input[name="terms"]');
+			for (var i = 0; i < boxes.length; i++) {
+				if (!boxes[i].checked) {
+					boxes[i].checked = true;
+				}
+			}
+		}
+		document.addEventListener('change', function(e) {
+			var t = e.target;
+			if (t && (t.id === 'terms' || t.name === 'terms')) {
+				userToggledTerms = true;
+			}
+		}, true);
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', ensureTermsChecked);
+		} else {
+			ensureTermsChecked();
+		}
+		if (window.jQuery) {
+			window.jQuery(document.body).on('init_checkout updated_checkout', ensureTermsChecked);
+		}
+	})();
+	</script>
+	<?php
+}, 30 );
 
 /** 18+ Adult Purchaser notice above WooCommerce Place Order button on Checkout. */
 add_action( 'woocommerce_review_order_before_submit', static function () {
