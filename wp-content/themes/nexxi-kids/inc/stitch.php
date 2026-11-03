@@ -39,7 +39,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261103_checkout_ui_v39';
+	$purge_ver = '20261103_pancake_cover_v40';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
