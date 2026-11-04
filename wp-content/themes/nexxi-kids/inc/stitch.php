@@ -39,9 +39,20 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261103_pancake_cover_v40';
+	$purge_ver = '20261104_pancake_sync_fix_v42';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
+		$up_dir = wp_upload_dir();
+		if ( ! empty( $up_dir['basedir'] ) ) {
+			$bad_php_cache = trailingslashit( $up_dir['basedir'] ) . 'nexxi-pancake-catalog-v4.php';
+			if ( file_exists( $bad_php_cache ) ) {
+				if ( function_exists( 'opcache_invalidate' ) ) {
+					@opcache_invalidate( $bad_php_cache, true );
+				}
+				@unlink( $bad_php_cache );
+			}
+		}
 		if ( function_exists( 'nexxi_kids_ensure_pages' ) ) {
 			nexxi_kids_ensure_pages();
 			$priv_page = get_page_by_path( 'chinh-sach-bao-mat' );
@@ -67,6 +78,23 @@ add_action( 'init', static function () {
 			@copy( $theme_pancake_file, $legacy_mgr_file );
 			if ( function_exists( 'opcache_invalidate' ) ) {
 				@opcache_invalidate( $legacy_mgr_file, true );
+			}
+		}
+		$legacy_mgr_main = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-pancake-manager/nexxi-pancake-manager.php' : '';
+		if ( $legacy_mgr_main && file_exists( $legacy_mgr_main ) && is_writable( $legacy_mgr_main ) ) {
+			$m_src = (string) @file_get_contents( $legacy_mgr_main );
+			if ( false !== strpos( $m_src, "require_once __DIR__ . '/includes/class-pancake-sync.php';" ) && false === strpos( $m_src, 'pancake-sync-admin.php' ) ) {
+				$m_src = str_replace(
+					"require_once __DIR__ . '/includes/class-pancake-sync.php';",
+					"if ( ! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' ) ) {
+	require_once __DIR__ . '/includes/class-pancake-sync.php';
+}",
+					$m_src
+				);
+				@file_put_contents( $legacy_mgr_main, $m_src );
+				if ( function_exists( 'opcache_invalidate' ) ) {
+					@opcache_invalidate( $legacy_mgr_main, true );
+				}
 			}
 		}
 		$commerce_main_file = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-kids-commerce/nexxi-kids-commerce.php' : '';
@@ -124,10 +152,11 @@ add_action( 'init', static function () {
 				if ( empty( $missing_vids ) ) {
 					continue;
 				}
-				if ( $min_valid_reg <= 0 && class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ) {
+				$pancake_cls = class_exists( 'Nexxi_Pancake_Sync_Manager_V5' ) ? 'Nexxi_Pancake_Sync_Manager_V5' : ( class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ? 'Nexxi_Pancake_Sync_Manager_V4' : '' );
+				if ( $min_valid_reg <= 0 && $pancake_cls ) {
 					if ( null === $p_maps ) {
-						$p_cat  = Nexxi_Pancake_Sync_Manager_V4::get_pancake_catalog( false );
-						$p_maps = Nexxi_Pancake_Sync_Manager_V4::build_lookup_maps( $p_cat );
+						$p_cat  = $pancake_cls::get_pancake_catalog( false );
+						$p_maps = $pancake_cls::build_lookup_maps( $p_cat );
 					}
 					$p_sku = strtoupper( trim( (string) ( get_post_meta( $pid, '_nexxi_pancake_sku', true ) ?: get_post_meta( $pid, '_sku', true ) ) ) );
 					if ( '' !== $p_sku && isset( $p_maps['by_sku'][ $p_sku ]['min_price'] ) ) {
