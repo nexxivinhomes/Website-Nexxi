@@ -41,7 +41,7 @@ function nexxi_kids_zalo_notify_settings( $force_refresh = false ) {
 		'enabled'              => (string) get_option( 'nexxi_zalo_notify_enabled', '1' ),
 		'bot_token'            => trim( (string) get_option( 'nexxi_zalo_bot_token', '' ) ),
 		'chat_ids'             => trim( (string) get_option( 'nexxi_zalo_chat_ids', '' ) ),
-		'send_photos'          => (string) get_option( 'nexxi_zalo_send_photos', '1' ),
+		'send_photos'          => (string) get_option( 'nexxi_zalo_send_photos', '0' ),
 		'webhook_url'          => trim( (string) get_option( 'nexxi_zalo_webhook_url', '' ) ),
 		'webhook_auto_add'     => (string) get_option( 'nexxi_zalo_webhook_auto_add', '0' ),
 		'scan_interval'        => (string) get_option( 'nexxi_zalo_scan_interval', '0' ),
@@ -486,7 +486,7 @@ function nexxi_kids_format_zalo_order_message( WC_Order $order ) {
 		if ( '' !== $img_url && 0 === strpos( $img_url, 'http' ) ) {
 			$photos[] = array(
 				'photo'   => $img_url,
-				'caption' => '#' . $order_number . ' • SP ' . $idx . ': ' . $sku_tag . $name . ' (' . $variant_str . ') — SL: x' . $qty,
+				'caption' => '#' . $order_number . ' • Ảnh SP ' . $idx . ' (SL: x' . $qty . ')',
 			);
 		}
 
@@ -519,9 +519,7 @@ function nexxi_kids_format_zalo_order_message( WC_Order $order ) {
 		$lines[] = '📝 Ghi chú của khách: ' . $customer_note;
 	}
 	$lines[] = '────────────────────';
-	$lines[] = '🛍️ SẢN PHẨM CẦN NHẶT (' . $total_qty . ' món):';
-	$lines[] = implode( "\n", $items_lines );
-	$lines[] = '────────────────────';
+	$lines[] = '🛍️ Tổng SL cần nhặt: ' . $total_qty . ' sản phẩm';
 	if ( '' !== $discount_str ) {
 		$lines[] = '🏷️ Giảm giá: ' . $discount_str;
 	}
@@ -806,8 +804,7 @@ function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $
 		}
 
 		if ( $idx <= $max_detailed ) {
-			$line_block  = $idx . '. Đơn #' . $order_number . ' (' . $order_time . ') — ' . ( '' !== $recipient ? $recipient : 'Khách lẻ' ) . ( '' !== $phone ? ' - ' . $phone : '' );
-			$line_block .= "\n   • SP (" . $ord_qty . ' món): ' . implode( '; ', $item_brief );
+			$line_block = $idx . '. Đơn #' . $order_number . ' (' . $order_time . ') — ' . ( '' !== $recipient ? $recipient : 'Khách lẻ' ) . ( '' !== $phone ? ' - ' . $phone : '' );
 			if ( '' !== $full_addr ) {
 				$line_block .= "\n   • Đ/c: " . $full_addr;
 			}
@@ -1384,22 +1381,33 @@ add_action(
 				wp_send_json_error( array( 'message' => 'Chưa có Chat ID người nhận nào. Hãy nhắn tin cho Bot trên Zalo rồi bấm "🔍 Quét & Lấy Chat ID tự động" trước nhé!' ) );
 			}
 
-			$test_text = "📦 [TEST] ĐƠN HÀNG MỚI #9999 — KHO XỬ LÝ ĐÓNG HÀNG\n"
-				. "⏰ Thời gian: " . wp_date( 'H:i - d/m/Y' ) . "\n"
-				. "────────────────────\n"
-				. "👤 Người nhận: Mẹ Thanh Thảo (Đơn Test)\n"
-				. "📞 Điện thoại: 0942 958 091\n"
-				. "📍 Địa chỉ giao: 53 Bà Huyện Thanh Quan, Phường Xuân Hòa, TP. Hồ Chí Minh\n"
-				. "💳 Thanh toán: Thanh toán khi nhận hàng (COD)\n"
-				. "────────────────────\n"
-				. "🛍️ SẢN PHẨM CẦN NHẶT (2 món):\n"
-				. "1. [SKU: V1365] Đầm Bé Gái Hàn Quốc NEXXI\n"
-				. "   • Phân loại: Màu: Hồng | Size: 2 (14-16kg)\n"
-				. "   • Số lượng: x2  —  350.000đ\n"
-				. "────────────────────\n"
-				. "🚚 Phí ship: Miễn phí\n"
-				. "💰 TỔNG ĐƠN: 350.000đ\n"
-				. "✅ Kết nối Bot Zalo Kho NEXXI hoạt động thành công!";
+			if ( (int) $cfg['scan_interval'] > 0 ) {
+				$test_from = time() - ( (int) $cfg['scan_interval'] * 60 ) + 60;
+				$test_text = "🔔 [TEST] BÁO CÁO ĐƠN HÀNG MỚI ĐỢT QUÉT\n"
+					. '⏰ Khung giờ quét: ' . wp_date( 'H:i', $test_from ) . ' ➔ ' . wp_date( 'H:i (d/m/Y)' ) . "\n"
+					. "📦 Phát sinh mới: 1 ĐƠN HÀNG\n"
+					. "🛍️ Tổng SL cần nhặt: 2 sản phẩm  |  💰 Tổng: 350.000đ\n"
+					. "────────────────────\n"
+					. '1. Đơn #9999 (' . wp_date( 'H:i' ) . ") — Mẹ Thanh Thảo (Đơn Test) - 0942958091\n"
+					. "   • Đ/c: 53 Bà Huyện Thanh Quan, Phường Xuân Hòa, TP. Hồ Chí Minh\n"
+					. "   • Tổng: 350.000đ (Thanh toán khi nhận hàng (COD))\n"
+					. "────────────────────\n"
+					. "👉 Kho vui lòng kiểm tra và xử lý đóng hàng cho 1 đơn trên!\n"
+					. '🔗 Quản lý đơn Web: ' . admin_url( 'edit.php?post_type=shop_order' );
+			} else {
+				$test_text = "📦 [TEST] ĐƠN HÀNG MỚI #9999 — KHO XỬ LÝ ĐÓNG HÀNG\n"
+					. '⏰ Thời gian: ' . wp_date( 'H:i - d/m/Y' ) . "\n"
+					. "────────────────────\n"
+					. "👤 Người nhận: Mẹ Thanh Thảo (Đơn Test)\n"
+					. "📞 Điện thoại: 0942 958 091\n"
+					. "📍 Địa chỉ giao: 53 Bà Huyện Thanh Quan, Phường Xuân Hòa, TP. Hồ Chí Minh\n"
+					. "💳 Thanh toán: Thanh toán khi nhận hàng (COD)\n"
+					. "────────────────────\n"
+					. "🛍️ Tổng SL cần nhặt: 2 sản phẩm\n"
+					. "🚚 Phí ship: Miễn phí\n"
+					. "💰 TỔNG ĐƠN: 350.000đ\n"
+					. '✅ Kết nối Bot Zalo Kho NEXXI hoạt động thành công!';
+			}
 
 			$sent_cnt = 0;
 			$errs     = array();
@@ -1537,7 +1545,7 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 			</div>
 			<h1 style="color:#fff;margin:0 0 6px;font-size:24px;font-weight:800;">🔔 Thông Báo Đơn Hàng Mới Qua Bot Zalo Cho Kho</h1>
 			<p style="margin:0;color:rgba(255,255,255,0.88);font-size:14px;line-height:1.5;">
-				Tự động bắn phiếu nhặt hàng chi tiết (Mã đơn, SĐT, Địa chỉ, Mã SKU, Màu/Size, Số lượng và Ảnh sản phẩm) vào Zalo của Kho ngay khi khách vừa đặt đơn trên Website.
+				Tự động gửi thông báo đơn hàng mới (Mã đơn, Khách hàng, SĐT, Địa chỉ giao, Tổng đơn &amp; Thanh toán) vào Zalo của Kho khi có đơn hàng mới trên Website.
 			</p>
 		</div>
 
