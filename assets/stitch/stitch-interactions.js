@@ -21,13 +21,13 @@
       box.setAttribute('aria-live', 'polite');
       document.body.appendChild(box);
     }
-    box.className = 'nexxi-toast' + (options.error ? ' nexxi-toast--error' : '');
+    box.className = 'nexxi-toast' + (options.error ? ' nexxi-toast--error' : '') + (options.link ? ' nexxi-toast--has-link' : '');
     box.replaceChildren();
     const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined';
-    icon.style.fontSize = '18px';
+    icon.className = 'material-symbols-outlined nexxi-toast__icon';
     icon.textContent = options.icon || (options.error ? 'error' : 'check_circle');
     const text = document.createElement('span');
+    text.className = 'nexxi-toast__text';
     text.textContent = message;
     box.append(icon, text);
     if (options.link) {
@@ -60,7 +60,7 @@
     return data;
   };
   const busy = (button, state) => { if (button) { button.classList.toggle('is-loading', state); button.setAttribute('aria-busy', state ? 'true' : 'false'); } };
-  const addedToast = name => toast(`Đã thêm “${name}” vào giỏ hàng`, {icon: 'shopping_bag', link: {href: config.cart, label: 'Xem giỏ'}});
+  const addedToast = () => toast('Đã thêm vào giỏ hàng', {icon: 'check_circle', duration: 2200});
   const failedToast = error => {
     toast('Mẫu này vừa hết hàng hoặc chưa thể thêm, mẹ thử chọn size khác nhé.', {error: true, duration: 4200});
     return error;

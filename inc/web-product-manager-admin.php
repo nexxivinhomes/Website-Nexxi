@@ -505,8 +505,9 @@ final class Nexxi_Web_Product_Manager {
 		if ( $aid ) {
 			return (int) $aid;
 		}
-		if ( class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) && method_exists( 'Nexxi_Pancake_Sync_Manager_V4', 'sideload_pancake_image' ) ) {
-			$res = Nexxi_Pancake_Sync_Manager_V4::sideload_pancake_image( $url, $parent_id, $title );
+		$sync_mgr_cls = class_exists( 'Nexxi_Pancake_Sync_Manager_V5' ) ? 'Nexxi_Pancake_Sync_Manager_V5' : ( class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ? 'Nexxi_Pancake_Sync_Manager_V4' : '' );
+		if ( $sync_mgr_cls && method_exists( $sync_mgr_cls, 'sideload_pancake_image' ) ) {
+			$res = $sync_mgr_cls::sideload_pancake_image( $url, $parent_id, $title );
 			if ( ! is_wp_error( $res ) && (int) $res > 0 ) {
 				return (int) $res;
 			}
