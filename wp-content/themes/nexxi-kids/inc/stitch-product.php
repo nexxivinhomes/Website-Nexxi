@@ -23,8 +23,9 @@ function nexxi_kids_product_config( WC_Product $product ) {
 	$vars  = Nexxi_Kids_Catalog::variation_payload( $product );
 	$color_img_lookup = array();
 	foreach ( $vars as &$v ) {
-		$v['regular'] = (float) $prog['regular'];
-		$v['price']   = (float) $prog['sale'];
+		$vr           = isset( $v['regular'] ) && (float) $v['regular'] > 0 ? (float) $v['regular'] : (float) $prog['regular'];
+		$v['regular'] = $vr;
+		$v['price']   = ! empty( $prog['on_sale'] ) ? nexxi_kids_calc_combined_variation_price( $vr, $prog ) : $vr;
 		$vid_thumb    = (int) get_post_meta( $v['id'], '_thumbnail_id', true );
 		if ( $vid_thumb > 0 ) {
 			$full_url = wp_get_attachment_image_url( $vid_thumb, 'woocommerce_single' );
@@ -262,7 +263,12 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 	} else {
 		$stock = 'Còn hàng – giao ngay';
 	}
-	$price = nexxi_kids_money( $prog['sale'] );
+	$price = ( ! empty( $prog['max_sale'] ) && round( (float) $prog['max_sale'] ) > round( (float) $prog['sale'] ) )
+		? nexxi_kids_money( $prog['sale'] ) . ' – ' . nexxi_kids_money( $prog['max_sale'] )
+		: nexxi_kids_money( $prog['sale'] );
+	$reg_display = ( ! empty( $prog['max_regular'] ) && round( (float) $prog['max_regular'] ) > round( (float) $prog['regular'] ) )
+		? nexxi_kids_money( $prog['regular'] ) . ' – ' . nexxi_kids_money( $prog['max_regular'] )
+		: nexxi_kids_money( $prog['regular'] );
 	$advisor_title = 'Nhập cân nặng &amp; chiều cao để mẹ an tâm vừa vặn';
 	ob_start(); ?>
 <div class="space-y-space-xs">
@@ -283,7 +289,7 @@ function nexxi_kids_pdp_panel( WC_Product $product, $services ) {
 <div>
 <div class="flex items-baseline gap-space-xs flex-wrap">
 <span class="font-display-lg text-display-lg text-secondary font-bold leading-none" data-nexxi-price><?php echo esc_html( $price ); ?></span>
-<span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( nexxi_kids_money( $prog['regular'] ) ); ?></span>
+<span class="font-body-md text-body-md text-outline line-through<?php echo $on_sale ? '' : ' hidden'; ?>" data-nexxi-regular><?php echo esc_html( $reg_display ); ?></span>
 <span class="bg-secondary-container text-on-secondary font-label-sm text-label-sm px-2 py-0.5 rounded-full font-bold ml-1<?php echo $discount ? '' : ' hidden'; ?>" data-nexxi-discount>-<?php echo (int) $discount; ?>%</span>
 </div>
 <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Cam kết đúng mô tả • Hỗ trợ 15 ngày đổi hàng</p>

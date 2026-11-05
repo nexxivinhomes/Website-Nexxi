@@ -39,7 +39,7 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261104_pancake_sync_fix_v42';
+	$purge_ver = '20261105_var_pct_discount_fix_v43';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
@@ -187,7 +187,8 @@ add_action( 'init', static function () {
 		foreach ( (array) $fs_pids as $fpid ) {
 			$fpid = (int) $fpid;
 			$fsp  = (float) get_post_meta( $fpid, '_nexxi_fs_sale_price', true );
-			if ( $fsp <= 0 ) {
+			$fpct = (int) get_post_meta( $fpid, '_nexxi_fs_sale_pct', true );
+			if ( $fsp <= 0 && $fpct <= 0 ) {
 				update_post_meta( $fpid, '_nexxi_is_flash_sale', '0' );
 			}
 		}
@@ -242,6 +243,56 @@ add_action( 'init', static function () {
 		}
 	}
 }, 5 );
+
+/**
+ * One-time normalization of multi-price variable product discounts (e.g. 140k / 280k / 300k - 40% -> 84k / 168k / 180k).
+ * Runs at init priority 20 after WooCommerce post types and product data stores are fully registered.
+ */
+add_action( 'init', static function () {
+	if ( '1' === (string) get_option( 'nexxi_sale_var_pct_fix_v1', '0' ) ) {
+		return;
+	}
+	if ( ! function_exists( 'wc_get_product' ) || ! function_exists( 'nexxi_kids_resync_product_sale_prices' ) ) {
+		return;
+	}
+	update_option( 'nexxi_sale_var_pct_fix_v1', '1', true );
+
+	global $wpdb;
+	$sale_pids = $wpdb->get_col(
+		"SELECT DISTINCT p.ID
+		 FROM {$wpdb->posts} p
+		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+		 WHERE p.post_type = 'product'
+		   AND pm.meta_key IN ('_nexxi_has_prod_sale', '_nexxi_is_flash_sale')
+		   AND pm.meta_value = '1'"
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+	if ( ! empty( $sale_pids ) ) {
+		$sale_pids   = array_values( array_unique( array_filter( array_map( 'absint', (array) $sale_pids ) ) ) );
+		$any_changed = false;
+		foreach ( array_chunk( $sale_pids, 100 ) as $chunk ) {
+			update_meta_cache( 'post', $chunk );
+			foreach ( $chunk as $spid ) {
+				if ( nexxi_kids_resync_product_sale_prices( $spid ) ) {
+					$any_changed = true;
+				}
+			}
+		}
+		if ( $any_changed ) {
+			delete_transient( 'wc_products_onsale' );
+			if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+				nexxi_kids_reset_sale_runtime_cache();
+			}
+			if ( function_exists( 'nexxi_kids_flush_sale_cache' ) ) {
+				nexxi_kids_flush_sale_cache();
+			}
+			do_action( 'litespeed_purge_all' );
+			if ( class_exists( '\LiteSpeed\Purge' ) && method_exists( '\LiteSpeed\Purge', 'purge_all' ) ) {
+				\LiteSpeed\Purge::purge_all();
+			}
+		}
+	}
+}, 20 );
 
 /** Pre-compiled static Tailwind CSS tag inlined into <head> for zero-FOUC rendering. */
 function nexxi_kids_stitch_compiled_tailwind_tag() {

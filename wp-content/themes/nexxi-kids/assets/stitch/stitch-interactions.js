@@ -489,6 +489,24 @@
       if (targetImg) showImage(targetImg);
 
       if (!v) {
+        const partial = Object.values(state.attrs).some(Boolean) ? variations.filter(x => fits(x, state.attrs)) : [];
+        if (partial.length) {
+          const minP = Math.min(...partial.map(x => Number(x.price) || 0));
+          const maxP = Math.max(...partial.map(x => Number(x.price) || 0));
+          const minR = Math.min(...partial.map(x => Number(x.regular) || 0));
+          const maxR = Math.max(...partial.map(x => Number(x.regular) || 0));
+          const pOnSale = minR > minP || maxR > maxP;
+          const pPct = pOnSale && minR > 0 ? '-' + Math.round((1 - minP / minR) * 100) + '%' : defaults.discount;
+          if (priceEl) priceEl.textContent = Math.round(maxP) > Math.round(minP) ? `${money(minP)} – ${money(maxP)}` : money(minP);
+          if (regularEl) {
+            regularEl.textContent = Math.round(maxR) > Math.round(minR) ? `${money(minR)} – ${money(maxR)}` : money(minR);
+            regularEl.classList.toggle('hidden', !pOnSale);
+          }
+          if (discountEl) { discountEl.textContent = pPct; discountEl.classList.toggle('hidden', !pOnSale); }
+          if (galleryDiscountEl) { galleryDiscountEl.textContent = pPct; galleryDiscountEl.classList.toggle('hidden', !pOnSale); }
+          if (stockEl) stockEl.textContent = defaults.stock;
+          return;
+        }
         if (priceEl) priceEl.textContent = defaults.price;
         if (regularEl) { regularEl.textContent = defaults.regular; regularEl.classList.toggle('hidden', defaults.regularHidden); }
         if (discountEl) { discountEl.textContent = defaults.discount; discountEl.classList.toggle('hidden', defaults.discountHidden); }

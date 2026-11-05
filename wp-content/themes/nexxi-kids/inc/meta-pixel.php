@@ -239,6 +239,12 @@ function nexxi_meta_pixel_content_id( $product ) {
 
 /** Lấy giá bán thực tế sau giảm (Giảm Giá SP + Flash Sale) của sản phẩm. */
 function nexxi_meta_pixel_effective_price( WC_Product $product ) {
+	if ( $product->is_type( 'variation' ) && function_exists( 'nexxi_kids_get_cart_item_effective_prices' ) ) {
+		$eff = nexxi_kids_get_cart_item_effective_prices( $product );
+		if ( ! empty( $eff['effective_price'] ) && (float) $eff['effective_price'] > 0 ) {
+			return (float) round( (float) $eff['effective_price'] );
+		}
+	}
 	$target = $product;
 	if ( $product->is_type( 'variation' ) && $product->get_parent_id() ) {
 		$parent = wc_get_product( $product->get_parent_id() );

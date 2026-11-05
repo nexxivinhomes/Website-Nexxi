@@ -48,68 +48,80 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 
 	$is_flash = ( '1' === (string) $flash_flag || 'flash' === (string) $flash_flag );
 
-	// Determine base regular price (and optionally update it across variations)
-	$range = nexxi_kids_price_range( $product );
-	$reg   = (float) $range['regular'];
-	if ( $reg <= 0 ) {
-		$reg = (float) $range['min'];
+	// Determine base regular price range (and optionally update it across variations)
+	$range   = nexxi_kids_price_range( $product );
+	$min_reg = ! empty( $range['min_regular'] ) ? (float) $range['min_regular'] : (float) $range['regular'];
+	if ( $min_reg <= 0 ) {
+		$min_reg = (float) $range['min'];
 	}
-	if ( $reg <= 0 ) {
-		$reg = (float) get_post_meta( $pid, '_regular_price', true );
+	if ( $min_reg <= 0 ) {
+		$min_reg = (float) get_post_meta( $pid, '_regular_price', true );
 	}
-	if ( $reg <= 0 ) {
-		$reg = (float) get_post_meta( $pid, '_price', true );
+	if ( $min_reg <= 0 ) {
+		$min_reg = (float) get_post_meta( $pid, '_price', true );
 	}
+	$max_reg = ! empty( $range['max_regular'] ) && (float) $range['max_regular'] >= $min_reg ? (float) $range['max_regular'] : $min_reg;
 	if ( $regular_override > 0 ) {
-		$reg = (float) $regular_override;
+		$min_reg = (float) $regular_override;
+		$max_reg = (float) $regular_override;
 	}
+	$reg = $min_reg;
 
-	// Calculate target sale price for this program
-	$target_sale = 0.0;
-	if ( 'clear' !== $mode && $amount > 0 && $reg > 0 ) {
-		if ( 'percent' === $mode ) {
-			$pct         = min( 95, max( 1, (float) $amount ) );
-			$target_sale = round( $reg * ( 100 - $pct ) / 100, -3 ); // Round to nearest 1.000₫
-			if ( $target_sale <= 0 || $target_sale >= $reg ) {
-				$target_sale = max( 1000, round( $reg * ( 100 - $pct ) / 100 ) );
-			}
-		} elseif ( 'amount_off' === $mode ) {
-			$target_sale = max( 1000, $reg - (float) $amount );
-		} else {
-			$target_sale = (float) $amount;
-		}
-		if ( $target_sale >= $reg ) {
-			$target_sale = 0.0;
-		}
+	$eff_mode = in_array( $mode, array( 'percent', 'amount_off', 'fixed', 'clear' ), true ) ? $mode : 'fixed';
+
+	// Calculate target sale price for this program (evaluated at min_reg, and max_reg for fixed đồng giá)
+	$target_sale     = 0.0;
+	$target_max_sale = 0.0;
+	if ( 'clear' !== $eff_mode && $amount > 0 && $max_reg > 0 ) {
+		$target_sale     = nexxi_kids_calc_discounted_price_for_regular( $min_reg, $eff_mode, $amount );
+		$target_max_sale = nexxi_kids_calc_discounted_price_for_regular( $max_reg, $eff_mode, $amount );
 	}
+	$save_price = $target_sale > 0 ? $target_sale : $target_max_sale;
+	$ref_reg    = $target_sale > 0 ? $min_reg : $max_reg;
 
 	// Save program-specific meta without overwriting the other program!
 	if ( $is_flash ) {
-		if ( $target_sale > 0 ) {
-			$applied_pct = ( 'percent' === $mode && $amount >= 1 && $amount <= 95 )
+		if ( $save_price > 0 && $ref_reg > 0 ) {
+			$applied_pct = ( 'percent' === $eff_mode && $amount >= 1 && $amount <= 95 )
 				? (int) round( (float) $amount )
-				: (int) round( ( 1 - $target_sale / $reg ) * 100 );
+				: (int) round( ( 1 - $save_price / $ref_reg ) * 100 );
 			update_post_meta( $pid, '_nexxi_is_flash_sale', '1' );
-			update_post_meta( $pid, '_nexxi_fs_sale_price', (string) round( $target_sale ) );
+			update_post_meta( $pid, '_nexxi_fs_sale_mode', $eff_mode );
+			update_post_meta( $pid, '_nexxi_fs_sale_price', (string) round( $save_price ) );
 			update_post_meta( $pid, '_nexxi_fs_sale_pct', (string) $applied_pct );
+			if ( 'amount_off' === $eff_mode ) {
+				update_post_meta( $pid, '_nexxi_fs_sale_amount', (string) round( (float) $amount ) );
+			} else {
+				delete_post_meta( $pid, '_nexxi_fs_sale_amount' );
+			}
 		} else {
 			update_post_meta( $pid, '_nexxi_is_flash_sale', '0' );
+			delete_post_meta( $pid, '_nexxi_fs_sale_mode' );
 			delete_post_meta( $pid, '_nexxi_fs_sale_price' );
 			delete_post_meta( $pid, '_nexxi_fs_sale_pct' );
+			delete_post_meta( $pid, '_nexxi_fs_sale_amount' );
 		}
 	} else {
 		// Regular Product Discount program (🏷️ Giảm Giá SP)
-		if ( $target_sale > 0 ) {
-			$applied_pct = ( 'percent' === $mode && $amount >= 1 && $amount <= 95 )
+		if ( $save_price > 0 && $ref_reg > 0 ) {
+			$applied_pct = ( 'percent' === $eff_mode && $amount >= 1 && $amount <= 95 )
 				? (int) round( (float) $amount )
-				: (int) round( ( 1 - $target_sale / $reg ) * 100 );
+				: (int) round( ( 1 - $save_price / $ref_reg ) * 100 );
 			update_post_meta( $pid, '_nexxi_has_prod_sale', '1' );
-			update_post_meta( $pid, '_nexxi_prod_sale_price', (string) round( $target_sale ) );
+			update_post_meta( $pid, '_nexxi_prod_sale_mode', $eff_mode );
+			update_post_meta( $pid, '_nexxi_prod_sale_price', (string) round( $save_price ) );
 			update_post_meta( $pid, '_nexxi_prod_sale_pct', (string) $applied_pct );
+			if ( 'amount_off' === $eff_mode ) {
+				update_post_meta( $pid, '_nexxi_prod_sale_amount', (string) round( (float) $amount ) );
+			} else {
+				delete_post_meta( $pid, '_nexxi_prod_sale_amount' );
+			}
 		} else {
 			update_post_meta( $pid, '_nexxi_has_prod_sale', '0' );
+			delete_post_meta( $pid, '_nexxi_prod_sale_mode' );
 			delete_post_meta( $pid, '_nexxi_prod_sale_price' );
 			delete_post_meta( $pid, '_nexxi_prod_sale_pct' );
+			delete_post_meta( $pid, '_nexxi_prod_sale_amount' );
 		}
 	}
 
@@ -117,10 +129,9 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 		nexxi_kids_reset_sale_runtime_cache( $pid );
 	}
 
-	// Determine effective WooCommerce _sale_price to sync onto variations (cumulative/stacked if both programs are active)
-	$combined     = nexxi_kids_get_program_sale( $product, 'combined' );
-	$wc_sale      = $combined['on_sale'] ? (float) $combined['sale'] : 0.0;
-	$combined_pct = ! empty( $combined['pct'] ) ? (float) $combined['pct'] : 0.0;
+	// Determine effective WooCommerce _sale_price to sync onto each variation's OWN regular price
+	$combined = nexxi_kids_get_program_sale( $product, 'combined' );
+	$wc_sale  = $combined['on_sale'] ? (float) $combined['sale'] : 0.0;
 
 	$prev_bulk = ! empty( $GLOBALS['nexxi_bulk_syncing'] );
 	$GLOBALS['nexxi_bulk_syncing'] = true;
@@ -143,13 +154,9 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 				$item_reg = (float) $regular_override;
 				update_post_meta( $child_id, '_regular_price', (string) round( $item_reg ) );
 			}
-			$var_sale = $wc_sale;
-			if ( $var_sale > 0 && $item_reg > 0 && $var_sale >= $item_reg && $combined_pct > 0 ) {
-				$var_sale = round( $item_reg * ( 100 - $combined_pct ) / 100, -3 );
-				if ( $var_sale <= 0 || $var_sale >= $item_reg ) {
-					$var_sale = max( 1000, round( $item_reg * ( 100 - $combined_pct ) / 100 ) );
-				}
-			}
+			$var_sale = ( ! empty( $combined['on_sale'] ) && $item_reg > 0 )
+				? nexxi_kids_calc_combined_variation_price( $item_reg, $combined )
+				: 0.0;
 			if ( $var_sale > 0 && $item_reg > 0 && $var_sale < $item_reg ) {
 				$sale_str = (string) round( $var_sale );
 				update_post_meta( $child_id, '_sale_price', $sale_str );
@@ -190,8 +197,11 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 			$item_reg = (float) $regular_override;
 			update_post_meta( $pid, '_regular_price', (string) round( $item_reg ) );
 		}
-		if ( $wc_sale > 0 && $item_reg > 0 && $wc_sale < $item_reg ) {
-			$sale_str = (string) round( $wc_sale );
+		$simp_sale = ( ! empty( $combined['on_sale'] ) && $item_reg > 0 )
+			? nexxi_kids_calc_combined_variation_price( $item_reg, $combined )
+			: 0.0;
+		if ( $simp_sale > 0 && $item_reg > 0 && $simp_sale < $item_reg ) {
+			$sale_str = (string) round( $simp_sale );
 			update_post_meta( $pid, '_sale_price', $sale_str );
 			update_post_meta( $pid, '_price', $sale_str );
 		} else {
@@ -213,6 +223,143 @@ function nexxi_kids_apply_product_discount( $product_id, $mode, $amount = 0, $re
 		nexxi_kids_reset_sale_runtime_cache( $pid );
 	}
 	return true;
+}
+
+/**
+ * Re-sync parent discount meta and per-variation _sale_price / _price from each variation's current _regular_price.
+ * Used after Pancake price updates and during one-time legacy data normalization.
+ *
+ * @param int $product_id Parent WC_Product ID.
+ * @return bool True if any meta value was updated.
+ */
+function nexxi_kids_resync_product_sale_prices( $product_id ) {
+	$pid = absint( $product_id );
+	if ( ! $pid || ! function_exists( 'wc_get_product' ) ) {
+		return false;
+	}
+	if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+		nexxi_kids_reset_sale_runtime_cache( $pid );
+	}
+	$product = wc_get_product( $pid );
+	if ( ! $product ) {
+		return false;
+	}
+
+	$changed = false;
+	$reg_adm = nexxi_kids_get_program_sale( $product, 'regular_admin' );
+	if ( ! empty( $reg_adm['on_sale'] ) && ! empty( $reg_adm['mode'] ) ) {
+		$cur_m = (string) get_post_meta( $pid, '_nexxi_prod_sale_mode', true );
+		$cur_p = (string) get_post_meta( $pid, '_nexxi_prod_sale_price', true );
+		$exp_p = (string) round( (float) ( $reg_adm['sale'] < $reg_adm['regular'] ? $reg_adm['sale'] : $reg_adm['max_sale'] ) );
+		if ( $cur_m !== $reg_adm['mode'] ) {
+			update_post_meta( $pid, '_nexxi_prod_sale_mode', $reg_adm['mode'] );
+			$changed = true;
+		}
+		if ( $exp_p > 0 && $cur_p !== $exp_p ) {
+			update_post_meta( $pid, '_nexxi_prod_sale_price', $exp_p );
+			$changed = true;
+		}
+	}
+
+	$fs_adm = nexxi_kids_get_program_sale( $product, 'flash_admin' );
+	if ( ! empty( $fs_adm['on_sale'] ) && ! empty( $fs_adm['mode'] ) ) {
+		$cur_fm = (string) get_post_meta( $pid, '_nexxi_fs_sale_mode', true );
+		$cur_fp = (string) get_post_meta( $pid, '_nexxi_fs_sale_price', true );
+		$exp_fp = (string) round( (float) ( $fs_adm['sale'] < $fs_adm['regular'] ? $fs_adm['sale'] : $fs_adm['max_sale'] ) );
+		if ( $cur_fm !== $fs_adm['mode'] ) {
+			update_post_meta( $pid, '_nexxi_fs_sale_mode', $fs_adm['mode'] );
+			$changed = true;
+		}
+		if ( $exp_fp > 0 && $cur_fp !== $exp_fp ) {
+			update_post_meta( $pid, '_nexxi_fs_sale_price', $exp_fp );
+			$changed = true;
+		}
+	}
+
+	if ( $changed && function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+		nexxi_kids_reset_sale_runtime_cache( $pid );
+	}
+	$comb    = nexxi_kids_get_program_sale( $product, 'combined' );
+	$wc_sale = ! empty( $comb['on_sale'] ) ? (float) $comb['sale'] : 0.0;
+
+	$prev_bulk                     = ! empty( $GLOBALS['nexxi_bulk_syncing'] );
+	$GLOBALS['nexxi_bulk_syncing'] = true;
+
+	if ( $product->is_type( 'variable' ) ) {
+		$min_active_price = null;
+		foreach ( $product->get_children() as $cid ) {
+			$cid   = (int) $cid;
+			$v_reg = (float) get_post_meta( $cid, '_regular_price', true );
+			if ( $v_reg <= 0 ) {
+				continue;
+			}
+			$cur_vs   = (string) get_post_meta( $cid, '_sale_price', true );
+			$cur_vp   = (string) get_post_meta( $cid, '_price', true );
+			$var_sale = ! empty( $comb['on_sale'] ) ? nexxi_kids_calc_combined_variation_price( $v_reg, $comb ) : 0.0;
+			if ( $var_sale > 0 && $var_sale < $v_reg ) {
+				$exp_vs   = (string) round( $var_sale );
+				$exp_vp   = $exp_vs;
+				$active_p = (float) round( $var_sale );
+			} else {
+				$exp_vs   = '';
+				$exp_vp   = (string) round( $v_reg );
+				$active_p = (float) round( $v_reg );
+			}
+			if ( $cur_vs !== $exp_vs ) {
+				update_post_meta( $cid, '_sale_price', $exp_vs );
+				$changed = true;
+			}
+			if ( $cur_vp !== $exp_vp ) {
+				update_post_meta( $cid, '_price', $exp_vp );
+				$changed = true;
+			}
+			if ( $active_p > 0 && ( null === $min_active_price || $active_p < $min_active_price ) ) {
+				$min_active_price = $active_p;
+			}
+		}
+		if ( null !== $min_active_price ) {
+			$exp_parent_p = (string) round( $min_active_price );
+			if ( (string) get_post_meta( $pid, '_price', true ) !== $exp_parent_p ) {
+				update_post_meta( $pid, '_price', $exp_parent_p );
+				$changed = true;
+			}
+		}
+		$exp_parent_s = $wc_sale > 0 ? (string) round( $wc_sale ) : '';
+		if ( (string) get_post_meta( $pid, '_sale_price', true ) !== $exp_parent_s ) {
+			update_post_meta( $pid, '_sale_price', $exp_parent_s );
+			$changed = true;
+		}
+		if ( $changed && class_exists( 'WC_Product_Variable' ) ) {
+			WC_Product_Variable::sync( $pid );
+		}
+	} else {
+		$s_reg = (float) get_post_meta( $pid, '_regular_price', true );
+		if ( $s_reg > 0 ) {
+			$s_sale = ! empty( $comb['on_sale'] ) ? nexxi_kids_calc_combined_variation_price( $s_reg, $comb ) : 0.0;
+			$exp_ss = ( $s_sale > 0 && $s_sale < $s_reg ) ? (string) round( $s_sale ) : '';
+			$exp_sp = ( '' !== $exp_ss ) ? $exp_ss : (string) round( $s_reg );
+			if ( (string) get_post_meta( $pid, '_sale_price', true ) !== $exp_ss ) {
+				update_post_meta( $pid, '_sale_price', $exp_ss );
+				$changed = true;
+			}
+			if ( (string) get_post_meta( $pid, '_price', true ) !== $exp_sp ) {
+				update_post_meta( $pid, '_price', $exp_sp );
+				$changed = true;
+			}
+		}
+	}
+
+	$GLOBALS['nexxi_bulk_syncing'] = $prev_bulk;
+	if ( $changed ) {
+		if ( function_exists( 'wc_delete_product_transients' ) ) {
+			wc_delete_product_transients( $pid );
+		}
+		clean_post_cache( $pid );
+		if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+			nexxi_kids_reset_sale_runtime_cache( $pid );
+		}
+	}
+	return $changed;
 }
 
 /** Flush WooCommerce on-sale cache and page caches once at the end of the request so bulk operations never stall. */
@@ -319,10 +466,9 @@ function nexxi_kids_sync_all_flash_sale_products() {
 	foreach ( $all_ids as $sid ) {
 		$p = function_exists( 'wc_get_product' ) ? wc_get_product( $sid ) : null;
 		if ( ! $p ) { continue; }
-		$comb         = nexxi_kids_get_program_sale( $p, 'combined' );
-		$wc_sale      = $comb['on_sale'] ? (float) $comb['sale'] : 0.0;
-		$combined_pct = ! empty( $comb['pct'] ) ? (float) $comb['pct'] : 0.0;
-		$reg          = (float) $comb['regular'];
+		$comb    = nexxi_kids_get_program_sale( $p, 'combined' );
+		$wc_sale = $comb['on_sale'] ? (float) $comb['sale'] : 0.0;
+		$reg     = (float) $comb['regular'];
 		if ( $p->is_type( 'variable' ) ) {
 			$min_active_price = null;
 			foreach ( $p->get_children() as $cid ) {
@@ -332,13 +478,9 @@ function nexxi_kids_sync_all_flash_sale_products() {
 					$v_reg = (float) get_post_meta( $cid, '_price', true );
 					if ( $v_reg <= 0 ) { $v_reg = $reg; }
 				}
-				$var_sale = $wc_sale;
-				if ( $var_sale > 0 && $v_reg > 0 && $var_sale >= $v_reg && $combined_pct > 0 ) {
-					$var_sale = round( $v_reg * ( 100 - $combined_pct ) / 100, -3 );
-					if ( $var_sale <= 0 || $var_sale >= $v_reg ) {
-						$var_sale = max( 1000, round( $v_reg * ( 100 - $combined_pct ) / 100 ) );
-					}
-				}
+				$var_sale = ( ! empty( $comb['on_sale'] ) && $v_reg > 0 )
+					? nexxi_kids_calc_combined_variation_price( $v_reg, $comb )
+					: 0.0;
 				if ( $var_sale > 0 && $v_reg > 0 && $var_sale < $v_reg ) {
 					$sale_str = (string) round( $var_sale );
 					update_post_meta( $cid, '_sale_price', $sale_str );
@@ -359,9 +501,15 @@ function nexxi_kids_sync_all_flash_sale_products() {
 				update_post_meta( $sid, '_price', (string) round( $min_active_price ) );
 			}
 			update_post_meta( $sid, '_sale_price', $wc_sale > 0 ? (string) round( $wc_sale ) : '' );
+			if ( class_exists( 'WC_Product_Variable' ) ) {
+				WC_Product_Variable::sync( $sid );
+			}
 		} else {
-			if ( $wc_sale > 0 && $reg > 0 && $wc_sale < $reg ) {
-				$sale_str = (string) round( $wc_sale );
+			$s_sale = ( ! empty( $comb['on_sale'] ) && $reg > 0 )
+				? nexxi_kids_calc_combined_variation_price( $reg, $comb )
+				: 0.0;
+			if ( $s_sale > 0 && $reg > 0 && $s_sale < $reg ) {
+				$sale_str = (string) round( $s_sale );
 				update_post_meta( $sid, '_sale_price', $sale_str );
 				update_post_meta( $sid, '_price', $sale_str );
 			} else {
@@ -815,22 +963,46 @@ function nexxi_kids_flash_sale_admin_page() {
 									</div>
 								</td>
 								<td style="font-weight:600;color:#45464f;">
-									<?php echo $prog['regular'] > 0 ? esc_html( nexxi_kids_money( $prog['regular'] ) ) : '<span style="color:#ba1a1a;">Chưa có giá gốc</span>'; ?>
+									<?php
+									if ( $prog['regular'] > 0 ) {
+										$fs_reg_txt = ( ! empty( $prog['max_regular'] ) && round( (float) $prog['max_regular'] ) > round( (float) $prog['regular'] ) )
+											? nexxi_kids_money( $prog['regular'] ) . ' – ' . nexxi_kids_money( $prog['max_regular'] )
+											: nexxi_kids_money( $prog['regular'] );
+										echo esc_html( $fs_reg_txt );
+									} else {
+										echo '<span style="color:#ba1a1a;">Chưa có giá gốc</span>';
+									}
+									?>
 								</td>
 								<td>
 									<?php if ( $on_sale ) : ?>
-										<span style="font-weight:800;color:#ae3115;font-size:14px;"><?php echo esc_html( nexxi_kids_money( $prog['sale'] ) ); ?></span>
+										<?php
+										$fs_sale_txt = ( ! empty( $prog['max_sale'] ) && round( (float) $prog['max_sale'] ) > round( (float) $prog['sale'] ) )
+											? nexxi_kids_money( $prog['sale'] ) . ' – ' . nexxi_kids_money( $prog['max_sale'] )
+											: nexxi_kids_money( $prog['sale'] );
+										?>
+										<span style="font-weight:800;color:#ae3115;font-size:14px;"><?php echo esc_html( $fs_sale_txt ); ?></span>
 										<span style="display:inline-block;background:#fd6a49;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:4px;">-<?php echo (int) $discount_pct; ?>%</span>
 										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<?php
+											$fs_comb_txt = ( ! empty( $prog['combined_max_sale'] ) && round( (float) $prog['combined_max_sale'] ) > round( (float) $prog['combined_sale'] ) )
+												? nexxi_kids_money( $prog['combined_sale'] ) . ' – ' . nexxi_kids_money( $prog['combined_max_sale'] )
+												: nexxi_kids_money( $prog['combined_sale'] );
+											?>
 											<div style="font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:2px 6px;border-radius:4px;margin-top:4px;font-weight:700;">
-												🔥 Cộng dồn Giảm SP (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( nexxi_kids_money( $prog['combined_sale'] ) ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
+												🔥 Cộng dồn Giảm SP (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( $fs_comb_txt ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
 											</div>
 										<?php endif; ?>
 									<?php else : ?>
 										<span style="color:#767680;">Chưa bật Flash Sale</span>
 										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<?php
+											$fs_oth_txt = ( ! empty( $prog['other_max_sale'] ) && round( (float) $prog['other_max_sale'] ) > round( (float) $prog['other_sale'] ) )
+												? nexxi_kids_money( $prog['other_sale'] ) . ' – ' . nexxi_kids_money( $prog['other_max_sale'] )
+												: nexxi_kids_money( $prog['other_sale'] );
+											?>
 											<div style="font-size:11px;color:#031444;background:#eef2ff;padding:2px 6px;border-radius:4px;margin-top:4px;font-weight:600;">
-												🏷️ Đang giữ Giảm Giá SP: <?php echo esc_html( nexxi_kids_money( $prog['other_sale'] ) ); ?> (-<?php echo (int) $prog['other_pct']; ?>%)
+												🏷️ Đang giữ Giảm Giá SP: <?php echo esc_html( $fs_oth_txt ); ?> (-<?php echo (int) $prog['other_pct']; ?>%)
 											</div>
 										<?php endif; ?>
 									<?php endif; ?>
