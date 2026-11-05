@@ -433,7 +433,22 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 			$sale_raw = ( $col_map['sale'] >= 0 && isset( $row[ $col_map['sale'] ] ) ) ? trim( (string) $row[ $col_map['sale'] ] ) : '';
 			$pct_raw  = ( $col_map['percent'] >= 0 && isset( $row[ $col_map['percent'] ] ) ) ? trim( (string) $row[ $col_map['percent'] ] ) : '';
 
-			if ( '' !== $sale_raw ) {
+			if ( '' !== $sale_raw && '' !== $pct_raw ) {
+				$hp_s = false;
+				$hp_p = false;
+				$ns   = nexxi_kids_clean_number_token( $sale_raw, $hp_s );
+				$np   = nexxi_kids_clean_number_token( $pct_raw, $hp_p );
+				$calc = ( null !== $np && $np > 0 && $np <= 95 && $reg_override > 0 )
+					? nexxi_kids_calc_discounted_price_for_regular( $reg_override, 'percent', $np )
+					: 0.0;
+				if ( null !== $np && $np > 0 && $np <= 95 && $calc > 0 && null !== $ns && abs( $ns - $calc ) < 1.0 ) {
+					$amount = $np;
+					$mode   = 'percent';
+				} elseif ( null !== $ns ) {
+					$amount = $ns;
+					$mode   = ( 0.0 === $ns ) ? 'clear' : ( 'auto' === $interpret_mode ? ( ( $hp_s || $ns <= 95 ) ? 'percent' : 'fixed' ) : $interpret_mode );
+				}
+			} elseif ( '' !== $sale_raw ) {
 				$has_pct = false;
 				$num = nexxi_kids_clean_number_token( $sale_raw, $has_pct );
 				if ( null !== $num ) {
@@ -500,17 +515,29 @@ function nexxi_kids_process_sku_discount_rows( array $rows, $interpret_mode = 'a
 
 		// Apply discount as Regular Product Sale (_nexxi_has_prod_sale = '1', NOT Flash Sale) to ALL matched products
 		foreach ( $pids as $pid ) {
-			if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, (float) $reg_override, '0' ) ) {
+			$eff_reg_override = (float) $reg_override;
+			if ( $eff_reg_override > 0 ) {
+				$cur_prod = wc_get_product( $pid );
+				if ( $cur_prod && $cur_prod->is_type( 'variable' ) ) {
+					$cur_r = nexxi_kids_price_range( $cur_prod );
+					if ( ! empty( $cur_r['max_regular'] ) && ! empty( $cur_r['min_regular'] ) && $cur_r['max_regular'] > $cur_r['min_regular'] && abs( $eff_reg_override - (float) $cur_r['min_regular'] ) < 1.0 ) {
+						$eff_reg_override = 0.0;
+					}
+				}
+			}
+			if ( nexxi_kids_apply_product_discount( $pid, $mode, (float) $amount, $eff_reg_override, '0' ) ) {
 				$prod    = wc_get_product( $pid );
 				$prog    = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'regular' => 0, 'sale' => 0, 'pct' => 0 );
 				$eff_sku = $prod ? nexxi_kids_effective_sku( $prod ) : $raw_sku;
 				$report['updated'][] = array(
-					'id'      => $pid,
-					'sku'     => $eff_sku && $eff_sku !== $raw_sku ? $raw_sku . ' → ' . $eff_sku : $raw_sku,
-					'name'    => $prod ? $prod->get_name() : '#' . $pid,
-					'regular' => $prog['regular'],
-					'sale'    => $prog['sale'],
-					'pct'     => $prog['pct'],
+					'id'          => $pid,
+					'sku'         => $eff_sku && $eff_sku !== $raw_sku ? $raw_sku . ' → ' . $eff_sku : $raw_sku,
+					'name'        => $prod ? $prod->get_name() : '#' . $pid,
+					'regular'     => $prog['regular'],
+					'max_regular' => isset( $prog['max_regular'] ) ? $prog['max_regular'] : $prog['regular'],
+					'sale'        => $prog['sale'],
+					'max_sale'    => isset( $prog['max_sale'] ) ? $prog['max_sale'] : $prog['sale'],
+					'pct'         => $prog['pct'],
 				);
 			}
 		}
@@ -565,8 +592,9 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 				}
 				$prog    = nexxi_kids_get_program_sale( $prod, 'regular_admin' );
 				$on_sale = $prog['on_sale'];
-				$pct     = $on_sale ? $prog['pct'] : '';
-				$sale_v  = $on_sale ? round( $prog['sale'] ) : '';
+				$is_pct  = $on_sale && isset( $prog['mode'] ) && 'percent' === $prog['mode'];
+				$pct     = ( $on_sale && $is_pct ) ? $prog['pct'] : '';
+				$sale_v  = ( $on_sale && ! $is_pct ) ? round( $prog['sale'] ) : '';
 				fputcsv( $out, array(
 					$sku,
 					$prod->get_name(),
@@ -682,37 +710,77 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 			add_settings_error( 'nexxi_bd', 'bulk_direct_empty', 'Vui lòng tích chọn ít nhất 1 sản phẩm hoặc chọn danh mục cần áp dụng.', 'error' );
 		}
 	} elseif ( 'save_table_rows' === $action ) {
-		$row_pids = isset( $_POST['row_pids'] ) && is_array( $_POST['row_pids'] ) ? array_map( 'absint', wp_unslash( $_POST['row_pids'] ) ) : array();
-		$row_skus = isset( $_POST['row_sku'] ) && is_array( $_POST['row_sku'] ) ? wp_unslash( $_POST['row_sku'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$row_regs = isset( $_POST['row_reg'] ) && is_array( $_POST['row_reg'] ) ? wp_unslash( $_POST['row_reg'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$row_pcts = isset( $_POST['row_pct'] ) && is_array( $_POST['row_pct'] ) ? wp_unslash( $_POST['row_pct'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$row_sale = isset( $_POST['row_sale'] ) && is_array( $_POST['row_sale'] ) ? wp_unslash( $_POST['row_sale'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$only_pid = isset( $_POST['single_save_pid'] ) ? absint( $_POST['single_save_pid'] ) : 0;
+		$row_pids      = isset( $_POST['row_pids'] ) && is_array( $_POST['row_pids'] ) ? array_map( 'absint', wp_unslash( $_POST['row_pids'] ) ) : array();
+		$row_skus      = isset( $_POST['row_sku'] ) && is_array( $_POST['row_sku'] ) ? wp_unslash( $_POST['row_sku'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_regs      = isset( $_POST['row_reg'] ) && is_array( $_POST['row_reg'] ) ? wp_unslash( $_POST['row_reg'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_orig_regs = isset( $_POST['row_orig_reg'] ) && is_array( $_POST['row_orig_reg'] ) ? wp_unslash( $_POST['row_orig_reg'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_pcts      = isset( $_POST['row_pct'] ) && is_array( $_POST['row_pct'] ) ? wp_unslash( $_POST['row_pct'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_orig_pcts = isset( $_POST['row_orig_pct'] ) && is_array( $_POST['row_orig_pct'] ) ? wp_unslash( $_POST['row_orig_pct'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_sale      = isset( $_POST['row_sale'] ) && is_array( $_POST['row_sale'] ) ? wp_unslash( $_POST['row_sale'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_orig_sale = isset( $_POST['row_orig_sale'] ) && is_array( $_POST['row_orig_sale'] ) ? wp_unslash( $_POST['row_orig_sale'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_modes     = isset( $_POST['row_mode'] ) && is_array( $_POST['row_mode'] ) ? wp_unslash( $_POST['row_mode'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$row_orig_mode = isset( $_POST['row_orig_mode'] ) && is_array( $_POST['row_orig_mode'] ) ? wp_unslash( $_POST['row_orig_mode'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$only_pid      = isset( $_POST['single_save_pid'] ) ? absint( $_POST['single_save_pid'] ) : 0;
 
 		$saved_count = 0;
 		foreach ( $row_pids as $pid ) {
 			if ( ! $pid ) { continue; }
 			if ( $only_pid > 0 && $pid !== $only_pid ) { continue; }
 
-			// Update SKU if edited
+			$sku_changed = false;
 			if ( isset( $row_skus[ $pid ] ) ) {
 				$new_sku = sanitize_text_field( trim( (string) $row_skus[ $pid ] ) );
 				$cur_sku = (string) get_post_meta( $pid, '_sku', true );
 				if ( '' !== $new_sku && $new_sku !== $cur_sku ) {
 					update_post_meta( $pid, '_sku', $new_sku );
+					$sku_changed = true;
 				}
 			}
 
-			$hp_r = false;
-			$hp_p = false;
-			$hp_s = false;
-			$reg_val  = isset( $row_regs[ $pid ] ) ? nexxi_kids_clean_number_token( $row_regs[ $pid ], $hp_r ) : null;
-			$pct_val  = isset( $row_pcts[ $pid ] ) ? nexxi_kids_clean_number_token( $row_pcts[ $pid ], $hp_p ) : null;
-			$sale_val = isset( $row_sale[ $pid ] ) ? nexxi_kids_clean_number_token( $row_sale[ $pid ], $hp_s ) : null;
+			$hp_r  = false;
+			$hp_or = false;
+			$hp_p  = false;
+			$hp_op = false;
+			$hp_s  = false;
+			$hp_os = false;
 
-			$reg_override = ( null !== $reg_val && $reg_val > 0 ) ? $reg_val : 0;
+			$reg_val       = isset( $row_regs[ $pid ] ) ? nexxi_kids_clean_number_token( $row_regs[ $pid ], $hp_r ) : null;
+			$orig_reg_val  = isset( $row_orig_regs[ $pid ] ) ? nexxi_kids_clean_number_token( $row_orig_regs[ $pid ], $hp_or ) : null;
+			$pct_val       = isset( $row_pcts[ $pid ] ) ? nexxi_kids_clean_number_token( $row_pcts[ $pid ], $hp_p ) : null;
+			$orig_pct_val  = isset( $row_orig_pcts[ $pid ] ) ? nexxi_kids_clean_number_token( $row_orig_pcts[ $pid ], $hp_op ) : null;
+			$sale_val      = isset( $row_sale[ $pid ] ) ? nexxi_kids_clean_number_token( $row_sale[ $pid ], $hp_s ) : null;
+			$orig_sale_val = isset( $row_orig_sale[ $pid ] ) ? nexxi_kids_clean_number_token( $row_orig_sale[ $pid ], $hp_os ) : null;
+			$row_m         = isset( $row_modes[ $pid ] ) ? sanitize_key( $row_modes[ $pid ] ) : '';
+			$orig_m        = isset( $row_orig_mode[ $pid ] ) ? sanitize_key( $row_orig_mode[ $pid ] ) : '';
 
-			if ( null !== $sale_val && $sale_val > 0 ) {
+			// Only overwrite variation regular prices when the user explicitly edited the Giá gốc field on this row
+			$reg_changed  = ( null !== $reg_val && $reg_val > 0 && ( null === $orig_reg_val || abs( $reg_val - $orig_reg_val ) >= 1.0 ) );
+			$reg_override = $reg_changed ? $reg_val : 0.0;
+
+			$pct_same  = ( ( null === $pct_val ? 0.0 : $pct_val ) === ( null === $orig_pct_val ? 0.0 : $orig_pct_val ) );
+			$sale_same = ( ( null === $sale_val ? 0.0 : $sale_val ) === ( null === $orig_sale_val ? 0.0 : $orig_sale_val ) );
+			if ( 0 === $only_pid && ! $reg_changed && $pct_same && $sale_same && $row_m === $orig_m ) {
+				if ( $sku_changed ) {
+					$saved_count++;
+				}
+				continue;
+			}
+
+			if ( 'percent' === $row_m && null !== $pct_val && $pct_val > 0 ) {
+				nexxi_kids_apply_product_discount( $pid, 'percent', $pct_val, $reg_override, '0' );
+				$saved_count++;
+			} elseif ( 'amount_off' === $row_m && null !== $pct_val && $pct_val > 0 ) {
+				// Preserve existing amount_off if untouched on single-row save
+				$prod = wc_get_product( $pid );
+				$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'val' => 0 );
+				$amt  = ! empty( $prog['val'] ) ? (float) $prog['val'] : 0.0;
+				if ( $amt > 0 ) {
+					nexxi_kids_apply_product_discount( $pid, 'amount_off', $amt, $reg_override, '0' );
+				} else {
+					nexxi_kids_apply_product_discount( $pid, 'percent', $pct_val, $reg_override, '0' );
+				}
+				$saved_count++;
+			} elseif ( null !== $sale_val && $sale_val > 0 ) {
 				nexxi_kids_apply_product_discount( $pid, 'fixed', $sale_val, $reg_override, '0' );
 				$saved_count++;
 			} elseif ( null !== $pct_val && $pct_val > 0 ) {
@@ -724,6 +792,8 @@ function nexxi_kids_handle_bulk_discount_admin_actions() {
 				$prog = $prod ? nexxi_kids_get_program_sale( $prod, 'regular_admin' ) : array( 'on_sale' => false );
 				if ( $prog['on_sale'] || $only_pid === $pid || $reg_override > 0 ) {
 					nexxi_kids_apply_product_discount( $pid, 'clear', 0, $reg_override, '0' );
+					$saved_count++;
+				} elseif ( $sku_changed ) {
 					$saved_count++;
 				}
 			}
@@ -866,11 +936,19 @@ function nexxi_kids_bulk_discount_admin_page() {
 							</thead>
 							<tbody>
 								<?php foreach ( $last_report['updated'] as $u ) : ?>
+									<?php
+									$u_reg_txt  = ( ! empty( $u['max_regular'] ) && round( (float) $u['max_regular'] ) > round( (float) $u['regular'] ) )
+										? nexxi_kids_money( $u['regular'] ) . ' – ' . nexxi_kids_money( $u['max_regular'] )
+										: nexxi_kids_money( $u['regular'] );
+									$u_sale_txt = ( ! empty( $u['max_sale'] ) && round( (float) $u['max_sale'] ) > round( (float) $u['sale'] ) )
+										? nexxi_kids_money( $u['sale'] ) . ' – ' . nexxi_kids_money( $u['max_sale'] )
+										: nexxi_kids_money( $u['sale'] );
+									?>
 									<tr>
 										<td><code><?php echo esc_html( $u['sku'] ); ?></code></td>
 										<td><strong><?php echo esc_html( $u['name'] ); ?></strong></td>
-										<td><?php echo esc_html( nexxi_kids_money( $u['regular'] ) ); ?></td>
-										<td><strong style="color:#ae3115;"><?php echo esc_html( nexxi_kids_money( $u['sale'] ) ); ?></strong></td>
+										<td><?php echo esc_html( $u_reg_txt ); ?></td>
+										<td><strong style="color:#ae3115;"><?php echo esc_html( $u_sale_txt ); ?></strong></td>
 										<td><?php echo $u['pct'] > 0 ? '<span style="background:#fd6a49;color:#fff;padding:2px 8px;border-radius:999px;font-weight:700;font-size:11px;">-' . (int) $u['pct'] . '%</span>' : '<span style="color:#666;">Về giá gốc</span>'; ?></td>
 									</tr>
 								<?php endforeach; ?>
@@ -1104,27 +1182,59 @@ function nexxi_kids_bulk_discount_admin_page() {
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo $prog['regular'] > 0 ? (int) round( $prog['regular'] ) : ''; ?>" min="0" step="any" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<?php
+									$init_reg_v  = $prog['regular'] > 0 ? (int) round( $prog['regular'] ) : '';
+									$init_max_r  = ! empty( $prog['max_regular'] ) ? (int) round( $prog['max_regular'] ) : (int) $init_reg_v;
+									$init_pct_v  = $pct > 0 ? (int) $pct : '';
+									$init_sale_v = $on_sale ? (int) round( $prog['sale'] ) : '';
+									$init_mode_v = ! empty( $prog['mode'] ) ? (string) $prog['mode'] : '';
+									$has_r_range = ( $init_max_r > (int) $init_reg_v && (int) $init_reg_v > 0 );
+									$has_s_range = ( $on_sale && ! empty( $prog['max_sale'] ) && round( (float) $prog['max_sale'] ) > round( (float) $prog['sale'] ) );
+									?>
+									<input type="hidden" name="row_orig_reg[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_reg_v ); ?>">
+									<input type="hidden" name="row_orig_pct[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_pct_v ); ?>">
+									<input type="hidden" name="row_orig_sale[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_sale_v ); ?>">
+									<input type="hidden" name="row_orig_mode[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( $init_mode_v ); ?>">
+									<input type="hidden" id="nx-bd-mode-<?php echo (int) $pid; ?>" name="row_mode[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( $init_mode_v ); ?>">
+									<input type="number" id="nx-bd-reg-<?php echo (int) $pid; ?>" name="row_reg[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_reg_v ); ?>" data-orig-reg="<?php echo esc_attr( (string) $init_reg_v ); ?>" data-max-reg="<?php echo esc_attr( (string) $init_max_r ); ?>" min="0" step="any" oninput="nexxiOnRowRegInput(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:600;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<?php if ( $has_r_range ) : ?>
+										<div id="nx-bd-reg-hint-<?php echo (int) $pid; ?>" style="font-size:10.5px;color:#5c5f6a;margin-top:2px;line-height:1.25;">Khung gốc: <?php echo esc_html( nexxi_kids_money( $prog['regular'] ) . ' – ' . nexxi_kids_money( $prog['max_regular'] ) ); ?></div>
+									<?php endif; ?>
 								</td>
 								<td>
 									<div style="position:relative;display:flex;align-items:center;">
-										<input type="number" id="nx-bd-pct-<?php echo (int) $pid; ?>" name="row_pct[<?php echo (int) $pid; ?>]" value="<?php echo $pct > 0 ? (int) $pct : ''; ?>" min="0" max="95" step="any" placeholder="%" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:700;color:#ae3115;border-radius:6px;border:1px solid #d5d3ce;padding:0 20px 0 6px;">
+										<input type="number" id="nx-bd-pct-<?php echo (int) $pid; ?>" name="row_pct[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_pct_v ); ?>" min="0" max="95" step="any" placeholder="%" oninput="nexxiRecalcRowFromPct(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:700;color:#ae3115;border-radius:6px;border:1px solid #d5d3ce;padding:0 20px 0 6px;">
 										<span style="position:absolute;right:6px;font-size:11px;color:#888;pointer-events:none;">%</span>
 									</div>
 								</td>
 								<td>
-									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo $on_sale ? (int) round( $prog['sale'] ) : ''; ?>" min="0" step="any" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<input type="number" id="nx-bd-sale-<?php echo (int) $pid; ?>" name="row_sale[<?php echo (int) $pid; ?>]" value="<?php echo esc_attr( (string) $init_sale_v ); ?>" min="0" step="any" placeholder="Giá sau giảm" oninput="nexxiRecalcRowFromSale(<?php echo (int) $pid; ?>)" onkeydown="if(event.key==='Enter'){event.preventDefault();nexxiSaveAllRows(<?php echo (int) $pid; ?>);}" style="width:100%;min-height:30px;font-weight:800;color:#0b6b2f;border-radius:6px;border:1px solid #d5d3ce;padding:0 6px;">
+									<div id="nx-bd-sale-hint-<?php echo (int) $pid; ?>" style="font-size:10.5px;color:#0b6b2f;font-weight:600;margin-top:2px;line-height:1.25;<?php echo $has_s_range ? '' : 'display:none;'; ?>">
+										<?php if ( $has_s_range ) : ?>
+											Theo biến thể: <?php echo esc_html( nexxi_kids_money( $prog['sale'] ) . ' – ' . nexxi_kids_money( $prog['max_sale'] ) ); ?>
+										<?php endif; ?>
+									</div>
 								</td>
 								<td>
 									<?php if ( $on_sale ) : ?>
+										<?php
+										$bd_sale_txt = $has_s_range
+											? nexxi_kids_money( $prog['sale'] ) . ' – ' . nexxi_kids_money( $prog['max_sale'] )
+											: nexxi_kids_money( $prog['sale'] );
+										?>
 										<div style="font-weight:800;color:#ae3115;font-size:13px;">
-											<?php echo esc_html( nexxi_kids_money( $prog['sale'] ) ); ?>
+											<?php echo esc_html( $bd_sale_txt ); ?>
 											<span style="background:#fd6a49;color:#fff;font-size:10.5px;padding:1px 6px;border-radius:999px;">-<?php echo (int) $pct; ?>%</span>
 										</div>
 										<span style="display:inline-block;font-size:11px;color:#0b6b2f;background:#e6f4ea;padding:1px 6px;border-radius:4px;margin-top:2px;">🏷️ Đang giảm giá bán SP</span>
 										<?php if ( ! empty( $prog['other_active'] ) ) : ?>
+											<?php
+											$bd_comb_txt = ( ! empty( $prog['combined_max_sale'] ) && round( (float) $prog['combined_max_sale'] ) > round( (float) $prog['combined_sale'] ) )
+												? nexxi_kids_money( $prog['combined_sale'] ) . ' – ' . nexxi_kids_money( $prog['combined_max_sale'] )
+												: nexxi_kids_money( $prog['combined_sale'] );
+											?>
 											<div style="font-size:11px;color:#ae3115;background:#fff4f1;border:1px solid #ffdad2;padding:2px 6px;border-radius:4px;margin-top:3px;font-weight:700;">
-												🔥 Cộng dồn Flash Sale (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( nexxi_kids_money( $prog['combined_sale'] ) ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
+												🔥 Cộng dồn Flash Sale (-<?php echo (int) $prog['other_pct']; ?>%): <?php echo esc_html( $bd_comb_txt ); ?> (-<?php echo (int) $prog['combined_pct']; ?>%)
 											</div>
 										<?php endif; ?>
 									<?php else : ?>
@@ -1179,41 +1289,97 @@ function nexxi_kids_bulk_discount_admin_page() {
 		document.getElementById('nexxi-bd-single-pid').value = onlyPid || 0;
 		document.getElementById('nexxi-bd-master-form').submit();
 	}
-	function nexxiRecalcRowFromPct(pid) {
+	function nexxiFmtVnd(v) {
+		return new Intl.NumberFormat('vi-VN').format(Math.round(v)) + '₫';
+	}
+	function nexxiCalcPctPrice(reg, pct) {
+		var s = Math.round((reg * (100 - pct) / 100) / 1000) * 1000;
+		if (s <= 0 || s >= reg) {
+			s = Math.max(1000, Math.round(reg * (100 - pct) / 100));
+		}
+		return s;
+	}
+	function nexxiUpdateRowSaleHint(pid) {
+		var regEl  = document.getElementById('nx-bd-reg-' + pid);
+		var pctEl  = document.getElementById('nx-bd-pct-' + pid);
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
+		var hintEl = document.getElementById('nx-bd-sale-hint-' + pid);
+		var rHint  = document.getElementById('nx-bd-reg-hint-' + pid);
+		if (!regEl || !hintEl) return;
+		var reg     = parseFloat(regEl.value) || 0;
+		var origReg = parseFloat(regEl.getAttribute('data-orig-reg')) || 0;
+		var maxReg  = parseFloat(regEl.getAttribute('data-max-reg')) || reg;
+		var regEdited = origReg > 0 && Math.abs(reg - origReg) >= 1;
+		if (rHint) rHint.style.display = regEdited ? 'none' : '';
+		var pct  = parseFloat(pctEl ? pctEl.value : '') || 0;
+		var mode = modeEl ? modeEl.value : '';
+		if (!regEdited && maxReg > reg && mode === 'percent' && pct > 0 && pct <= 95) {
+			var minS = nexxiCalcPctPrice(reg, pct);
+			var maxS = nexxiCalcPctPrice(maxReg, pct);
+			if (maxS > minS) {
+				hintEl.textContent = 'Theo biến thể: ' + nexxiFmtVnd(minS) + ' – ' + nexxiFmtVnd(maxS);
+				hintEl.style.display = '';
+				return;
+			}
+		}
+		hintEl.style.display = 'none';
+	}
+	function nexxiOnRowRegInput(pid) {
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
+		var saleEl = document.getElementById('nx-bd-sale-' + pid);
+		if (modeEl && modeEl.value === 'fixed' && saleEl && parseFloat(saleEl.value) > 0) {
+			nexxiRecalcRowFromSale(pid);
+		} else {
+			nexxiRecalcRowFromPct(pid, true);
+		}
+	}
+	function nexxiRecalcRowFromPct(pid, keepMode) {
 		var regEl  = document.getElementById('nx-bd-reg-' + pid);
 		var pctEl  = document.getElementById('nx-bd-pct-' + pid);
 		var saleEl = document.getElementById('nx-bd-sale-' + pid);
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
 		var reg = parseFloat(regEl.value) || 0;
 		var pct = parseFloat(pctEl.value) || 0;
+		if (!keepMode && modeEl) {
+			modeEl.value = pct > 0 ? 'percent' : '';
+		}
 		if (reg > 0 && pct > 0 && pct <= 95) {
-			var sale = Math.round((reg * (100 - pct) / 100) / 1000) * 1000;
-			if (sale <= 0 || sale >= reg) {
-				sale = Math.max(1000, Math.round(reg * (100 - pct) / 100));
-			}
-			saleEl.value = sale;
+			saleEl.value = nexxiCalcPctPrice(reg, pct);
 		} else if (pct <= 0) {
 			saleEl.value = '';
 		}
+		nexxiUpdateRowSaleHint(pid);
 	}
 	function nexxiRecalcRowFromSale(pid) {
 		var regEl  = document.getElementById('nx-bd-reg-' + pid);
 		var pctEl  = document.getElementById('nx-bd-pct-' + pid);
 		var saleEl = document.getElementById('nx-bd-sale-' + pid);
-		var reg  = parseFloat(regEl.value) || 0;
-		var sale = parseFloat(saleEl.value) || 0;
-		if (reg > 0 && sale > 0 && sale < reg) {
-			pctEl.value = Math.round((1 - sale / reg) * 100);
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
+		var reg    = parseFloat(regEl.value) || 0;
+		var maxReg = parseFloat(regEl.getAttribute('data-max-reg')) || reg;
+		var sale   = parseFloat(saleEl.value) || 0;
+		var refReg = (reg > 0 && sale < reg) ? reg : maxReg;
+		if (modeEl) {
+			modeEl.value = sale > 0 ? 'fixed' : '';
+		}
+		if (refReg > 0 && sale > 0 && sale < refReg) {
+			pctEl.value = Math.round((1 - sale / refReg) * 100);
 		} else if (!sale || sale <= 0) {
 			pctEl.value = '';
 		}
+		nexxiUpdateRowSaleHint(pid);
 	}
 	function nexxiSetRowPct(pid, pct) {
-		var pctEl = document.getElementById('nx-bd-pct-' + pid);
+		var pctEl  = document.getElementById('nx-bd-pct-' + pid);
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
 		pctEl.value = pct;
+		if (modeEl) modeEl.value = 'percent';
 		nexxiRecalcRowFromPct(pid);
 		nexxiSaveAllRows(pid);
 	}
 	function nexxiClearRowSale(pid) {
+		var modeEl = document.getElementById('nx-bd-mode-' + pid);
+		if (modeEl) modeEl.value = 'clear';
 		document.getElementById('nx-bd-pct-' + pid).value = '';
 		document.getElementById('nx-bd-sale-' + pid).value = '';
 		nexxiSaveAllRows(pid);

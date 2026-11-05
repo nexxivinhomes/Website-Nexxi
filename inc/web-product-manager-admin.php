@@ -505,7 +505,13 @@ final class Nexxi_Web_Product_Manager {
 		if ( $aid ) {
 			return (int) $aid;
 		}
-		$sync_mgr_cls = class_exists( 'Nexxi_Pancake_Sync_Manager_V5' ) ? 'Nexxi_Pancake_Sync_Manager_V5' : ( class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ? 'Nexxi_Pancake_Sync_Manager_V4' : '' );
+		$sync_mgr_cls = '';
+		foreach ( array( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager', 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4' ) as $cand_cls ) {
+			if ( class_exists( $cand_cls ) ) {
+				$sync_mgr_cls = $cand_cls;
+				break;
+			}
+		}
 		if ( $sync_mgr_cls && method_exists( $sync_mgr_cls, 'sideload_pancake_image' ) ) {
 			$res = $sync_mgr_cls::sideload_pancake_image( $url, $parent_id, $title );
 			if ( ! is_wp_error( $res ) && (int) $res > 0 ) {
@@ -800,8 +806,10 @@ final class Nexxi_Web_Product_Manager {
 		if ( ! $p || $p->is_type( 'variation' ) ) {
 			return;
 		}
-		$min_reg  = null;
-		$min_sale = null;
+		$min_reg   = null;
+		$min_sale  = null;
+		$ref_reg   = null;
+		$disc_rows = array();
 		if ( $p->is_type( 'variable' ) ) {
 			foreach ( $p->get_children() as $cid ) {
 				$cid = (int) $cid;
@@ -810,8 +818,12 @@ final class Nexxi_Web_Product_Manager {
 				if ( $vr > 0 && ( null === $min_reg || $vr < $min_reg ) ) {
 					$min_reg = $vr;
 				}
-				if ( $vs > 0 && $vr > 0 && $vs < $vr && ( null === $min_sale || $vs < $min_sale ) ) {
-					$min_sale = $vs;
+				if ( $vs > 0 && $vr > 0 && $vs < $vr ) {
+					$disc_rows[] = array( 'reg' => $vr, 'sale' => $vs );
+					if ( null === $min_sale || $vs < $min_sale || ( $vs === $min_sale && ( null === $ref_reg || $vr < $ref_reg ) ) ) {
+						$min_sale = $vs;
+						$ref_reg  = $vr;
+					}
 				}
 			}
 		} else {
@@ -821,38 +833,86 @@ final class Nexxi_Web_Product_Manager {
 				$min_reg = $vr;
 			}
 			if ( $vs > 0 && $vr > 0 && $vs < $vr ) {
-				$min_sale = $vs;
+				$min_sale    = $vs;
+				$ref_reg     = $vr;
+				$disc_rows[] = array( 'reg' => $vr, 'sale' => $vs );
 			}
 		}
 
-		$is_fs  = '1' === (string) get_post_meta( $product_id, '_nexxi_is_flash_sale', true );
+		$is_fs   = '1' === (string) get_post_meta( $product_id, '_nexxi_is_flash_sale', true );
 		$fs_live = $is_fs && function_exists( 'nexxi_kids_is_flash_sale_live' ) && nexxi_kids_is_flash_sale_live();
-		$fs_p   = $fs_live ? (float) get_post_meta( $product_id, '_nexxi_fs_sale_price', true ) : 0.0;
+		$fs_adm  = ( $fs_live && function_exists( 'nexxi_kids_get_program_sale' ) ) ? nexxi_kids_get_program_sale( $p, 'flash_admin' ) : array( 'on_sale' => false );
 
-		if ( null !== $min_sale && null !== $min_reg && $min_sale < $min_reg ) {
+		if ( null !== $min_sale && null !== $ref_reg && $min_sale < $ref_reg ) {
 			$prod_sale = $min_sale;
-			if ( $fs_live && $fs_p > 0 && $fs_p < $min_reg ) {
-				$fs_disc   = max( 0.0, $min_reg - $fs_p );
-				$rem_sale  = $min_sale + $fs_disc;
-				if ( $rem_sale >= $min_reg ) {
-					update_post_meta( $product_id, '_nexxi_has_prod_sale', '0' );
-					delete_post_meta( $product_id, '_nexxi_prod_sale_price' );
-					delete_post_meta( $product_id, '_nexxi_prod_sale_pct' );
-					if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
-						nexxi_kids_reset_sale_runtime_cache( $product_id );
+			if ( $fs_live && ! empty( $fs_adm['on_sale'] ) ) {
+				$fs_sale_ref = function_exists( 'nexxi_kids_calc_discounted_price_for_regular' )
+					? nexxi_kids_calc_discounted_price_for_regular( $ref_reg, (string) ( $fs_adm['mode'] ?? 'percent' ), (float) ( $fs_adm['val'] ?? 0 ) )
+					: (float) ( $fs_adm['sale'] ?? 0 );
+				if ( $fs_sale_ref > 0 && $fs_sale_ref < $ref_reg ) {
+					$fs_disc  = max( 0.0, $ref_reg - $fs_sale_ref );
+					$rem_sale = $min_sale + $fs_disc;
+					if ( $rem_sale >= $ref_reg ) {
+						update_post_meta( $product_id, '_nexxi_has_prod_sale', '0' );
+						delete_post_meta( $product_id, '_nexxi_prod_sale_mode' );
+						delete_post_meta( $product_id, '_nexxi_prod_sale_price' );
+						delete_post_meta( $product_id, '_nexxi_prod_sale_pct' );
+						delete_post_meta( $product_id, '_nexxi_prod_sale_amount' );
+						if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
+							nexxi_kids_reset_sale_runtime_cache( $product_id );
+						}
+						return;
 					}
-					return;
+					$prod_sale = $rem_sale;
 				}
-				$prod_sale = $rem_sale;
 			}
-			$pct = max( 1, min( 95, (int) round( ( 1 - $prod_sale / $min_reg ) * 100 ) ) );
+
+			$pct           = max( 1, min( 95, (int) round( ( 1 - $prod_sale / $ref_reg ) * 100 ) ) );
+			$distinct_regs = array();
+			$row_pcts      = array();
+			$row_sales     = array();
+			foreach ( $disc_rows as $dr ) {
+				$r_val = (float) $dr['reg'];
+				$s_val = (float) $dr['sale'];
+				if ( $fs_live && ! empty( $fs_adm['on_sale'] ) && function_exists( 'nexxi_kids_calc_discounted_price_for_regular' ) ) {
+					$fs_r = nexxi_kids_calc_discounted_price_for_regular( $r_val, (string) ( $fs_adm['mode'] ?? 'percent' ), (float) ( $fs_adm['val'] ?? 0 ) );
+					if ( $fs_r > 0 && $fs_r < $r_val ) {
+						$s_val += ( $r_val - $fs_r );
+					}
+				}
+				if ( $s_val > 0 && $s_val < $r_val ) {
+					$distinct_regs[ (string) round( $r_val ) ] = true;
+					$row_pcts[]                                = (int) round( ( 1 - $s_val / $r_val ) * 100 );
+					$row_sales[]                               = round( $s_val );
+				}
+			}
+
+			$detected_mode = (string) get_post_meta( $product_id, '_nexxi_prod_sale_mode', true );
+			if ( count( $distinct_regs ) > 1 && ! empty( $row_pcts ) ) {
+				if ( ( max( $row_sales ) - min( $row_sales ) ) < 1.0 ) {
+					$detected_mode = 'fixed';
+				} elseif ( ( max( $row_pcts ) - min( $row_pcts ) ) <= 1 ) {
+					$detected_mode = 'percent';
+				} else {
+					$detected_mode = 'fixed';
+				}
+			} elseif ( 'percent' !== $detected_mode && 'fixed' !== $detected_mode && 'amount_off' !== $detected_mode ) {
+				$calc_pct_p    = function_exists( 'nexxi_kids_calc_discounted_price_for_regular' )
+					? nexxi_kids_calc_discounted_price_for_regular( $ref_reg, 'percent', $pct )
+					: round( $ref_reg * ( 100 - $pct ) / 100, -3 );
+				$detected_mode = ( $calc_pct_p > 0 && abs( $prod_sale - $calc_pct_p ) < 1.0 ) ? 'percent' : 'fixed';
+			}
+
 			update_post_meta( $product_id, '_nexxi_has_prod_sale', '1' );
+			update_post_meta( $product_id, '_nexxi_prod_sale_mode', $detected_mode );
 			update_post_meta( $product_id, '_nexxi_prod_sale_price', (string) round( $prod_sale ) );
 			update_post_meta( $product_id, '_nexxi_prod_sale_pct', (string) $pct );
 		} else {
 			update_post_meta( $product_id, '_nexxi_has_prod_sale', '0' );
+			delete_post_meta( $product_id, '_nexxi_prod_sale_mode' );
 			delete_post_meta( $product_id, '_nexxi_prod_sale_price' );
 			delete_post_meta( $product_id, '_nexxi_prod_sale_pct' );
+			delete_post_meta( $product_id, '_nexxi_prod_sale_amount' );
 		}
 		if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
 			nexxi_kids_reset_sale_runtime_cache( $product_id );
@@ -866,19 +926,29 @@ final class Nexxi_Web_Product_Manager {
 	 */
 	private static function format_admin_price_html( WC_Product $p ) {
 		if ( function_exists( 'nexxi_kids_get_program_sale' ) ) {
-			$prog = nexxi_kids_get_program_sale( $p, 'combined' );
-			if ( ! empty( $prog['on_sale'] ) && (float) $prog['sale'] > 0 && (float) $prog['regular'] > (float) $prog['sale'] ) {
-				$pct   = (int) $prog['pct'];
-				$badge = $pct > 0 ? ' <span class="nxwpm-sale-pct">' . ( ! empty( $prog['flash_on_sale'] ) ? '⚡ ' : '' ) . '-' . $pct . '%</span>' : '';
-				return '<del>' . wc_price( (float) $prog['regular'] ) . '</del><ins>' . wc_price( (float) $prog['sale'] ) . '</ins>' . $badge;
+			$prog     = nexxi_kids_get_program_sale( $p, 'combined' );
+			$reg_min  = (float) ( $prog['regular'] ?? 0 );
+			$reg_max  = (float) ( $prog['max_regular'] ?? $reg_min );
+			$sale_min = (float) ( $prog['sale'] ?? 0 );
+			$sale_max = (float) ( $prog['max_sale'] ?? $sale_min );
+			if ( ! empty( $prog['on_sale'] ) && $sale_min > 0 && ( $reg_min > $sale_min || $reg_max > $sale_max ) ) {
+				$pct      = (int) $prog['pct'];
+				$badge    = $pct > 0 ? ' <span class="nxwpm-sale-pct">' . ( ! empty( $prog['flash_on_sale'] ) ? '⚡ ' : '' ) . '-' . $pct . '%</span>' : '';
+				$reg_txt  = $reg_max > $reg_min ? wc_price( $reg_min ) . ' – ' . wc_price( $reg_max ) : wc_price( $reg_min );
+				$sale_txt = $sale_max > $sale_min ? wc_price( $sale_min ) . ' – ' . wc_price( $sale_max ) : wc_price( $sale_min );
+				return '<del>' . $reg_txt . '</del><ins>' . $sale_txt . '</ins>' . $badge;
 			}
 		}
 		if ( $p->is_on_sale() && function_exists( 'nexxi_kids_price_range' ) ) {
 			$range = nexxi_kids_price_range( $p );
 			if ( $range['min'] > 0 && $range['regular'] > $range['min'] ) {
-				$pct   = (int) round( ( 1 - $range['min'] / $range['regular'] ) * 100 );
-				$badge = $pct > 0 ? ' <span class="nxwpm-sale-pct">-' . $pct . '%</span>' : '';
-				return '<del>' . wc_price( (float) $range['regular'] ) . '</del><ins>' . wc_price( (float) $range['min'] ) . '</ins>' . $badge;
+				$pct      = (int) round( ( 1 - $range['min'] / $range['regular'] ) * 100 );
+				$badge    = $pct > 0 ? ' <span class="nxwpm-sale-pct">-' . $pct . '%</span>' : '';
+				$reg_min  = ! empty( $range['min_regular'] ) ? (float) $range['min_regular'] : (float) $range['regular'];
+				$reg_max  = ! empty( $range['max_regular'] ) ? (float) $range['max_regular'] : $reg_min;
+				$reg_txt  = $reg_max > $reg_min ? wc_price( $reg_min ) . ' – ' . wc_price( $reg_max ) : wc_price( $reg_min );
+				$sale_txt = $range['max'] > $range['min'] ? wc_price( (float) $range['min'] ) . ' – ' . wc_price( (float) $range['max'] ) : wc_price( (float) $range['min'] );
+				return '<del>' . $reg_txt . '</del><ins>' . $sale_txt . '</ins>' . $badge;
 			}
 		}
 		return $p->get_price_html();
