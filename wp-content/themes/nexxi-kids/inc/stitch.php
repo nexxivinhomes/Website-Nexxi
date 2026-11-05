@@ -39,7 +39,10 @@ add_filter( 'litespeed_optm_css_exc', static function ( $list ) {
 }, 999 );
 
 add_action( 'init', static function () {
-	$purge_ver = '20261105_var_pct_discount_fix_v43';
+	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+		return;
+	}
+	$purge_ver = '20261105_pancake_v7_sync_fix_v45';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
@@ -71,44 +74,82 @@ add_action( 'init', static function () {
 		if ( function_exists( 'nexxi_kids_sync_all_flash_sale_products' ) ) {
 			nexxi_kids_sync_all_flash_sale_products();
 		}
-		// One-time sync of legacy plugin files on live server to prevent duplicate class/file loads
+		// One-time version-aware sync of plugin files on live server (never downgrade a newer plugin!)
+		$read_sync_ver = static function ( $fpath ) {
+			if ( ! $fpath || ! is_readable( $fpath ) ) {
+				return '0.0.0';
+			}
+			$head = (string) @file_get_contents( $fpath, false, null, 0, 8192 ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			return preg_match( "/const\s+VERSION\s*=\s*['\"]([^'\"]+)['\"]/", $head, $m ) ? trim( $m[1] ) : '0.0.0';
+		};
 		$theme_pancake_file = get_template_directory() . '/inc/pancake-sync-admin.php';
-		$legacy_mgr_file    = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php' : '';
-		if ( $legacy_mgr_file && file_exists( $legacy_mgr_file ) && is_writable( $legacy_mgr_file ) && file_exists( $theme_pancake_file ) ) {
-			@copy( $theme_pancake_file, $legacy_mgr_file );
-			if ( function_exists( 'opcache_invalidate' ) ) {
-				@opcache_invalidate( $legacy_mgr_file, true );
+		if ( defined( 'WP_PLUGIN_DIR' ) && file_exists( $theme_pancake_file ) ) {
+			$theme_p_ver  = $read_sync_ver( $theme_pancake_file );
+			$sync_targets = array(
+				WP_PLUGIN_DIR . '/Website-Nexxi/includes/class-pancake-sync.php',
+				WP_PLUGIN_DIR . '/nexxi-kids-commerce/includes/class-pancake-sync.php',
+				WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php',
+			);
+			foreach ( $sync_targets as $target_sync_file ) {
+				if ( file_exists( $target_sync_file ) && is_writable( $target_sync_file ) ) {
+					$plugin_p_ver = $read_sync_ver( $target_sync_file );
+					if ( version_compare( $theme_p_ver, $plugin_p_ver, '>' ) ) {
+						@copy( $theme_pancake_file, $target_sync_file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						if ( function_exists( 'opcache_invalidate' ) ) {
+							@opcache_invalidate( $target_sync_file, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						}
+					}
+				}
 			}
 		}
 		$legacy_mgr_main = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-pancake-manager/nexxi-pancake-manager.php' : '';
 		if ( $legacy_mgr_main && file_exists( $legacy_mgr_main ) && is_writable( $legacy_mgr_main ) ) {
-			$m_src = (string) @file_get_contents( $legacy_mgr_main );
-			if ( false !== strpos( $m_src, "require_once __DIR__ . '/includes/class-pancake-sync.php';" ) && false === strpos( $m_src, 'pancake-sync-admin.php' ) ) {
-				$m_src = str_replace(
-					"require_once __DIR__ . '/includes/class-pancake-sync.php';",
-					"if ( ! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' ) ) {
-	require_once __DIR__ . '/includes/class-pancake-sync.php';
-}",
-					$m_src
-				);
-				@file_put_contents( $legacy_mgr_main, $m_src );
+			$m_src    = (string) @file_get_contents( $legacy_mgr_main ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			$m_ver    = preg_match( '/^\s*\*\s*Version:\s*([0-9.]+)/mi', $m_src, $mv ) ? trim( $mv[1] ) : '0.0.0';
+			$has_trap = ( false !== strpos( $m_src, "! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' )" ) );
+			if ( $has_trap || ( version_compare( '1.5.5', $m_ver, '>' ) && false === strpos( $m_src, 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) ) {
+				$smart_loader = "<?php\n"
+					. "/**\n"
+					. " * Plugin Name: NEXXI Pancake SKU & Image Manager\n"
+					. " * Description: Quản lý sản phẩm đã đồng bộ với Pancake POS bằng mã SKU, tự động quét ảnh trên Pancake để đưa về Website và lấy ảnh theo phân loại (Màu sắc) trên Pancake để set ảnh phân loại trên Website.\n"
+					. " * Version: 1.5.5\n"
+					. " * Author: NEXXI Kids\n"
+					. " * Requires at least: 6.0\n"
+					. " * Requires PHP: 7.4\n"
+					. " * Requires Plugins: woocommerce\n"
+					. " * Text Domain: nexxi-pancake-manager\n"
+					. " */\n"
+					. "if ( ! defined( 'ABSPATH' ) ) {\n\texit;\n}\n\n"
+					. "if ( ! function_exists( 'nexxi_pancake_extract_sync_file_version' ) ) {\n"
+					. "\tfunction nexxi_pancake_extract_sync_file_version( \$file ) {\n"
+					. "\t\tif ( ! \$file || ! is_readable( \$file ) ) {\n\t\t\treturn '0.0.0';\n\t\t}\n"
+					. "\t\t\$head = (string) @file_get_contents( \$file, false, null, 0, 8192 );\n"
+					. "\t\tif ( preg_match( \"/const\\s+VERSION\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]/\", \$head, \$m ) ) {\n\t\t\treturn trim( \$m[1] );\n\t\t}\n"
+					. "\t\treturn '0.0.0';\n\t}\n}\n\n"
+					. "\$nexxi_pancake_manager_boot = static function () {\n"
+					. "\tif ( defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {\n\t\treturn;\n\t}\n"
+					. "\t\$plugin_file = __DIR__ . '/includes/class-pancake-sync.php';\n"
+					. "\t\$theme_file  = function_exists( 'get_template_directory' ) ? ( get_template_directory() . '/inc/pancake-sync-admin.php' ) : '';\n"
+					. "\t\$plugin_ver  = nexxi_pancake_extract_sync_file_version( \$plugin_file );\n"
+					. "\t\$theme_ver   = \$theme_file ? nexxi_pancake_extract_sync_file_version( \$theme_file ) : '0.0.0';\n"
+					. "\tif ( version_compare( \$plugin_ver, \$theme_ver, '>=' ) ) {\n"
+					. "\t\tif ( \$theme_file && version_compare( \$plugin_ver, \$theme_ver, '>' ) && file_exists( \$theme_file ) && is_writable( \$theme_file ) ) {\n"
+					. "\t\t\t@copy( \$plugin_file, \$theme_file );\n"
+					. "\t\t\tif ( function_exists( 'opcache_invalidate' ) ) {\n\t\t\t\t@opcache_invalidate( \$theme_file, true );\n\t\t\t}\n\t\t}\n"
+					. "\t\tif ( is_readable( \$plugin_file ) ) {\n\t\t\trequire_once \$plugin_file;\n\t\t}\n"
+					. "\t} elseif ( \$theme_file && is_readable( \$theme_file ) ) {\n"
+					. "\t\tif ( file_exists( \$plugin_file ) && is_writable( \$plugin_file ) ) {\n"
+					. "\t\t\t@copy( \$theme_file, \$plugin_file );\n"
+					. "\t\t\tif ( function_exists( 'opcache_invalidate' ) ) {\n\t\t\t\t@opcache_invalidate( \$plugin_file, true );\n\t\t\t}\n\t\t}\n"
+					. "\t\trequire_once \$theme_file;\n\t}\n};\n\n"
+					. "if ( function_exists( 'get_template_directory' ) ) {\n\t\$nexxi_pancake_manager_boot();\n} else {\n\tadd_action( 'plugins_loaded', \$nexxi_pancake_manager_boot, 1 );\n}\n\n"
+					. "add_action(\n\t'plugins_loaded',\n\tstatic function () use ( \$nexxi_pancake_manager_boot ) {\n"
+					. "\t\t\$nexxi_pancake_manager_boot();\n"
+					. "\t\tforeach ( array( 'Nexxi_Pancake_Sync_Manager_V7', 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager' ) as \$cls ) {\n"
+					. "\t\t\tif ( class_exists( \$cls, false ) && method_exists( \$cls, 'init' ) ) {\n\t\t\t\t\$cls::init();\n\t\t\t\tbreak;\n\t\t\t}\n\t\t}\n\t},\n\t5\n);\n";
+				@file_put_contents( $legacy_mgr_main, $smart_loader ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
 				if ( function_exists( 'opcache_invalidate' ) ) {
-					@opcache_invalidate( $legacy_mgr_main, true );
-				}
-			}
-		}
-		$commerce_main_file = defined( 'WP_PLUGIN_DIR' ) ? WP_PLUGIN_DIR . '/nexxi-kids-commerce/nexxi-kids-commerce.php' : '';
-		if ( $commerce_main_file && file_exists( $commerce_main_file ) && is_writable( $commerce_main_file ) ) {
-			$c_src = (string) @file_get_contents( $commerce_main_file );
-			if ( false !== strpos( $c_src, "require_once __DIR__ . '/includes/class-pancake-sync.php';" ) && false === strpos( $c_src, 'pancake-sync-admin.php' ) ) {
-				$c_src = str_replace(
-					"require_once __DIR__ . '/includes/class-pancake-sync.php';",
-					"if ( ! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' ) ) {\n\trequire_once __DIR__ . '/includes/class-pancake-sync.php';\n}",
-					$c_src
-				);
-				@file_put_contents( $commerce_main_file, $c_src );
-				if ( function_exists( 'opcache_invalidate' ) ) {
-					@opcache_invalidate( $commerce_main_file, true );
+					@opcache_invalidate( $legacy_mgr_main, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 				}
 			}
 		}
@@ -152,7 +193,13 @@ add_action( 'init', static function () {
 				if ( empty( $missing_vids ) ) {
 					continue;
 				}
-				$pancake_cls = class_exists( 'Nexxi_Pancake_Sync_Manager_V5' ) ? 'Nexxi_Pancake_Sync_Manager_V5' : ( class_exists( 'Nexxi_Pancake_Sync_Manager_V4' ) ? 'Nexxi_Pancake_Sync_Manager_V4' : '' );
+				$pancake_cls = '';
+				foreach ( array( 'Nexxi_Pancake_Sync_Manager_V7', 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4' ) as $cand_p_cls ) {
+					if ( class_exists( $cand_p_cls ) ) {
+						$pancake_cls = $cand_p_cls;
+						break;
+					}
+				}
 				if ( $min_valid_reg <= 0 && $pancake_cls ) {
 					if ( null === $p_maps ) {
 						$p_cat  = $pancake_cls::get_pancake_catalog( false );
@@ -249,35 +296,74 @@ add_action( 'init', static function () {
  * Runs at init priority 20 after WooCommerce post types and product data stores are fully registered.
  */
 add_action( 'init', static function () {
+	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) ) {
+		return;
+	}
+	if ( ! is_admin() ) {
+		return;
+	}
 	if ( '1' === (string) get_option( 'nexxi_sale_var_pct_fix_v1', '0' ) ) {
 		return;
 	}
 	if ( ! function_exists( 'wc_get_product' ) || ! function_exists( 'nexxi_kids_resync_product_sale_prices' ) ) {
 		return;
 	}
-	update_option( 'nexxi_sale_var_pct_fix_v1', '1', true );
+	if ( get_transient( 'nexxi_sale_var_pct_fix_lock' ) ) {
+		return;
+	}
+	set_transient( 'nexxi_sale_var_pct_fix_lock', 1, 15 );
 
-	global $wpdb;
-	$sale_pids = $wpdb->get_col(
-		"SELECT DISTINCT p.ID
-		 FROM {$wpdb->posts} p
-		 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-		 WHERE p.post_type = 'product'
-		   AND pm.meta_key IN ('_nexxi_has_prod_sale', '_nexxi_is_flash_sale')
-		   AND pm.meta_value = '1'"
-	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	try {
+		global $wpdb;
+		$cursor_id  = (int) get_option( 'nexxi_sale_var_pct_fix_cursor', 0 );
+		$batch_size = 35;
+		$sale_pids  = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT p.ID
+				 FROM {$wpdb->posts} p
+				 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+				 WHERE p.post_type = 'product'
+				   AND p.ID > %d
+				   AND pm.meta_key IN ('_nexxi_has_prod_sale', '_nexxi_is_flash_sale')
+				   AND pm.meta_value = '1'
+				 ORDER BY p.ID ASC
+				 LIMIT %d",
+				$cursor_id,
+				$batch_size
+			)
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
-	if ( ! empty( $sale_pids ) ) {
-		$sale_pids   = array_values( array_unique( array_filter( array_map( 'absint', (array) $sale_pids ) ) ) );
-		$any_changed = false;
-		foreach ( array_chunk( $sale_pids, 100 ) as $chunk ) {
-			update_meta_cache( 'post', $chunk );
-			foreach ( $chunk as $spid ) {
-				if ( nexxi_kids_resync_product_sale_prices( $spid ) ) {
-					$any_changed = true;
-				}
+		$sale_pids = array_values( array_unique( array_filter( array_map( 'absint', (array) $sale_pids ) ) ) );
+		if ( empty( $sale_pids ) ) {
+			update_option( 'nexxi_sale_var_pct_fix_v1', '1', true );
+			delete_option( 'nexxi_sale_var_pct_fix_cursor' );
+			return;
+		}
+
+		update_meta_cache( 'post', $sale_pids );
+		$any_changed  = false;
+		$processed    = 0;
+		$last_done_id = $cursor_id;
+		$t_start      = microtime( true );
+
+		foreach ( $sale_pids as $spid ) {
+			if ( nexxi_kids_resync_product_sale_prices( $spid ) ) {
+				$any_changed = true;
+			}
+			$last_done_id = (int) $spid;
+			$processed++;
+			if ( ( microtime( true ) - $t_start ) >= 3.5 ) {
+				break;
 			}
 		}
+
+		if ( $processed === count( $sale_pids ) && count( $sale_pids ) < $batch_size ) {
+			update_option( 'nexxi_sale_var_pct_fix_v1', '1', true );
+			delete_option( 'nexxi_sale_var_pct_fix_cursor' );
+		} else {
+			update_option( 'nexxi_sale_var_pct_fix_cursor', $last_done_id, false );
+		}
+
 		if ( $any_changed ) {
 			delete_transient( 'wc_products_onsale' );
 			if ( function_exists( 'nexxi_kids_reset_sale_runtime_cache' ) ) {
@@ -291,6 +377,8 @@ add_action( 'init', static function () {
 				\LiteSpeed\Purge::purge_all();
 			}
 		}
+	} finally {
+		delete_transient( 'nexxi_sale_var_pct_fix_lock' );
 	}
 }, 20 );
 

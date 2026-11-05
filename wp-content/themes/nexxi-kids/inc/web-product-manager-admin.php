@@ -26,6 +26,10 @@ final class Nexxi_Web_Product_Manager {
 	const LIST_SEP   = ' | ';
 	const IMPORT_DIR = 'nexxi-product-imports';
 
+	private static $emergency_mem = null;
+	private static $ajax_guarded  = false;
+	private static $ajax_active   = false;
+
 	public static function init() {
 		if ( is_admin() ) {
 			add_action( 'admin_menu', array( __CLASS__, 'register_submenu' ), 30 );
@@ -506,7 +510,7 @@ final class Nexxi_Web_Product_Manager {
 			return (int) $aid;
 		}
 		$sync_mgr_cls = '';
-		foreach ( array( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager', 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4' ) as $cand_cls ) {
+		foreach ( array( 'Nexxi_Pancake_Sync_Manager_V7', 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager', 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4' ) as $cand_cls ) {
 			if ( class_exists( $cand_cls ) ) {
 				$sync_mgr_cls = $cand_cls;
 				break;
@@ -987,8 +991,52 @@ final class Nexxi_Web_Product_Manager {
 	}
 
 	private static function check_ajax() {
-		check_ajax_referer( self::NONCE, 'nonce' );
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		self::$ajax_active = true;
+		if ( null === self::$emergency_mem ) {
+			self::$emergency_mem = str_repeat( 'x', 262144 );
+		}
+		if ( ! self::$ajax_guarded ) {
+			self::$ajax_guarded = true;
+			register_shutdown_function(
+				static function () {
+					self::$emergency_mem = null;
+					if ( ! self::$ajax_active ) {
+						return;
+					}
+					$last = error_get_last();
+					if ( ! is_array( $last ) || empty( $last['message'] ) || ! in_array( (int) ( $last['type'] ?? 0 ), array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR ), true ) ) {
+						return;
+					}
+					self::$ajax_active = false;
+					$guard             = 0;
+					while ( ob_get_level() > 0 && $guard < 16 ) {
+						$prev = ob_get_level();
+						$ok   = @ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						$guard++;
+						if ( ! $ok || ob_get_level() >= $prev ) {
+							break;
+						}
+					}
+					$msg = 'Lỗi máy chủ PHP: ' . trim( (string) $last['message'] );
+					if ( ! empty( $last['file'] ) && ! empty( $last['line'] ) ) {
+						$msg .= ' (' . basename( (string) $last['file'] ) . ':' . (int) $last['line'] . ')';
+					}
+					if ( ! headers_sent() ) {
+						header( 'HTTP/1.1 200 OK' );
+						header( 'Content-Type: application/json; charset=utf-8' );
+					}
+					echo json_encode( array( 'success' => false, 'data' => array( 'message' => $msg ) ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+				}
+			);
+		}
+		if ( false === check_ajax_referer( self::NONCE, 'nonce', false ) ) {
+			self::$ajax_active   = false;
+			self::$emergency_mem = null;
+			wp_send_json_error( array( 'message' => 'Phiên bảo mật (Nonce) đã hết hạn. Vui lòng nhấn F5 tải lại trang rồi thử lại.' ) );
+		}
+		if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_options' ) ) {
+			self::$ajax_active   = false;
+			self::$emergency_mem = null;
 			wp_send_json_error( array( 'message' => 'Bạn không có quyền thực hiện thao tác này.' ) );
 		}
 		if ( function_exists( 'set_time_limit' ) ) {
@@ -1384,11 +1432,11 @@ final class Nexxi_Web_Product_Manager {
 		$out  = fopen( 'php://output', 'w' );
 		$cols = self::columns();
 		fwrite( $out, "\xEF\xBB\xBF" );
-		fputcsv( $out, array_keys( $cols ) );
+		fputcsv( $out, array_keys( $cols ), ',', '"', '\\' );
 		// Dòng mô tả tiếng Việt (bắt đầu bằng #) — bị bỏ qua khi nhập lại file.
 		$labels             = array_values( $cols );
 		$labels[0]          = '# ' . $labels[0];
-		fputcsv( $out, $labels );
+		fputcsv( $out, $labels, ',', '"', '\\' );
 
 		$primed = array();
 		foreach ( $ids as $idx => $id ) {
@@ -1405,12 +1453,12 @@ final class Nexxi_Web_Product_Manager {
 			if ( ! $p || $p->is_type( 'variation' ) ) {
 				continue;
 			}
-			fputcsv( $out, array_values( self::get_row( $p ) ) );
+			fputcsv( $out, array_values( self::get_row( $p ) ), ',', '"', '\\' );
 			if ( $with_var && $p->is_type( 'variable' ) ) {
 				foreach ( $p->get_children() as $cid ) {
 					$v = wc_get_product( $cid );
 					if ( $v ) {
-						fputcsv( $out, array_values( self::get_row( $v ) ) );
+						fputcsv( $out, array_values( self::get_row( $v ) ), ',', '"', '\\' );
 					}
 				}
 			}
@@ -1591,7 +1639,7 @@ final class Nexxi_Web_Product_Manager {
 			$fh = fopen( 'php://temp', 'r+' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			fwrite( $fh, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			rewind( $fh );
-			while ( false !== ( $cells = fgetcsv( $fh, 0, $delim ) ) ) {
+			while ( false !== ( $cells = fgetcsv( $fh, 0, $delim, '"', '\\' ) ) ) {
 				$raw_matrix[] = (array) $cells;
 			}
 			fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions
