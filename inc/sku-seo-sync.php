@@ -31,6 +31,9 @@ final class Nexxi_SKU_SEO_Sync {
 	 * Tự động chạy đồng bộ 1 lần ngay khi phiên bản dữ liệu mới được triển khai lên Website.
 	 */
 	public static function maybe_auto_sync() {
+		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return;
+		}
 		if ( get_option( self::OPT_VER ) === self::SYNC_VER ) {
 			return;
 		}

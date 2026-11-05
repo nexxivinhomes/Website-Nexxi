@@ -29,6 +29,57 @@
 		searchTimer: null,
 	};
 
+	function extractCleanAjaxJson(rawText, httpStatus) {
+		const text = String(rawText ?? '');
+		const trimmed = text.trim();
+		if (trimmed === '-1') {
+			return { success: false, data: { message: 'Phiên bảo mật (Nonce) đã hết hạn (HTTP ' + httpStatus + '). Vui lòng nhấn F5 tải lại trang.' } };
+		}
+		if (trimmed === '0' || trimmed === '') {
+			return { success: false, data: { message: 'Máy chủ trả về phản hồi rỗng/mã 0 (HTTP ' + httpStatus + '). Vui lòng nhấn F5 tải lại trang rồi thử lại.' } };
+		}
+		const marker = '{"success":';
+		const startIdx = text.lastIndexOf(marker);
+		if (startIdx < 0) {
+			return { success: false, data: { message: 'Máy chủ phản hồi không đúng định dạng JSON (HTTP ' + httpStatus + '): ' + stripTags(text).slice(0, 180) } };
+		}
+		let depth = 0;
+		let inStr = false;
+		let escNext = false;
+		let endIdx = -1;
+		for (let i = startIdx; i < text.length; i++) {
+			const ch = text[i];
+			if (escNext) {
+				escNext = false;
+				continue;
+			}
+			if (ch === '\\' && inStr) {
+				escNext = true;
+				continue;
+			}
+			if (ch === '"') {
+				inStr = !inStr;
+				continue;
+			}
+			if (!inStr) {
+				if (ch === '{') depth++;
+				else if (ch === '}') {
+					depth--;
+					if (depth === 0) {
+						endIdx = i + 1;
+						break;
+					}
+				}
+			}
+		}
+		const slice = endIdx > startIdx ? text.slice(startIdx, endIdx) : text.slice(startIdx);
+		try {
+			return JSON.parse(slice);
+		} catch (e) {
+			return { success: false, data: { message: 'Dữ liệu JSON từ máy chủ bị cắt ngang (HTTP ' + httpStatus + '). Vui lòng thử lại.' } };
+		}
+	}
+
 	async function post(action, data = {}) {
 		const fd = new FormData();
 		fd.append('action', 'nxwpm_' + action);
@@ -37,11 +88,7 @@
 		try {
 			const r = await fetch(C.ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' });
 			const t = await r.text();
-			try {
-				return JSON.parse(t);
-			} catch (e) {
-				return { success: false, data: { message: 'Máy chủ trả về dữ liệu không hợp lệ: ' + stripTags(t).slice(0, 220) } };
-			}
+			return extractCleanAjaxJson(t, r.status);
 		} catch (e) {
 			return { success: false, data: { message: 'Lỗi kết nối mạng.' } };
 		}

@@ -16,40 +16,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 @error_reporting( error_reporting() & ~E_DEPRECATED & ~E_USER_DEPRECATED ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions,WordPress.PHP.DiscouragedPHPFunctions
 
-// Unhook any older plugin instance (v1.4.0 or v1.5.0-v2/v3/v4/v5) if it loaded before the theme
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V6', false ) ) {
-	foreach ( array( 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4', 'Nexxi_Pancake_Sync_Manager_V3', 'Nexxi_Pancake_Sync_Manager_V2', 'Nexxi_Pancake_Sync_Manager' ) as $legacy_cls ) {
-		if ( class_exists( $legacy_cls, false ) && method_exists( $legacy_cls, 'init' ) ) {
-			$legacy_pancake_inst = $legacy_cls::init();
-			if ( is_object( $legacy_pancake_inst ) ) {
-				remove_action( 'admin_menu', array( $legacy_pancake_inst, 'register_menus' ), 25 );
-				remove_action( 'admin_init', array( $legacy_pancake_inst, 'handle_post_actions' ) );
-				remove_action( 'admin_init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
-				remove_action( 'admin_init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
-				remove_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $legacy_pancake_inst, 'ajax_refresh_cache' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_push_browser_cache', array( $legacy_pancake_inst, 'ajax_push_browser_cache' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_sync_single', array( $legacy_pancake_inst, 'ajax_sync_single' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_get_classifications', array( $legacy_pancake_inst, 'ajax_get_classifications' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_apply_classifications', array( $legacy_pancake_inst, 'ajax_apply_classifications' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_link_sku', array( $legacy_pancake_inst, 'ajax_link_sku' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_import_product', array( $legacy_pancake_inst, 'ajax_import_product' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_delete_disconnect', array( $legacy_pancake_inst, 'ajax_delete_disconnect' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $legacy_pancake_inst, 'ajax_cleanup_duplicates' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $legacy_pancake_inst, 'ajax_set_warehouse' ) );
-				remove_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $legacy_pancake_inst, 'ajax_spa_nav' ) );
-				remove_action( 'nexxi_pancake_auto_scan_event', array( $legacy_pancake_inst, 'run_cron_auto_scan' ) );
-				remove_action( 'init', array( $legacy_pancake_inst, 'maybe_schedule_cron' ) );
-				remove_action( 'init', array( $legacy_pancake_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
-			}
-		}
-	}
+if ( defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
+	return;
 }
+define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.5' );
 
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V6' ) ) :
+if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V7', false ) ) :
 
-final class Nexxi_Pancake_Sync_Manager_V6 {
+final class Nexxi_Pancake_Sync_Manager_V7 {
 
-	const VERSION              = '1.5.4';
+	const VERSION              = '1.5.5';
 	const MENU_SLUG            = 'nexxi-pancake-sync';
 	const CACHE_OPTION         = 'nexxi_pancake_catalog_cache_v4';
 	const CACHE_TIME_OPT       = 'nexxi_pancake_catalog_cache_time';
@@ -72,20 +48,156 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	private static $ajax_guarded       = false;
 	private static $ajax_in_progress   = false;
 	private static $ajax_response_sent = false;
+	private static $in_fatal_shutdown  = false;
+
+	/**
+	 * Unhook any older manager class (V1..V6) if both an older read-only theme/plugin file and V7 were loaded.
+	 */
+	public static function purge_legacy_manager_hooks() {
+		$legacy_classes = array(
+			'Nexxi_Pancake_Sync_Manager_V6',
+			'Nexxi_Pancake_Sync_Manager_V5',
+			'Nexxi_Pancake_Sync_Manager_V4',
+			'Nexxi_Pancake_Sync_Manager_V3',
+			'Nexxi_Pancake_Sync_Manager_V2',
+			'Nexxi_Pancake_Sync_Manager',
+		);
+		$ajax_hooks = array(
+			'wp_ajax_nexxi_pancake_refresh_cache'         => 'ajax_refresh_cache',
+			'wp_ajax_nexxi_pancake_push_browser_cache'    => 'ajax_push_browser_cache',
+			'wp_ajax_nexxi_pancake_sync_single'           => 'ajax_sync_single',
+			'wp_ajax_nexxi_pancake_get_classifications'   => 'ajax_get_classifications',
+			'wp_ajax_nexxi_pancake_apply_classifications' => 'ajax_apply_classifications',
+			'wp_ajax_nexxi_pancake_link_sku'              => 'ajax_link_sku',
+			'wp_ajax_nexxi_pancake_import_product'        => 'ajax_import_product',
+			'wp_ajax_nexxi_pancake_delete_disconnect'     => 'ajax_delete_disconnect',
+			'wp_ajax_nexxi_pancake_cleanup_duplicates'    => 'ajax_cleanup_duplicates',
+			'wp_ajax_nexxi_pancake_set_warehouse'         => 'ajax_set_warehouse',
+			'wp_ajax_nexxi_pancake_spa_nav'               => 'ajax_spa_nav',
+		);
+
+		foreach ( $legacy_classes as $legacy_cls ) {
+			if ( ! class_exists( $legacy_cls, false ) ) {
+				continue;
+			}
+			try {
+				$ref = new \ReflectionClass( $legacy_cls );
+				if ( __CLASS__ === $ref->getName() ) {
+					continue;
+				}
+			} catch ( \Throwable $e ) {
+				continue;
+			}
+			if ( method_exists( $legacy_cls, 'init' ) ) {
+				$legacy_inst = $legacy_cls::init();
+				if ( is_object( $legacy_inst ) && __CLASS__ !== get_class( $legacy_inst ) ) {
+					remove_action( 'admin_menu', array( $legacy_inst, 'register_menus' ), 25 );
+					remove_action( 'admin_init', array( $legacy_inst, 'handle_post_actions' ) );
+					remove_action( 'admin_init', array( $legacy_inst, 'maybe_schedule_cron' ) );
+					remove_action( 'admin_init', array( $legacy_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+					remove_action( 'init', array( $legacy_inst, 'maybe_schedule_cron' ) );
+					remove_action( 'init', array( $legacy_inst, 'maybe_auto_cleanup_duplicates' ), 20 );
+					remove_action( self::CRON_HOOK, array( $legacy_inst, 'run_cron_auto_scan' ) );
+					foreach ( $ajax_hooks as $hook_name => $method_name ) {
+						remove_action( $hook_name, array( $legacy_inst, $method_name ) );
+					}
+				}
+			}
+		}
+
+		// Also sweep $wp_filter directly in case an older class registered callbacks at custom priorities
+		if ( ! empty( $GLOBALS['wp_filter'] ) && is_array( $GLOBALS['wp_filter'] ) ) {
+			$watched_hooks = array_merge(
+				array( 'admin_menu', 'admin_init', 'init', self::CRON_HOOK, 'cron_schedules' ),
+				array_keys( $ajax_hooks )
+			);
+			foreach ( $watched_hooks as $h_tag ) {
+				if ( empty( $GLOBALS['wp_filter'][ $h_tag ] ) || ! is_object( $GLOBALS['wp_filter'][ $h_tag ] ) || empty( $GLOBALS['wp_filter'][ $h_tag ]->callbacks ) ) {
+					continue;
+				}
+				foreach ( $GLOBALS['wp_filter'][ $h_tag ]->callbacks as $prio => $cbs ) {
+					foreach ( (array) $cbs as $cb ) {
+						if ( ! empty( $cb['function'] ) && is_array( $cb['function'] ) && isset( $cb['function'][0], $cb['function'][1] ) && is_object( $cb['function'][0] ) ) {
+							$obj_cls = get_class( $cb['function'][0] );
+							if ( 0 === strpos( $obj_cls, 'Nexxi_Pancake_Sync_Manager' ) && __CLASS__ !== $obj_cls ) {
+								remove_filter( $h_tag, $cb['function'], (int) $prio );
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	public static function init() {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
 		}
+		if ( ! function_exists( 'did_action' ) || did_action( 'init' ) ) {
+			self::maybe_flush_upgrade_caches();
+		} else {
+			add_action( 'init', array( __CLASS__, 'maybe_flush_upgrade_caches' ), 20 );
+		}
 		return self::$instance;
 	}
 
+	/**
+	 * Run once whenever VERSION changes (at `init` priority 20 after LiteSpeed Cache is ready):
+	 * store active version, invalidate PHP OPcache on all known theme/plugin Pancake sync files,
+	 * and trigger LiteSpeed Cache purge on Hostinger.
+	 */
+	public static function maybe_flush_upgrade_caches() {
+		if ( ! function_exists( 'get_option' ) || ! function_exists( 'update_option' ) ) {
+			return;
+		}
+		if ( get_option( 'nexxi_pancake_active_ver' ) === self::VERSION ) {
+			return;
+		}
+		update_option( 'nexxi_pancake_active_ver', self::VERSION, true );
+
+		if ( function_exists( 'opcache_invalidate' ) ) {
+			$candidates = array( __FILE__ );
+			if ( function_exists( 'get_template_directory' ) ) {
+				$candidates[] = get_template_directory() . '/inc/pancake-sync-admin.php';
+				$candidates[] = get_template_directory() . '/inc/web-product-manager-admin.php';
+				$candidates[] = get_template_directory() . '/inc/stitch.php';
+			}
+			if ( defined( 'WP_PLUGIN_DIR' ) ) {
+				$candidates[] = WP_PLUGIN_DIR . '/Website-Nexxi/includes/class-pancake-sync.php';
+				$candidates[] = WP_PLUGIN_DIR . '/Website-Nexxi/nexxi-kids-commerce.php';
+				$candidates[] = WP_PLUGIN_DIR . '/nexxi-kids-commerce/includes/class-pancake-sync.php';
+				$candidates[] = WP_PLUGIN_DIR . '/nexxi-kids-commerce/nexxi-kids-commerce.php';
+				$candidates[] = WP_PLUGIN_DIR . '/nexxi-pancake-manager/includes/class-pancake-sync.php';
+				$candidates[] = WP_PLUGIN_DIR . '/nexxi-pancake-manager/nexxi-pancake-manager.php';
+			}
+			foreach ( array_unique( $candidates ) as $cand ) {
+				if ( $cand && file_exists( $cand ) ) {
+					@opcache_invalidate( $cand, true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				}
+			}
+		}
+
+		if ( function_exists( 'do_action' ) ) {
+			do_action( 'litespeed_purge_all' );
+		}
+		if ( class_exists( '\LiteSpeed\Purge' ) && method_exists( '\LiteSpeed\Purge', 'purge_all' ) ) {
+			\LiteSpeed\Purge::purge_all();
+		}
+	}
+
 	public function __construct() {
-		if ( is_admin() || ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) ) {
+		self::purge_legacy_manager_hooks();
+		add_action( 'after_setup_theme', array( __CLASS__, 'purge_legacy_manager_hooks' ), 99 );
+		add_action( 'init', array( __CLASS__, 'purge_legacy_manager_hooks' ), 0 );
+
+		$doing_ajax = function_exists( 'wp_doing_ajax' ) && wp_doing_ajax();
+		if ( is_admin() || $doing_ajax ) {
 			add_action( 'admin_menu', array( $this, 'register_menus' ), 25 );
-			add_action( 'admin_init', array( $this, 'handle_post_actions' ) );
-			add_action( 'admin_init', array( $this, 'maybe_schedule_cron' ) );
-			add_action( 'admin_init', array( $this, 'maybe_auto_cleanup_duplicates' ), 20 );
+			if ( ! $doing_ajax ) {
+				add_action( 'admin_init', array( $this, 'handle_post_actions' ) );
+				add_action( 'admin_init', array( $this, 'maybe_schedule_cron' ) );
+				add_action( 'admin_init', array( $this, 'maybe_auto_cleanup_duplicates' ), 20 );
+			}
 
 			// AJAX endpoints for fast, non-timeout batch processing & interactive classification mapping.
 			add_action( 'wp_ajax_nexxi_pancake_refresh_cache', array( $this, 'ajax_refresh_cache' ) );
@@ -464,6 +576,14 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	 * and recalculate variation/product stock strictly for the configured Pancake warehouse (`Kho mặc định`).
 	 */
 	public static function merge_catalog_entries_by_sku( array $catalog ) {
+		return self::merge_catalog_entries_destructive( $catalog );
+	}
+
+	/**
+	 * Low-RAM destructive merge: iterates keys and unsets each source entry immediately (`refcount=1` friendly)
+	 * so PHP never duplicates 57,000 variation arrays via Copy-On-Write during catalog merge.
+	 */
+	private static function merge_catalog_entries_destructive( array &$catalog ) {
 		if ( empty( $catalog ) ) {
 			return array();
 		}
@@ -471,8 +591,11 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 		$warehouse_id = $settings['warehouse_id'];
 		$merged       = array();
 		$sku_to_pid   = array();
+		$orig_keys    = array_keys( $catalog );
 
-		foreach ( $catalog as $pid => $p ) {
+		foreach ( $orig_keys as $pid ) {
+			$p = $catalog[ $pid ] ?? null;
+			unset( $catalog[ $pid ] );
 			if ( ! is_array( $p ) ) {
 				continue;
 			}
@@ -571,6 +694,14 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 			if ( ! empty( $p['max_price'] ) && $p['max_price'] > ( $m['max_price'] ?? 0 ) ) {
 				$m['max_price'] = $p['max_price'];
 			}
+			if ( ! empty( $m['min_price'] ) && ! empty( $m['variations'] ) && is_array( $m['variations'] ) ) {
+				foreach ( $m['variations'] as &$mv ) {
+					if ( (float) ( $mv['price'] ?? 0 ) <= 0 ) {
+						$mv['price'] = (float) $m['min_price'];
+					}
+				}
+				unset( $mv );
+			}
 			unset( $m );
 		}
 
@@ -666,11 +797,67 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	}
 
 	/**
-	 * Staging JSON file path used during multi-wave full-catalog refresh so the live catalog is never truncated mid-sync.
+	 * Staging JSON file path used by legacy waves (kept for cleanup compatibility).
 	 */
 	public static function get_staging_cache_file_path() {
 		$file = self::get_cache_file_path();
 		return $file ? preg_replace( '~\.json$~', '.staging.json', $file ) : '';
+	}
+
+	/**
+	 * Sidecar metadata file storing `(version, warehouse_id, size, mtime, count)` for `nexxi-pancake-catalog-v4.json`
+	 * so `get_pancake_catalog(false)` can skip re-running `merge_catalog_entries_by_sku()` on every read.
+	 */
+	public static function get_cache_meta_file_path() {
+		$file = self::get_cache_file_path();
+		return $file ? preg_replace( '~\.json$~', '.meta.json', $file ) : '';
+	}
+
+	/**
+	 * Dedicated directory for O(1) per-wave staging part files (`part-0001.json`, `part-0002.json`...).
+	 */
+	public static function get_staging_dir_path() {
+		$up = wp_upload_dir();
+		if ( empty( $up['basedir'] ) || ! is_writable( $up['basedir'] ) ) {
+			return '';
+		}
+		$dir = trailingslashit( $up['basedir'] ) . 'nexxi-pancake-staging';
+		if ( ! is_dir( $dir ) ) {
+			wp_mkdir_p( $dir );
+		}
+		if ( is_dir( $dir ) && is_writable( $dir ) ) {
+			$idx = $dir . '/index.php';
+			if ( ! file_exists( $idx ) ) {
+				@file_put_contents( $idx, "<?php\n// Silence is golden.\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+			$hta = $dir . '/.htaccess';
+			if ( ! file_exists( $hta ) ) {
+				@file_put_contents( $hta, "Deny from all\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+			return $dir;
+		}
+		return '';
+	}
+
+	/**
+	 * Remove all staging part files, staging metadata, and legacy `.staging.json`.
+	 */
+	private static function clear_staging_parts( $staging_dir = '' ) {
+		if ( '' === $staging_dir ) {
+			$staging_dir = self::get_staging_dir_path();
+		}
+		if ( $staging_dir && is_dir( $staging_dir ) ) {
+			$files = glob( $staging_dir . '/*.json' );
+			if ( is_array( $files ) ) {
+				foreach ( $files as $f ) {
+					@unlink( $f ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				}
+			}
+		}
+		$legacy_st = self::get_staging_cache_file_path();
+		if ( $legacy_st && file_exists( $legacy_st ) ) {
+			@unlink( $legacy_st ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
 	}
 
 	/**
@@ -695,28 +882,103 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	}
 
 	/**
+	 * Streaming atomic JSON object writer: serializes one product entry at a time (`~3-8 KB` buffer)
+	 * directly to disk instead of allocating a contiguous 25-50 MB `wp_json_encode()` string in PHP RAM.
+	 */
+	private static function write_catalog_stream_atomic( $file, array $catalog ) {
+		if ( ! $file ) {
+			return false;
+		}
+		$tmp = $file . '.tmp.' . wp_generate_password( 6, false, false );
+		$fh  = @fopen( $tmp, 'wb' ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( ! $fh ) {
+			$fallback = wp_json_encode( (object) $catalog );
+			return $fallback ? self::write_json_file_atomic( $file, $fallback ) : false;
+		}
+		$ok    = ( false !== @fwrite( $fh, '{' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		$first = true;
+		if ( $ok ) {
+			foreach ( $catalog as $k => $entry ) {
+				$k_json = wp_json_encode( (string) $k );
+				$v_json = wp_json_encode( $entry );
+				if ( false === $k_json || false === $v_json ) {
+					continue;
+				}
+				$prefix = $first ? '' : ',';
+				$first  = false;
+				if ( false === @fwrite( $fh, $prefix . $k_json . ':' . $v_json ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+					$ok = false;
+					break;
+				}
+				unset( $k_json, $v_json );
+			}
+		}
+		if ( $ok && false === @fwrite( $fh, '}' ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			$ok = false;
+		}
+		@fflush( $fh ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@fclose( $fh ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( ! $ok ) {
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			return false;
+		}
+		if ( ! @rename( $tmp, $file ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			$copied = @copy( $tmp, $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			return (bool) $copied;
+		}
+		return true;
+	}
+
+	/**
 	 * Save catalog cache to local JSON file (and compact copy to wp_options if uploads dir is unavailable).
 	 */
 	public static function save_catalog_cache( array $products_by_id ) {
+		self::save_catalog_cache_from_ref( $products_by_id );
+	}
+
+	/**
+	 * Low-RAM reference-based catalog cache writer used by `stage_commit` and `save_catalog_cache`.
+	 */
+	private static function save_catalog_cache_from_ref( array &$products_by_id ) {
 		if ( function_exists( 'wp_raise_memory_limit' ) ) {
 			wp_raise_memory_limit( 'admin' );
 		}
 		@ini_set( 'memory_limit', '512M' ); // phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed
 
-		$products_by_id        = self::merge_catalog_entries_by_sku( $products_by_id );
-		self::$runtime_catalog = $products_by_id;
+		$merged                = self::merge_catalog_entries_destructive( $products_by_id );
+		$products_by_id        = array();
+		self::$runtime_catalog = $merged;
 		self::$maps_memo       = null;
 		self::$maps_memo_key   = '';
 		$file                  = self::get_cache_file_path();
 		$wrote_file            = false;
 		if ( $file ) {
-			$encoded    = wp_json_encode( $products_by_id );
-			$wrote_file = self::write_json_file_atomic( $file, $encoded );
-			unset( $encoded );
+			$wrote_file = self::write_catalog_stream_atomic( $file, $merged );
+			if ( $wrote_file ) {
+				@clearstatcache( true, $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				$meta_file = self::get_cache_meta_file_path();
+				if ( $meta_file ) {
+					$settings = self::get_settings();
+					$meta_str = wp_json_encode(
+						array(
+							'version'      => self::VERSION,
+							'warehouse_id' => (string) ( $settings['warehouse_id'] ?? '' ),
+							'size'         => (int) @filesize( $file ), // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+							'mtime'        => (int) @filemtime( $file ), // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+							'count'        => count( $merged ),
+						)
+					);
+					if ( $meta_str ) {
+						self::write_json_file_atomic( $meta_file, $meta_str );
+					}
+				}
+			}
 		}
 		if ( ! $wrote_file ) {
-			update_option( self::CACHE_OPTION, array_slice( $products_by_id, 0, 150, true ), false );
+			update_option( self::CACHE_OPTION, array_slice( $merged, 0, 150, true ), false );
 		}
+		unset( $merged );
 		update_option( self::CACHE_TIME_OPT, time(), false );
 
 		// Xóa ngay mọi bản cache .php cũ (var_export của hàng nghìn SP tạo file hàng chục MB gây tràn bộ nhớ PHP khi include).
@@ -770,7 +1032,8 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	}
 
 	public static function flush_deferred_writes() {
-		if ( null === self::$pending_save ) {
+		if ( self::$in_fatal_shutdown || null === self::$pending_save ) {
+			self::$pending_save = null;
 			return;
 		}
 		// Trả kết quả cho trình duyệt trước, phần ghi file chạy tiếp phía sau.
@@ -782,10 +1045,10 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 		if ( function_exists( 'set_time_limit' ) ) {
 			@set_time_limit( 120 ); // phpcs:ignore
 		}
-		if ( null !== self::$pending_save ) {
+		if ( ! self::$in_fatal_shutdown && null !== self::$pending_save ) {
 			$pending            = self::$pending_save;
 			self::$pending_save = null;
-			self::save_catalog_cache( $pending );
+			self::save_catalog_cache_from_ref( $pending );
 		}
 	}
 
@@ -1708,7 +1971,30 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 				$dec = $raw ? json_decode( $raw, true ) : null;
 				unset( $raw );
 				if ( is_array( $dec ) && ! empty( $dec ) ) {
-					$merged = self::merge_catalog_entries_by_sku( $dec );
+					$already_merged = false;
+					$meta_file      = self::get_cache_meta_file_path();
+					if ( $meta_file && is_readable( $meta_file ) ) {
+						@clearstatcache( true, $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						$m_raw = @file_get_contents( $meta_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+						$m_dec = $m_raw ? json_decode( $m_raw, true ) : null;
+						unset( $m_raw );
+						if (
+							is_array( $m_dec )
+							&& self::VERSION === (string) ( $m_dec['version'] ?? '' )
+							&& (string) ( self::get_settings()['warehouse_id'] ?? '' ) === (string) ( $m_dec['warehouse_id'] ?? '' )
+							&& (int) @filesize( $file ) === (int) ( $m_dec['size'] ?? -1 ) // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+							&& (int) @filemtime( $file ) === (int) ( $m_dec['mtime'] ?? -1 ) // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						) {
+							$already_merged = true;
+						}
+						unset( $m_dec );
+					}
+					if ( $already_merged ) {
+						self::$runtime_catalog = $dec;
+						unset( $dec );
+						return self::$runtime_catalog;
+					}
+					$merged = self::merge_catalog_entries_destructive( $dec );
 					unset( $dec );
 					self::$runtime_catalog = $merged;
 					return self::$runtime_catalog;
@@ -1723,7 +2009,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 					$dec = $raw ? json_decode( $raw, true ) : null;
 					unset( $raw );
 					if ( is_array( $dec ) && ! empty( $dec ) ) {
-						$merged = self::merge_catalog_entries_by_sku( $dec );
+						$merged = self::merge_catalog_entries_destructive( $dec );
 						unset( $dec );
 						self::$runtime_catalog = $merged;
 						return self::$runtime_catalog;
@@ -2908,6 +3194,22 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	 * ========================================================================== */
 
 	/**
+	 * Safely flush or clean PHP output buffers without risking an infinite loop on non-removable
+	 * LiteSpeed / zlib.output_compression server buffers.
+	 */
+	private static function safe_clean_output_buffers( $flush = false ) {
+		$guard = 0;
+		while ( ob_get_level() > 0 && $guard < 16 ) {
+			$prev = ob_get_level();
+			$ok   = $flush ? @ob_end_flush() : @ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			$guard++;
+			if ( ! $ok || ob_get_level() >= $prev ) {
+				break;
+			}
+		}
+	}
+
+	/**
 	 * Guard AJAX execution so PHP Fatal Errors / Out-Of-Memory / Nonce failures NEVER return
 	 * bare `'0'` or `'-1'` (which caused `Lỗi không xác định` in batch queues), and instead always
 	 * return structured JSON with the exact reason.
@@ -2933,18 +3235,14 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 							self::$ajax_response_sent = true;
 							self::$ajax_in_progress   = false;
 							self::$emergency_mem      = null;
-							while ( ob_get_level() > 0 ) {
-								@ob_end_flush(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-							}
+							self::safe_clean_output_buffers( true );
 							exit;
 						}
 
 						self::$ajax_response_sent = true;
 						self::$ajax_in_progress   = false;
 						self::$emergency_mem      = null;
-						while ( ob_get_level() > 0 ) {
-							@ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-						}
+						self::safe_clean_output_buffers( false );
 						$err_msg = '';
 						$last    = error_get_last();
 						if ( is_array( $last ) && ! empty( $last['message'] ) && in_array( (int) ( $last['type'] ?? 0 ), array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR ), true ) ) {
@@ -2969,8 +3267,30 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 								$err_msg = $raw_m;
 							}
 						}
+						$content_len = isset( $_SERVER['CONTENT_LENGTH'] ) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
+						if ( '' === $err_msg && $content_len > 0 && empty( $_POST ) && empty( $_FILES ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+							$err_msg = sprintf(
+								'Dữ liệu gửi lên (%s KB) vượt giới hạn post_max_size (%s) hoặc upload_max_filesize (%s) của máy chủ.',
+								number_format_i18n( round( $content_len / 1024 ) ),
+								(string) ini_get( 'post_max_size' ),
+								(string) ini_get( 'upload_max_filesize' )
+							);
+						}
 						if ( '' === $err_msg ) {
-							$err_msg = 'Máy chủ kết thúc xử lý sớm (wp_die). Vui lòng thử quét lại.';
+							$clean_title = is_scalar( $title ) ? trim( wp_strip_all_tags( (string) $title ) ) : '';
+							$resp_code   = ( is_array( $args ) && ! empty( $args['response'] ) ) ? (int) $args['response'] : 0;
+							$act_name    = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+							$diag_parts  = array();
+							if ( '' !== $clean_title ) {
+								$diag_parts[] = $clean_title;
+							}
+							if ( $resp_code > 0 ) {
+								$diag_parts[] = 'HTTP ' . $resp_code;
+							}
+							if ( '' !== $act_name ) {
+								$diag_parts[] = 'action=' . $act_name;
+							}
+							$err_msg = 'Máy chủ kết thúc xử lý sớm (wp_die' . ( $diag_parts ? ': ' . implode( ', ', $diag_parts ) : '' ) . '). Vui lòng thử quét lại.';
 						}
 						if ( ! headers_sent() ) {
 							status_header( 200 );
@@ -2990,6 +3310,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 
 			register_shutdown_function(
 				function() {
+					self::$emergency_mem = null;
 					if ( ! self::$ajax_in_progress || self::$ajax_response_sent ) {
 						return;
 					}
@@ -2997,21 +3318,20 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 					if ( ! is_array( $last ) || empty( $last['message'] ) || ! in_array( (int) ( $last['type'] ?? 0 ), array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR ), true ) ) {
 						return;
 					}
+					self::$in_fatal_shutdown  = true;
+					self::$pending_save       = null;
 					self::$ajax_in_progress   = false;
 					self::$ajax_response_sent = true;
-					self::$emergency_mem      = null;
-					while ( ob_get_level() > 0 ) {
-						@ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-					}
+					self::safe_clean_output_buffers( false );
 					$err_msg = 'Lỗi máy chủ PHP: ' . trim( (string) $last['message'] );
 					if ( ! empty( $last['file'] ) && ! empty( $last['line'] ) ) {
 						$err_msg .= ' (' . basename( (string) $last['file'] ) . ':' . (int) $last['line'] . ')';
 					}
 					if ( ! headers_sent() ) {
-						status_header( 200 );
+						header( 'HTTP/1.1 200 OK' );
 						header( 'Content-Type: application/json; charset=utf-8' );
 					}
-					echo wp_json_encode(
+					echo json_encode( // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
 						array(
 							'success' => false,
 							'data'    => array( 'message' => $err_msg ),
@@ -3033,9 +3353,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 		self::$ajax_response_sent = true;
 		self::$ajax_in_progress   = false;
 		self::$emergency_mem      = null;
-		while ( ob_get_level() > 0 ) {
-			@ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		}
+		self::safe_clean_output_buffers( false );
 		if ( ! headers_sent() ) {
 			status_header( 200 );
 			header( 'Content-Type: application/json; charset=utf-8' );
@@ -3053,9 +3371,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 		self::$ajax_response_sent = true;
 		self::$ajax_in_progress   = false;
 		self::$emergency_mem      = null;
-		while ( ob_get_level() > 0 ) {
-			@ob_end_clean(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		}
+		self::safe_clean_output_buffers( false );
 		$payload            = is_array( $extra ) ? $extra : array();
 		$payload['message'] = (string) $message;
 		if ( ! headers_sent() ) {
@@ -3257,9 +3573,9 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	}
 
 	/**
-	 * AJAX: Receive browser-fetched Pancake catalog JSON.
-	 * Supports atomic staging (`sync_mode` = `stage_start` | `stage_append` | `stage_commit`) so the live catalog
-	 * is never truncated mid-sync, plus legacy `append=1` / `append=0`.
+	 * AJAX: Receive browser-fetched Pancake catalog JSON (supports `$_FILES['catalog_file']` Blob upload + `$_POST['catalog_json']`).
+	 * Uses O(1) per-wave part files (`part-0001.json`, `part-0002.json`...) so each wave consumes < 5 MB RAM & < 50ms,
+	 * bypassing ModSecurity `SecRequestBodyNoFilesLimit` and never truncating the live catalog mid-sync.
 	 */
 	public function ajax_push_browser_cache() {
 		self::begin_safe_json_ajax( true );
@@ -3270,9 +3586,32 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 			@ini_set( 'memory_limit', '512M' ); // phpcs:ignore WordPress.PHP.IniSet.memory_limit_Disallowed
 			@set_time_limit( 120 ); // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged
 
-			$sync_mode    = isset( $_POST['sync_mode'] ) ? sanitize_key( wp_unslash( $_POST['sync_mode'] ) ) : '';
-			$raw_json     = isset( $_POST['catalog_json'] ) ? wp_unslash( $_POST['catalog_json'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$decoded      = $raw_json ? json_decode( $raw_json, true ) : array();
+			$sync_mode = isset( $_POST['sync_mode'] ) ? sanitize_key( wp_unslash( $_POST['sync_mode'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$raw_json  = '';
+
+			// Priority 1: Read from `$_FILES['catalog_file']` Blob upload (bypasses ModSecurity text-field size & SQLi/XSS rules)
+			if ( ! empty( $_FILES['catalog_file'] ) && is_array( $_FILES['catalog_file'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$up_err  = isset( $_FILES['catalog_file']['error'] ) ? (int) $_FILES['catalog_file']['error'] : UPLOAD_ERR_NO_FILE; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$tmp_loc = isset( $_FILES['catalog_file']['tmp_name'] ) ? (string) $_FILES['catalog_file']['tmp_name'] : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				if ( UPLOAD_ERR_OK === $up_err && '' !== $tmp_loc && is_readable( $tmp_loc ) && ( is_uploaded_file( $tmp_loc ) || 'cli' === PHP_SAPI ) ) {
+					$raw_json = (string) file_get_contents( $tmp_loc ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+				} elseif ( UPLOAD_ERR_NO_FILE !== $up_err && UPLOAD_ERR_OK !== $up_err ) {
+					self::clean_send_json_error(
+						sprintf(
+							'Máy chủ từ chối file gói dữ liệu tạm (upload error #%d, upload_max_filesize=%s).',
+							$up_err,
+							(string) ini_get( 'upload_max_filesize' )
+						)
+					);
+				}
+			}
+
+			// Priority 2: Backward-compatible fallback to `$_POST['catalog_json']`
+			if ( '' === $raw_json && isset( $_POST['catalog_json'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$raw_json = (string) wp_unslash( $_POST['catalog_json'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			}
+
+			$decoded = '' !== $raw_json ? json_decode( $raw_json, true ) : array();
 			unset( $raw_json );
 			if ( ! is_array( $decoded ) ) {
 				$decoded = array();
@@ -3281,93 +3620,157 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 				self::normalize_pushed_catalog_entries( $decoded );
 			}
 
-			$staging_file = self::get_staging_cache_file_path();
+			$staging_dir = self::get_staging_dir_path();
 
-			// 1. Atomic Staging Start (Wave 1)
+			// 1. O(1) Staging Start (Wave 1)
 			if ( 'stage_start' === $sync_mode ) {
 				if ( empty( $decoded ) ) {
 					self::clean_send_json_error( 'Chặng đầu tiên không có dữ liệu sản phẩm.' );
 				}
-				if ( ! $staging_file || ! self::write_json_file_atomic( $staging_file, wp_json_encode( $decoded ) ) ) {
-					self::clean_send_json_error( 'Không thể ghi file tạm catalog Pancake trong thư mục uploads.' );
+				if ( ! $staging_dir ) {
+					self::clean_send_json_error( 'Thư mục wp-content/uploads không có quyền ghi để tạo bộ nhớ đệm tạm.' );
 				}
+				self::clear_staging_parts( $staging_dir );
+				$added     = count( $decoded );
+				$part_file = $staging_dir . '/part-0001.json';
+				if ( ! self::write_catalog_stream_atomic( $part_file, $decoded ) ) {
+					self::clean_send_json_error( 'Không thể ghi mảnh dữ liệu đầu tiên vào thư mục staging.' );
+				}
+				unset( $decoded );
+				self::write_json_file_atomic(
+					$staging_dir . '/meta.json',
+					wp_json_encode(
+						array(
+							'seq'          => 1,
+							'staged_count' => $added,
+							'started_at'   => time(),
+						)
+					)
+				);
 				self::clean_send_json_success(
 					array(
-						'staged_count' => count( $decoded ),
-						'added_count'  => count( $decoded ),
+						'staged_count' => $added,
+						'added_count'  => $added,
+						'part_seq'     => 1,
 					)
 				);
 			}
 
-			// 2. Atomic Staging Append (Waves 2..N)
+			// 2. O(1) Staging Append (Waves 2..N — never re-reads prior waves!)
 			if ( 'stage_append' === $sync_mode ) {
-				$staged = array();
-				if ( $staging_file && is_readable( $staging_file ) ) {
-					$raw_st = file_get_contents( $staging_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-					$dec_st = $raw_st ? json_decode( $raw_st, true ) : null;
-					unset( $raw_st );
-					if ( is_array( $dec_st ) ) {
-						$staged = $dec_st;
+				if ( ! $staging_dir ) {
+					self::clean_send_json_error( 'Không tìm thấy thư mục staging trong wp-content/uploads.' );
+				}
+				$meta_path = $staging_dir . '/meta.json';
+				$meta      = array(
+					'seq'          => 0,
+					'staged_count' => 0,
+					'started_at'   => time(),
+				);
+				if ( is_readable( $meta_path ) ) {
+					$m_raw = @file_get_contents( $meta_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+					$m_dec = $m_raw ? json_decode( $m_raw, true ) : null;
+					if ( is_array( $m_dec ) ) {
+						$meta = array_merge( $meta, $m_dec );
 					}
-					unset( $dec_st );
+				} else {
+					$existing_parts = glob( $staging_dir . '/part-*.json' );
+					if ( is_array( $existing_parts ) ) {
+						$meta['seq'] = count( $existing_parts );
+					}
 				}
 				$added = count( $decoded );
-				foreach ( $decoded as $pid => $pitem ) {
-					$staged[ $pid ] = $pitem;
+				if ( $added > 0 ) {
+					$next_seq  = (int) $meta['seq'] + 1;
+					$part_file = sprintf( '%s/part-%04d.json', $staging_dir, $next_seq );
+					if ( ! self::write_catalog_stream_atomic( $part_file, $decoded ) ) {
+						self::clean_send_json_error( 'Không thể ghi thêm mảnh dữ liệu catalog Pancake.' );
+					}
+					$meta['seq']          = $next_seq;
+					$meta['staged_count'] = (int) $meta['staged_count'] + $added;
+					self::write_json_file_atomic( $meta_path, wp_json_encode( $meta ) );
 				}
 				unset( $decoded );
-				if ( ! $staging_file || ! self::write_json_file_atomic( $staging_file, wp_json_encode( $staged ) ) ) {
-					self::clean_send_json_error( 'Không thể cập nhật file tạm catalog Pancake.' );
-				}
 				self::clean_send_json_success(
 					array(
-						'staged_count' => count( $staged ),
+						'staged_count' => (int) $meta['staged_count'],
 						'added_count'  => $added,
+						'part_seq'     => (int) $meta['seq'],
 					)
 				);
 			}
 
-			// 3. Atomic Staging Commit (Final step)
+			// 3. Low-RAM Sequential Staging Commit (Final step)
 			if ( 'stage_commit' === $sync_mode ) {
-				$staged = array();
-				if ( $staging_file && is_readable( $staging_file ) ) {
-					$raw_st = file_get_contents( $staging_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+				$is_complete = ! empty( $_POST['complete'] ) && '1' === (string) $_POST['complete']; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$staged      = array();
+
+				// If any page failed despite retries, seed directly from existing catalog and immediately free runtime cache
+				if ( ! $is_complete ) {
+					$staged = self::get_pancake_catalog( false );
+					self::free_runtime_catalog_memory();
+				}
+
+				$loaded_from_parts = 0;
+
+				// Legacy `.staging.json` compatibility in case an older wave created one
+				$legacy_st = self::get_staging_cache_file_path();
+				if ( $legacy_st && is_readable( $legacy_st ) ) {
+					$raw_st = @file_get_contents( $legacy_st ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
 					$dec_st = $raw_st ? json_decode( $raw_st, true ) : null;
 					unset( $raw_st );
 					if ( is_array( $dec_st ) ) {
-						$staged = $dec_st;
+						foreach ( array_keys( $dec_st ) as $pid ) {
+							$staged[ $pid ] = $dec_st[ $pid ];
+							unset( $dec_st[ $pid ] );
+							$loaded_from_parts++;
+						}
 					}
 					unset( $dec_st );
+					@unlink( $legacy_st ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 				}
-				foreach ( $decoded as $pid => $pitem ) {
-					$staged[ $pid ] = $pitem;
+
+				// Merge each part-XXXX.json sequentially and unlink/free immediately
+				if ( $staging_dir && is_dir( $staging_dir ) ) {
+					$part_files = glob( $staging_dir . '/part-*.json' );
+					if ( is_array( $part_files ) && ! empty( $part_files ) ) {
+						sort( $part_files, SORT_STRING );
+						foreach ( $part_files as $pf ) {
+							if ( ! is_readable( $pf ) ) {
+								continue;
+							}
+							$raw_pf = @file_get_contents( $pf ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+							$dec_pf = $raw_pf ? json_decode( $raw_pf, true ) : null;
+							unset( $raw_pf );
+							if ( is_array( $dec_pf ) ) {
+								foreach ( array_keys( $dec_pf ) as $pid ) {
+									$staged[ $pid ] = $dec_pf[ $pid ];
+									unset( $dec_pf[ $pid ] );
+									$loaded_from_parts++;
+								}
+							}
+							unset( $dec_pf );
+							@unlink( $pf ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+						}
+					}
+				}
+
+				if ( ! empty( $decoded ) ) {
+					foreach ( array_keys( $decoded ) as $pid ) {
+						$staged[ $pid ] = $decoded[ $pid ];
+						unset( $decoded[ $pid ] );
+						$loaded_from_parts++;
+					}
 				}
 				unset( $decoded );
 
-				if ( empty( $staged ) ) {
+				if ( 0 === $loaded_from_parts && empty( $staged ) ) {
 					self::clean_send_json_error( 'Không có dữ liệu sản phẩm nào được tải để lưu vào Website.' );
 				}
 
-				$is_complete = ! empty( $_POST['complete'] ) && '1' === (string) $_POST['complete'];
-				if ( ! $is_complete ) {
-					// If any page failed despite retries, merge onto existing catalog so zero products are ever lost
-					$existing = self::get_pancake_catalog( false );
-					foreach ( $staged as $pid => $pitem ) {
-						$existing[ $pid ] = $pitem;
-					}
-					unset( $staged );
-					$to_save = $existing;
-					unset( $existing );
-				} else {
-					$to_save = $staged;
-					unset( $staged );
-				}
-
-				self::save_catalog_cache( $to_save );
-				unset( $to_save );
-				if ( $staging_file && file_exists( $staging_file ) ) {
-					@unlink( $staging_file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-				}
+				self::save_catalog_cache_from_ref( $staged );
+				unset( $staged );
+				self::clear_staging_parts( $staging_dir );
 
 				$final_catalog = is_array( self::$runtime_catalog ) ? self::$runtime_catalog : array();
 				$with_img      = 0;
@@ -3384,14 +3787,17 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 						$in_stock++;
 					}
 				}
+				$total_final = count( $final_catalog );
+				unset( $final_catalog );
+				self::free_runtime_catalog_memory();
 
 				self::clean_send_json_success(
 					array(
-						'total_pancake' => count( $final_catalog ),
+						'total_pancake' => $total_final,
 						'with_images'   => $with_img,
 						'with_classes'  => $with_class,
 						'in_stock'      => $in_stock,
-						'message'       => sprintf( 'Đã làm mới thành công %d sản phẩm từ Pancake POS (%d SP còn tồn kho, %d SP có ảnh).', count( $final_catalog ), $in_stock, $with_img ),
+						'message'       => sprintf( 'Đã làm mới thành công %d sản phẩm từ Pancake POS (%d SP còn tồn kho, %d SP có ảnh).', $total_final, $in_stock, $with_img ),
 					)
 				);
 			}
@@ -3401,18 +3807,21 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 				self::clean_send_json_error( 'Dữ liệu catalog trống.' );
 			}
 
-			$is_append = ! empty( $_POST['append'] ) && '1' === (string) $_POST['append'];
+			$is_append = ! empty( $_POST['append'] ) && '1' === (string) $_POST['append']; // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			if ( $is_append ) {
 				$existing = self::get_pancake_catalog( false );
-				foreach ( $decoded as $pid => $pitem ) {
-					$existing[ $pid ] = $pitem;
+				self::free_runtime_catalog_memory();
+				foreach ( array_keys( $decoded ) as $pid ) {
+					$existing[ $pid ] = $decoded[ $pid ];
+					unset( $decoded[ $pid ] );
 				}
 				$decoded = $existing;
 				unset( $existing );
 			}
 
-			self::save_catalog_cache( $decoded );
-			$final_catalog = is_array( self::$runtime_catalog ) ? self::$runtime_catalog : self::merge_catalog_entries_by_sku( $decoded );
+			self::save_catalog_cache_from_ref( $decoded );
+			unset( $decoded );
+			$final_catalog = is_array( self::$runtime_catalog ) ? self::$runtime_catalog : array();
 			unset( $decoded );
 
 			$with_img   = 0;
@@ -3674,6 +4083,9 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	 * Run automatic one-time duplicate cleanup when v1.4.0 is deployed.
 	 */
 	public function maybe_auto_cleanup_duplicates() {
+		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return;
+		}
 		if ( '1' === (string) get_option( 'nexxi_pancake_dedup_v140', '0' ) ) {
 			return;
 		}
@@ -3698,25 +4110,26 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 	 * AJAX endpoint: Fast SPA navigation for pagination & filter changes in Tab 1 and Tab 2 without full page reload.
 	 */
 	public function ajax_spa_nav() {
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_send_json_error( array( 'message' => 'Không có quyền thực hiện.' ) );
-		}
+		self::begin_safe_json_ajax( false );
+		try {
+			$query_str = isset( $_REQUEST['query_string'] ) ? wp_unslash( $_REQUEST['query_string'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$params    = array();
+			if ( is_string( $query_str ) && '' !== $query_str ) {
+				wp_parse_str( ltrim( $query_str, '?' ), $params );
+			}
+			foreach ( $params as $k => $v ) {
+				$_GET[ $k ] = $v;
+			}
 
-		$query_str = isset( $_REQUEST['query_string'] ) ? wp_unslash( $_REQUEST['query_string'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$params    = array();
-		if ( is_string( $query_str ) && '' !== $query_str ) {
-			wp_parse_str( ltrim( $query_str, '?' ), $params );
-		}
-		foreach ( $params as $k => $v ) {
-			$_GET[ $k ] = $v;
-		}
+			$GLOBALS['nexxi_pancake_page_rendered'] = false;
+			ob_start();
+			$this->render_admin_page();
+			$html = ob_get_clean();
 
-		$GLOBALS['nexxi_pancake_page_rendered'] = false;
-		ob_start();
-		$this->render_admin_page();
-		$html = ob_get_clean();
-
-		wp_send_json_success( array( 'html' => $html ) );
+			self::clean_send_json_success( array( 'html' => $html ) );
+		} catch ( \Throwable $e ) {
+			self::clean_send_json_error( 'Lỗi chuyển trang SPA: ' . $e->getMessage() . ' (' . basename( $e->getFile() ) . ':' . $e->getLine() . ')' );
+		}
 	}
 
 	/**
@@ -4479,10 +4892,11 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 			$settings['warehouse_id'] = '' !== $wh_id ? $wh_id : self::DEFAULT_WAREHOUSE_ID;
 			update_option( self::SETTINGS_OPT, $settings );
 
-			// Re-save catalog cache so per-warehouse stock is immediately recalculated
+			// Force re-read from JSON file so per-warehouse stock is immediately recalculated for the new warehouse
+			self::free_runtime_catalog_memory();
 			$catalog = self::get_pancake_catalog( false );
 			if ( ! empty( $catalog ) ) {
-				self::save_catalog_cache( $catalog );
+				self::save_catalog_cache_from_ref( $catalog );
 			}
 			unset( $catalog );
 
@@ -4987,7 +5401,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 
 			<div class="nxp-hero">
 				<div>
-					<h1>🥞 Quản Lý Sản Phẩm &amp; Đồng Bộ Ảnh Pancake (Theo Mã SKU)</h1>
+					<h1>🥞 Quản Lý Sản Phẩm &amp; Đồng Bộ Ảnh Pancake (Theo Mã SKU) <span style="display:inline-block;vertical-align:middle;margin-left:8px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.3px;background:rgba(16,185,129,0.22);border:1px solid rgba(110,231,183,0.55);color:#ecfdf5;">v<?php echo esc_html( self::VERSION ); ?></span></h1>
 					<p>Quản lý danh mục sản phẩm đồng bộ từ Pancake POS về Website &amp; đồng bộ ảnh sản phẩm / ảnh phân loại màu sắc theo mã SKU riêng biệt.</p>
 				</div>
 				<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -5162,6 +5576,73 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 					});
 				}
 
+				window.nxpParseWpAjaxJson = function(rawText, httpStatus) {
+					const text = String(rawText ?? '');
+					const trimmed = text.trim();
+					if (trimmed === '-1') {
+						return {
+							ok: true,
+							retryable: false,
+							json: { success: false, data: { message: 'Phiên bảo mật (Nonce) đã hết hạn (HTTP ' + httpStatus + '). Vui lòng nhấn F5 tải lại trang.' } }
+						};
+					}
+					if (trimmed === '0' || trimmed === '') {
+						return {
+							ok: false,
+							retryable: true,
+							json: { success: false, data: { message: 'Máy chủ trả về phản hồi rỗng/mã 0 (HTTP ' + httpStatus + '). Vui lòng nhấn F5 tải lại trang rồi thử lại.' } }
+						};
+					}
+					const marker = '{"success":';
+					const startIdx = text.lastIndexOf(marker);
+					if (startIdx < 0) {
+						return {
+							ok: false,
+							retryable: httpStatus >= 500 || httpStatus === 0 || httpStatus === 429,
+							json: { success: false, data: { message: 'Máy chủ phản hồi không đúng định dạng JSON (HTTP ' + httpStatus + '). Vui lòng thử lại.' } }
+						};
+					}
+					let depth = 0;
+					let inStr = false;
+					let escNext = false;
+					let endIdx = -1;
+					for (let i = startIdx; i < text.length; i++) {
+						const ch = text[i];
+						if (escNext) {
+							escNext = false;
+							continue;
+						}
+						if (ch === '\\' && inStr) {
+							escNext = true;
+							continue;
+						}
+						if (ch === '"') {
+							inStr = !inStr;
+							continue;
+						}
+						if (!inStr) {
+							if (ch === '{') depth++;
+							else if (ch === '}') {
+								depth--;
+								if (depth === 0) {
+									endIdx = i + 1;
+									break;
+								}
+							}
+						}
+					}
+					const slice = endIdx > startIdx ? text.slice(startIdx, endIdx) : text.slice(startIdx);
+					try {
+						return { ok: true, retryable: false, json: JSON.parse(slice) };
+					} catch (e) {
+						return {
+							ok: false,
+							retryable: true,
+							json: { success: false, data: { message: 'Dữ liệu JSON từ máy chủ bị cắt ngang (HTTP ' + httpStatus + '). Vui lòng thử lại.' } }
+						};
+					}
+				};
+
 				async function postMultipartAjax(action, data = {}, retries = 2) {
 					for (let attempt = 0; attempt <= retries; attempt++) {
 						try {
@@ -5169,7 +5650,14 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 							fd.append('action', action);
 							fd.append('nonce', nonce);
 							Object.entries(data).forEach(([k, v]) => {
-								if (v !== undefined && v !== null) fd.append(k, String(v));
+								if (v === undefined || v === null) return;
+								if (v instanceof Blob) {
+									fd.append(k, v, 'catalog-chunk.json');
+								} else if (k === 'catalog_json' && typeof v === 'string') {
+									fd.append('catalog_file', new Blob([v], { type: 'application/json' }), 'catalog-chunk.json');
+								} else {
+									fd.append(k, String(v));
+								}
 							});
 							const res = await fetch(ajaxUrl, {
 								method: 'POST',
@@ -5177,25 +5665,83 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 								body: fd
 							});
 							const text = await res.text();
-							const trimmed = text.trim();
-							if (trimmed === '-1') {
-								return { success: false, data: { message: 'Phiên bảo mật (Nonce) đã hết hạn. Vui lòng nhấn F5 tải lại trang.' } };
+							const parsed = window.nxpParseWpAjaxJson(text, res.status);
+							if (!parsed.ok && parsed.retryable && attempt < retries) {
+								await new Promise(r => setTimeout(r, 1200));
+								continue;
 							}
-							const jsonMark = text.lastIndexOf('{"success"');
-							const startIdx = jsonMark >= 0 ? jsonMark : text.indexOf('{');
-							if (startIdx < 0) {
-								if (attempt < retries) {
-									await new Promise(r => setTimeout(r, 1200));
-									continue;
-								}
-								return { success: false, data: { message: 'Máy chủ phản hồi không đúng định dạng JSON (HTTP ' + res.status + ').' } };
-							}
-							return JSON.parse(startIdx > 0 ? text.slice(startIdx) : text);
+							return parsed.json;
 						} catch (err) {
 							if (attempt === retries) throw err;
 							await new Promise(r => setTimeout(r, 1200));
 						}
 					}
+				}
+
+				// Adaptive sub-batching uploader: sends max 150 products per Blob file, and automatically splits into
+				// 40-product mini-batches if hosting WAF / post_max_size / network drops a larger batch.
+				async function pushCatalogMapAdaptive(initialMode, entriesMap, onSubBatchNotice) {
+					const entries = Object.entries(entriesMap || {});
+					if (entries.length === 0) {
+						return { success: true, data: { staged_count: 0, added_count: 0 } };
+					}
+					const PRIMARY_CHUNK = 150;
+					const FALLBACK_CHUNK = 40;
+					let nextMode = initialMode;
+					let latestStaged = 0;
+					let warnedSubBatch = false;
+
+					for (let i = 0; i < entries.length; i += PRIMARY_CHUNK) {
+						const primarySlice = entries.slice(i, i + PRIMARY_CHUNK);
+						const primaryObj = Object.fromEntries(primarySlice);
+						let primaryRes = null;
+						try {
+							primaryRes = await postMultipartAjax('nexxi_pancake_push_browser_cache', {
+								sync_mode: nextMode,
+								catalog_json: JSON.stringify(primaryObj)
+							}, 1);
+						} catch (e) {
+							primaryRes = null;
+						}
+
+						if (primaryRes && primaryRes.success) {
+							nextMode = 'stage_append';
+							latestStaged = Number(primaryRes.data?.staged_count || (latestStaged + primarySlice.length));
+							continue;
+						}
+
+						if (!warnedSubBatch && typeof onSubBatchNotice === 'function') {
+							warnedSubBatch = true;
+							onSubBatchNotice();
+						}
+
+						for (let j = 0; j < primarySlice.length; j += FALLBACK_CHUNK) {
+							const subSlice = primarySlice.slice(j, j + FALLBACK_CHUNK);
+							const subObj = Object.fromEntries(subSlice);
+							let subRes = null;
+							try {
+								subRes = await postMultipartAjax('nexxi_pancake_push_browser_cache', {
+									sync_mode: nextMode,
+									catalog_json: JSON.stringify(subObj)
+								}, 2);
+							} catch (subErr) {
+								return {
+									success: false,
+									data: { message: 'Mất kết nối khi lưu gói nhỏ 40 SP: ' + (subErr?.message || String(subErr)) }
+								};
+							}
+							if (!subRes || !subRes.success) {
+								return subRes || {
+									success: false,
+									data: { message: 'Không thể ghi tạm gói dữ liệu nhỏ (40 SP) lên máy chủ.' }
+								};
+							}
+							nextMode = 'stage_append';
+							latestStaged = Number(subRes.data?.staged_count || (latestStaged + subSlice.length));
+						}
+					}
+
+					return { success: true, data: { staged_count: latestStaged, added_count: entries.length } };
 				}
 
 				async function fetchJsonWithTimeout(url, timeoutMs = 25000) {
@@ -5210,26 +5756,50 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 					}
 				}
 
-				// 4-layer resilient single-page fetcher (100 items/page):
-				// 1) Direct Pancake POS API (CORS *, ~4-5s, no Worker 128MB limit)
-				// 2) Single-page Cloudflare Worker (~6-8MB, safe within 128MB limit)
-				// 3) Split into two 50-item subpages on Direct Pancake POS API
+				let directPosCorsBlocked = false;
+				let directPosVerifiedOk = false;
+
+				// 4-layer resilient single-page fetcher (100 items/page) with CORS memoization:
+				// 1) Direct Pancake POS API (skipped automatically on pages 2..N if CORS is blocked on page 1)
+				// 2) Single-page Cloudflare Worker (~5-6MB, immune to Worker 128MB limit)
+				// 3) Split into two 50-item subpages (Direct POS or Cloudflare Worker)
 				// 4) Server-side PHP fallback via admin-ajax.php
 				async function fetchSinglePageResilient(pageNum, seenSkus) {
 					const outMap = {};
 					let rawCount = 0;
 					let totalEntries = 0;
 
-					const directUrl = 'https://pos.pages.fm/api/v1/shops/' + encodeURIComponent(pancakeShopId) + '/products?api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + pageNum + '&page_size=100';
-					const singleUrls = [directUrl];
-					if (cfBaseUrl) {
-						singleUrls.push(cfBaseUrl + '/api/pancake-live-products?shop_id=' + encodeURIComponent(pancakeShopId) + '&api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + pageNum + '&page_size=100');
+					// Layer 1: Direct Pancake POS API (memoized if CORS blocked)
+					if (!directPosCorsBlocked) {
+						const directUrl = 'https://pos.pages.fm/api/v1/shops/' + encodeURIComponent(pancakeShopId) + '/products?api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + pageNum + '&page_size=100';
+						const maxDirectTries = directPosVerifiedOk ? 2 : 1;
+						for (let tryIdx = 0; tryIdx < maxDirectTries; tryIdx++) {
+							try {
+								const body = await fetchJsonWithTimeout(directUrl, 18000);
+								const items = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.products) ? body.products : null);
+								if (Array.isArray(items)) {
+									directPosVerifiedOk = true;
+									if (Number(body.total_entries) > totalEntries) totalEntries = Number(body.total_entries);
+									rawCount = items.length;
+									items.forEach(prod => ingestPosProduct(prod, outMap, seenSkus));
+									return { ok: true, map: outMap, rawCount, totalEntries };
+								}
+							} catch (e) {
+								if (!directPosVerifiedOk) {
+									directPosCorsBlocked = true;
+									break;
+								}
+								if (tryIdx === 0) await new Promise(r => setTimeout(r, 500));
+							}
+						}
 					}
 
-					for (const u of singleUrls) {
+					// Layer 2: Single-page Cloudflare Worker (~5MB payload, safe well under 128MB limit)
+					if (cfBaseUrl) {
+						const cfSingleUrl = cfBaseUrl + '/api/pancake-live-products?shop_id=' + encodeURIComponent(pancakeShopId) + '&api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + pageNum + '&page_size=100';
 						for (let tryIdx = 0; tryIdx < 2; tryIdx++) {
 							try {
-								const body = await fetchJsonWithTimeout(u, 25000);
+								const body = await fetchJsonWithTimeout(cfSingleUrl, 25000);
 								const items = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.products) ? body.products : null);
 								if (Array.isArray(items)) {
 									if (Number(body.total_entries) > totalEntries) totalEntries = Number(body.total_entries);
@@ -5243,24 +5813,28 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 						}
 					}
 
-					// Layer 3: Split into two 50-item subpages directly on pos.pages.fm
-					try {
-						const subPages = [(pageNum - 1) * 2 + 1, (pageNum - 1) * 2 + 2];
-						let splitOk = true;
-						for (const sp of subPages) {
-							const spUrl = 'https://pos.pages.fm/api/v1/shops/' + encodeURIComponent(pancakeShopId) + '/products?api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + sp + '&page_size=50';
-							const body = await fetchJsonWithTimeout(spUrl, 22000);
-							const items = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.products) ? body.products : null);
-							if (!Array.isArray(items)) { splitOk = false; break; }
-							if (Number(body.total_entries) > totalEntries) totalEntries = Number(body.total_entries);
-							rawCount += items.length;
-							items.forEach(prod => ingestPosProduct(prod, outMap, seenSkus));
-							if (items.length < 50) break;
-						}
-						if (splitOk) {
-							return { ok: true, map: outMap, rawCount, totalEntries };
-						}
-					} catch (e) {}
+					// Layer 3: Split into two 50-item subpages (via Direct POS if allowed, otherwise via Cloudflare Worker)
+					if (!directPosCorsBlocked || cfBaseUrl) {
+						try {
+							const subPages = [(pageNum - 1) * 2 + 1, (pageNum - 1) * 2 + 2];
+							let splitOk = true;
+							for (const sp of subPages) {
+								const spUrl = !directPosCorsBlocked
+									? ('https://pos.pages.fm/api/v1/shops/' + encodeURIComponent(pancakeShopId) + '/products?api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + sp + '&page_size=50')
+									: (cfBaseUrl + '/api/pancake-live-products?shop_id=' + encodeURIComponent(pancakeShopId) + '&api_key=' + encodeURIComponent(pancakeApiKey) + '&page_number=' + sp + '&page_size=50');
+								const body = await fetchJsonWithTimeout(spUrl, 22000);
+								const items = Array.isArray(body?.data) ? body.data : (Array.isArray(body?.products) ? body.products : null);
+								if (!Array.isArray(items)) { splitOk = false; break; }
+								if (Number(body.total_entries) > totalEntries) totalEntries = Number(body.total_entries);
+								rawCount += items.length;
+								items.forEach(prod => ingestPosProduct(prod, outMap, seenSkus));
+								if (items.length < 50) break;
+							}
+							if (splitOk) {
+								return { ok: true, map: outMap, rawCount, totalEntries };
+							}
+						} catch (e) {}
+					}
 
 					// Layer 4: Server-side PHP fallback
 					try {
@@ -5363,10 +5937,11 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 						let totalEntries = p1.totalEntries > 0 ? p1.totalEntries : 0;
 						let totalPages = totalEntries > 0 ? Math.ceil(totalEntries / 100) : (p1.rawCount < 100 ? 1 : 35);
 
-						const startSave = await postMultipartAjax('nexxi_pancake_push_browser_cache', {
-							sync_mode: 'stage_start',
-							catalog_json: JSON.stringify(p1.map)
-						});
+						const notifySubBatch = () => {
+							writeLog('⚠️ Gói dữ liệu lớn gặp giới hạn mạng/WAF — tự động chia nhỏ thành từng lô 40 SP để lưu an toàn...');
+						};
+
+						const startSave = await pushCatalogMapAdaptive('stage_start', p1.map, notifySubBatch);
 						if (!startSave || !startSave.success) {
 							const errMsg = startSave?.data?.message || 'Không thể khởi tạo bộ nhớ đệm trên máy chủ.';
 							writeLog('✗ Lỗi lưu trang 1: ' + errMsg, true);
@@ -5433,10 +6008,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 							});
 
 							if (waveAdded > 0) {
-								const appSave = await postMultipartAjax('nexxi_pancake_push_browser_cache', {
-									sync_mode: 'stage_append',
-									catalog_json: JSON.stringify(waveMap)
-								});
+								const appSave = await pushCatalogMapAdaptive('stage_append', waveMap, notifySubBatch);
 								if (!appSave || !appSave.success) {
 									const errMsg = appSave?.data?.message || 'Lỗi ghi tạm dữ liệu lên máy chủ.';
 									writeLog('✗ Lỗi lưu ' + labelRange + ': ' + errMsg, true);
@@ -5467,10 +6039,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 							failedPages.length = 0;
 							stillFailed.forEach(p => failedPages.push(p));
 							if (Object.keys(retryMap).length > 0) {
-								const rSave = await postMultipartAjax('nexxi_pancake_push_browser_cache', {
-									sync_mode: 'stage_append',
-									catalog_json: JSON.stringify(retryMap)
-								});
+								const rSave = await pushCatalogMapAdaptive('stage_append', retryMap, notifySubBatch);
 								if (rSave && rSave.success && rSave.data?.staged_count) {
 									totalLoaded = Number(rSave.data.staged_count);
 								}
@@ -5493,10 +6062,7 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 									} catch (e) {}
 								}
 								if (Object.keys(skuMap).length > 0) {
-									await postMultipartAjax('nexxi_pancake_push_browser_cache', {
-										sync_mode: 'stage_append',
-										catalog_json: JSON.stringify(skuMap)
-									});
+									await pushCatalogMapAdaptive('stage_append', skuMap, notifySubBatch);
 								}
 							}
 						}
@@ -6127,25 +6693,15 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 								body: body.toString()
 							});
 							const text = await res.text();
-							const trimmed = text.trim();
-							if (trimmed === '-1') {
-								return {
-									success: false,
-									data: { message: 'Phiên bảo mật (Nonce) đã hết hạn (HTTP ' + res.status + '). Vui lòng nhấn F5 tải lại trang rồi quét lại.' }
-								};
-							}
-							if (trimmed === '0' || trimmed === '') {
-								if (attempt < retries) {
+							if (typeof window.nxpParseWpAjaxJson === 'function') {
+								const parsed = window.nxpParseWpAjaxJson(text, res.status);
+								if (!parsed.ok && parsed.retryable && attempt < retries) {
 									await new Promise(r => setTimeout(r, 1200));
 									continue;
 								}
-								return {
-									success: false,
-									data: { message: 'Máy chủ trả về phản hồi rỗng/mã 0 (HTTP ' + res.status + ') — có thể do chạm giới hạn RAM/thời gian trên hosting hoặc phiên đăng nhập hết hạn. Vui lòng nhấn F5 tải lại trang rồi quét lại.' }
-								};
+								return parsed.json;
 							}
-							const jsonMark = text.lastIndexOf('{"success"');
-							const startIdx = jsonMark >= 0 ? jsonMark : text.indexOf('{');
+							const startIdx = text.lastIndexOf('{"success":');
 							if (startIdx < 0) {
 								if (attempt < retries) {
 									await new Promise(r => setTimeout(r, 1200));
@@ -6156,8 +6712,8 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 									data: { message: 'Máy chủ phản hồi không đúng định dạng JSON (HTTP ' + res.status + '). Vui lòng thử quét lại.' }
 								};
 							}
-							const cleanText = startIdx > 0 ? text.slice(startIdx) : text;
-							return JSON.parse(cleanText);
+							const endIdx = text.lastIndexOf('}');
+							return JSON.parse(endIdx > startIdx ? text.slice(startIdx, endIdx + 1) : text.slice(startIdx));
 						} catch (err) {
 							if (attempt === retries) throw err;
 							await new Promise(r => setTimeout(r, 1200));
@@ -7372,7 +7928,14 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 							fd.append('action', action);
 							fd.append('nonce', nonce);
 							Object.entries(data).forEach(([k, v]) => {
-								if (v !== undefined && v !== null) fd.append(k, String(v));
+								if (v === undefined || v === null) return;
+								if (v instanceof Blob) {
+									fd.append(k, v, 'catalog-chunk.json');
+								} else if (k === 'catalog_json' && typeof v === 'string') {
+									fd.append('catalog_file', new Blob([v], { type: 'application/json' }), 'catalog-chunk.json');
+								} else {
+									fd.append(k, String(v));
+								}
 							});
 							fetchOpts = {
 								method: 'POST',
@@ -7390,25 +7953,15 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 						}
 						const res = await fetch(ajaxUrl, fetchOpts);
 						const text = await res.text();
-						const trimmed = text.trim();
-						if (trimmed === '-1') {
-							return {
-								success: false,
-								data: { message: 'Phiên bảo mật (Nonce) đã hết hạn (HTTP ' + res.status + '). Vui lòng nhấn F5 tải lại trang rồi thực hiện lại.' }
-							};
-						}
-						if (trimmed === '0' || trimmed === '') {
-							if (attempt < retries) {
+						if (typeof window.nxpParseWpAjaxJson === 'function') {
+							const parsed = window.nxpParseWpAjaxJson(text, res.status);
+							if (!parsed.ok && parsed.retryable && attempt < retries) {
 								await new Promise(r => setTimeout(r, 1200));
 								continue;
 							}
-							return {
-								success: false,
-								data: { message: 'Máy chủ trả về phản hồi rỗng/mã 0 (HTTP ' + res.status + '). Vui lòng nhấn F5 tải lại trang rồi thực hiện lại.' }
-							};
+							return parsed.json;
 						}
-						const jsonMark = text.lastIndexOf('{"success"');
-						const startIdx = jsonMark >= 0 ? jsonMark : text.indexOf('{');
+						const startIdx = text.lastIndexOf('{"success":');
 						if (startIdx < 0) {
 							if (attempt < retries) {
 								await new Promise(r => setTimeout(r, 1200));
@@ -7419,9 +7972,8 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 								data: { message: 'Máy chủ phản hồi không đúng định dạng JSON (HTTP ' + res.status + ').' }
 							};
 						}
-						const cleanText = startIdx > 0 ? text.slice(startIdx) : text;
-						const json = JSON.parse(cleanText);
-						return json;
+						const endIdx = text.lastIndexOf('}');
+						return JSON.parse(endIdx > startIdx ? text.slice(startIdx, endIdx + 1) : text.slice(startIdx));
 					} catch (err) {
 						if (attempt === retries) throw err;
 						await new Promise(r => setTimeout(r, 1200));
@@ -7953,7 +8505,8 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 					const rawText = await res.text();
 					let html = rawText;
 					try {
-						const parsed = JSON.parse(rawText);
+						const parsedRes = typeof window.nxpParseWpAjaxJson === 'function' ? window.nxpParseWpAjaxJson(rawText, res.status) : { ok: false, json: null };
+						const parsed = parsedRes.ok ? parsedRes.json : null;
 						if (parsed && parsed.data && typeof parsed.data.html === 'string') {
 							html = parsed.data.html;
 						}
@@ -8161,21 +8714,11 @@ final class Nexxi_Pancake_Sync_Manager_V6 {
 
 endif;
 
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager' );
-}
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V5', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V5' );
-}
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V4', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V4' );
-}
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V3', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V3' );
-}
-if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V2', false ) ) {
-	class_alias( 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V2' );
+foreach ( array( 'Nexxi_Pancake_Sync_Manager', 'Nexxi_Pancake_Sync_Manager_V6', 'Nexxi_Pancake_Sync_Manager_V5', 'Nexxi_Pancake_Sync_Manager_V4', 'Nexxi_Pancake_Sync_Manager_V3', 'Nexxi_Pancake_Sync_Manager_V2' ) as $nexxi_pancake_alias_cls ) {
+	if ( ! class_exists( $nexxi_pancake_alias_cls, false ) ) {
+		class_alias( 'Nexxi_Pancake_Sync_Manager_V7', $nexxi_pancake_alias_cls );
+	}
 }
 
-Nexxi_Pancake_Sync_Manager_V6::init();
+Nexxi_Pancake_Sync_Manager_V7::init();
 
