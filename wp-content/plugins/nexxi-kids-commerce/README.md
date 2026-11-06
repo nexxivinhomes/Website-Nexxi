@@ -8,5 +8,6 @@ Install this folder at `wp-content/plugins/nexxi-kids-commerce/` and activate it
 - A short support note on checkout.
 - Size and color choices from the Stitch product screen in WooCommerce cart and order items.
 - Direct checkout when the Stitch product's buy-now button is used.
+- Authenticated `/wp-json/nexxi/v1/yoast-seo` REST bridge (`v1.5.6+`) for Yoast SEO taxonomy/post metadata and indexable synchronization.
 
 The size recommender and displayed chart use the 16 sizes in the reference image (sizes 1–16; 8–55 kg; 75–170 cm). The chart is marked as a reference. The free-shipping message is informational; configure the actual shipping method and rules in WooCommerce.
