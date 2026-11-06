@@ -1,1 +1,18 @@
-<?php get_header(); ?><main id="primary" class="container content-area"><header class="page-heading"><h1><?php echo esc_html( is_home() ? __( 'Tin tức NEXXI', 'nexxi-kids' ) : get_bloginfo( 'name' ) ); ?></h1></header><?php if ( have_posts() ) : ?><div class="post-grid"><?php while ( have_posts() ) : the_post(); ?><article <?php post_class( 'post-card' ); ?>><?php if ( has_post_thumbnail() ) : ?><a href="<?php the_permalink(); ?>" class="post-card__image"><?php the_post_thumbnail( 'large', array( 'loading' => 'lazy' ) ); ?></a><?php endif; ?><div class="post-card__body"><h2><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2><p><?php echo esc_html( get_the_excerpt() ); ?></p><a class="text-link" href="<?php the_permalink(); ?>"><?php esc_html_e( 'Đọc tiếp →', 'nexxi-kids' ); ?></a></div></article><?php endwhile; ?></div><?php the_posts_pagination(); else : ?><div class="empty-state"><h2><?php esc_html_e( 'Chưa có nội dung', 'nexxi-kids' ); ?></h2><p><?php esc_html_e( 'Nội dung sẽ được cập nhật sớm.', 'nexxi-kids' ); ?></p></div><?php endif; ?></main><?php get_footer(); ?>
+<?php
+/** Blog home, post search and fallback routes rendered inside the shared Stitch shell. */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+if ( function_exists( 'is_woocommerce' ) && is_woocommerce() ) {
+	require get_template_directory() . '/woocommerce.php';
+	return;
+}
+if ( is_singular( 'post' ) ) {
+	nexxi_kids_render_stitch( 'single' );
+	return;
+}
+if ( is_singular() ) {
+	nexxi_kids_render_stitch( 'page' );
+	return;
+}
+nexxi_kids_render_stitch( 'blog' );
