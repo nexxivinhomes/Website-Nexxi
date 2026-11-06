@@ -265,5 +265,344 @@
 		api('nexxi_studio[home-hero__order]', function (s) {
 			s.bind(function (v) { syncHeroUI(parseHeroOrder(v)); });
 		});
+
+		/* ---------- Dynamic Footer Extra Links Repeater ---------- */
+		function escHtml(str) {
+			return String(str || '')
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
+		}
+
+		function buildQuickLinksOptionsHtml() {
+			var list = Array.isArray(D.quickLinks) ? D.quickLinks : [];
+			var html = '<option value="">— Chọn nhanh trang có sẵn (tự điền link) —</option>';
+			var groups = {};
+			var groupOrder = [];
+			list.forEach(function (item) {
+				if (!item || !item.url) { return; }
+				var g = item.group || 'Trang hệ thống';
+				if (!groups[g]) {
+					groups[g] = [];
+					groupOrder.push(g);
+				}
+				groups[g].push(item);
+			});
+			groupOrder.forEach(function (g) {
+				html += '<optgroup label="' + escHtml(g) + '">';
+				groups[g].forEach(function (item) {
+					html += '<option value="' + escHtml(item.url) + '" data-title="' + escHtml(item.title || item.label || '') + '">' + escHtml(item.label || item.title || item.url) + '</option>';
+				});
+				html += '</optgroup>';
+			});
+			return html;
+		}
+
+		var quickLinksOptionsHtml = buildQuickLinksOptionsHtml();
+
+		function parseFooterLinks(raw) {
+			if (!raw) { return []; }
+			var arr = raw;
+			if (!Array.isArray(arr)) {
+				try {
+					arr = JSON.parse(String(raw));
+				} catch (e) {
+					return [];
+				}
+			}
+			if (!Array.isArray(arr)) { return []; }
+			return arr.slice(0, 30).map(function (it) {
+				return {
+					label: (it && typeof it.label === 'string') ? it.label : '',
+					url: (it && typeof it.url === 'string') ? it.url : '',
+					new_tab: !!(it && it.new_tab && it.new_tab !== '0' && it.new_tab !== 'false')
+				};
+			});
+		}
+
+		function serializeCleanFooterLinks(items) {
+			var clean = [];
+			(items || []).forEach(function (it) {
+				if (clean.length >= 30 || !it) { return; }
+				var lbl = $.trim(it.label || '');
+				if (!lbl) { return; }
+				clean.push({
+					label: lbl,
+					url: $.trim(it.url || ''),
+					new_tab: it.new_tab ? 1 : 0
+				});
+			});
+			return clean.length ? JSON.stringify(clean) : '';
+		}
+
+		function syncQuickSelectValue($select, urlVal) {
+			var clean = $.trim(urlVal || '');
+			if (!clean) {
+				$select.val('');
+				return;
+			}
+			var found = false;
+			$select.find('option').each(function () {
+				if (this.value && this.value === clean) {
+					found = true;
+					return false;
+				}
+			});
+			$select.val(found ? clean : '');
+		}
+
+		function initFooterLinksControl(control) {
+			var isFooterLinks = (control && control.params && control.params.type === 'nexxi-footer-links') ||
+				(control && control.id && /_extra_links\]$/.test(control.id));
+			if (!isFooterLinks) { return; }
+
+			control.deferred.embedded.done(function () {
+				var $wrap = control.container.find('[data-nxs-footer-links]');
+				if (!$wrap.length || $wrap.data('nxsFlBound')) { return; }
+				$wrap.data('nxsFlBound', true);
+
+				var setting = control.setting || api(control.id);
+				var $hidden = $wrap.find('[data-nxs-fl-input]');
+				var $list = $wrap.find('[data-nxs-fl-list]');
+				var $empty = $wrap.find('[data-nxs-fl-empty]');
+				var $addBtn = $wrap.find('[data-nxs-fl-add]');
+
+				var items = parseFooterLinks(setting ? setting.get() : $hidden.val());
+				var debounceTimer = null;
+				var isSelfUpdating = false;
+
+				function commitImmediate() {
+					if (debounceTimer) {
+						clearTimeout(debounceTimer);
+						debounceTimer = null;
+					}
+					if (!setting) { return; }
+					var nextJson = serializeCleanFooterLinks(items);
+					var prevJson = String(setting.get() || '');
+					if (nextJson === prevJson) { return; }
+					isSelfUpdating = true;
+					setting.set(nextJson);
+					$hidden.val(nextJson);
+					isSelfUpdating = false;
+				}
+
+				function commitDebounced() {
+					if (debounceTimer) {
+						clearTimeout(debounceTimer);
+					}
+					debounceTimer = setTimeout(function () {
+						debounceTimer = null;
+						commitImmediate();
+					}, 450);
+				}
+
+				function updateCardTitle($card, item) {
+					var txt = $.trim(item.label || '');
+					$card.find('[data-nxs-fl-title]').text(txt || 'Liên kết mới (chưa nhập tên)');
+					$card.toggleClass('is-unsaved', !txt);
+				}
+
+				function refreshHeadersAndButtons() {
+					var total = items.length;
+					$empty.toggle(total === 0);
+					$addBtn.prop('disabled', total >= 30);
+					$list.children('.nxs-fl-card').each(function (idx) {
+						var $c = $(this);
+						$c.find('[data-nxs-fl-num]').text('#' + (idx + 1));
+						$c.find('[data-fl-move="-1"]').prop('disabled', idx === 0);
+						$c.find('[data-fl-move="1"]').prop('disabled', idx === total - 1);
+					});
+				}
+
+				function buildCard(item) {
+					var $card = $(
+						'<div class="nxs-fl-card">' +
+							'<div class="nxs-fl-card__head">' +
+								'<div class="nxs-fl-card__meta">' +
+									'<span class="nxs-fl-card__num" data-nxs-fl-num>#1</span>' +
+									'<span class="nxs-fl-card__title" data-nxs-fl-title></span>' +
+								'</div>' +
+								'<div class="nxs-fl-card__actions">' +
+									'<button type="button" class="nxs-fl-btn nxs-fl-btn--move" data-fl-move="-1" title="Đưa liên kết lên trên" aria-label="Đưa lên trên">↑</button>' +
+									'<button type="button" class="nxs-fl-btn nxs-fl-btn--move" data-fl-move="1" title="Đưa liên kết xuống dưới" aria-label="Đưa xuống dưới">↓</button>' +
+									'<button type="button" class="nxs-fl-btn nxs-fl-btn--del" data-fl-del title="Xóa liên kết này">✕ Xóa</button>' +
+								'</div>' +
+							'</div>' +
+							'<div class="nxs-fl-card__body">' +
+								'<label class="nxs-fl-field">' +
+									'<span class="nxs-fl-field__label">Chữ liên kết (Tên hiển thị)</span>' +
+									'<input type="text" class="nxs-fl-input nxs-fl-label" placeholder="Vd: Blog Góc Của Mẹ, Chính sách Sỉ...">' +
+								'</label>' +
+								'<label class="nxs-fl-field">' +
+									'<span class="nxs-fl-field__label">Chọn nhanh trang có sẵn</span>' +
+									'<select class="nxs-fl-select nxs-fl-quick">' + quickLinksOptionsHtml + '</select>' +
+								'</label>' +
+								'<label class="nxs-fl-field">' +
+									'<span class="nxs-fl-field__label">Link khi bấm (URL)</span>' +
+									'<input type="text" class="nxs-fl-input nxs-fl-url" placeholder="Vd: /gioi-thieu/ hoặc https://shopee.vn/...">' +
+								'</label>' +
+								'<label class="nxs-fl-check">' +
+									'<input type="checkbox" class="nxs-fl-newtab">' +
+									'<span>Mở liên kết trong tab mới</span>' +
+								'</label>' +
+							'</div>' +
+						'</div>'
+					);
+
+					var $labelInput = $card.find('.nxs-fl-label');
+					var $quickSelect = $card.find('.nxs-fl-quick');
+					var $urlInput = $card.find('.nxs-fl-url');
+					var $newTabCheck = $card.find('.nxs-fl-newtab');
+
+					$labelInput.val(item.label || '');
+					$urlInput.val(item.url || '');
+					$newTabCheck.prop('checked', !!item.new_tab);
+					syncQuickSelectValue($quickSelect, item.url);
+					updateCardTitle($card, item);
+
+					// Vietnamese IME-safe debounced updates on Label
+					var composingLabel = false;
+					$labelInput.on('compositionstart', function () {
+						composingLabel = true;
+					});
+					$labelInput.on('compositionend', function () {
+						composingLabel = false;
+						item.label = this.value;
+						updateCardTitle($card, item);
+						commitDebounced();
+					});
+					$labelInput.on('input', function (e) {
+						item.label = this.value;
+						updateCardTitle($card, item);
+						if (composingLabel || (e.originalEvent && e.originalEvent.isComposing)) { return; }
+						commitDebounced();
+					});
+					$labelInput.on('change blur', function () {
+						if (composingLabel) { return; }
+						item.label = this.value;
+						updateCardTitle($card, item);
+						commitImmediate();
+					});
+
+					// Quick Page Selector -> fills URL and suggests Label if empty
+					$quickSelect.on('change', function () {
+						var chosenUrl = String($(this).val() || '');
+						if (!chosenUrl) { return; }
+						var $opt = $(this).find('option:selected');
+						var suggestedTitle = $.trim($opt.attr('data-title') || '');
+						item.url = chosenUrl;
+						$urlInput.val(chosenUrl);
+						if (!$.trim(item.label || '') && suggestedTitle) {
+							item.label = suggestedTitle;
+							$labelInput.val(suggestedTitle);
+							updateCardTitle($card, item);
+						}
+						commitImmediate();
+					});
+
+					// IME-safe debounced updates on URL
+					var composingUrl = false;
+					$urlInput.on('compositionstart', function () {
+						composingUrl = true;
+					});
+					$urlInput.on('compositionend', function () {
+						composingUrl = false;
+						item.url = this.value;
+						syncQuickSelectValue($quickSelect, item.url);
+						commitDebounced();
+					});
+					$urlInput.on('input', function (e) {
+						item.url = this.value;
+						syncQuickSelectValue($quickSelect, item.url);
+						if (composingUrl || (e.originalEvent && e.originalEvent.isComposing)) { return; }
+						commitDebounced();
+					});
+					$urlInput.on('change blur', function () {
+						if (composingUrl) { return; }
+						item.url = this.value;
+						syncQuickSelectValue($quickSelect, item.url);
+						commitImmediate();
+					});
+
+					// Open in new tab checkbox -> immediate update
+					$newTabCheck.on('change', function () {
+						item.new_tab = $(this).is(':checked');
+						commitImmediate();
+					});
+
+					// Move Up / Down -> immediate DOM move + setting update
+					$card.on('click', '[data-fl-move]', function (e) {
+						e.preventDefault();
+						e.stopPropagation();
+						var dir = parseInt($(this).attr('data-fl-move'), 10);
+						var idx = items.indexOf(item);
+						if (idx === -1) { return; }
+						var targetIdx = idx + dir;
+						if (targetIdx < 0 || targetIdx >= items.length) { return; }
+						var tmp = items[idx];
+						items[idx] = items[targetIdx];
+						items[targetIdx] = tmp;
+						if (dir < 0) {
+							$card.insertBefore($card.prev('.nxs-fl-card'));
+						} else {
+							$card.insertAfter($card.next('.nxs-fl-card'));
+						}
+						refreshHeadersAndButtons();
+						commitImmediate();
+					});
+
+					// Delete card -> immediate removal + setting update (only reloads preview if card had a saved label)
+					$card.on('click', '[data-fl-del]', function (e) {
+						e.preventDefault();
+						e.stopPropagation();
+						var idx = items.indexOf(item);
+						if (idx !== -1) {
+							items.splice(idx, 1);
+						}
+						$card.remove();
+						refreshHeadersAndButtons();
+						commitImmediate();
+					});
+
+					return $card;
+				}
+
+				function renderAllCards() {
+					$list.empty();
+					items.forEach(function (it) {
+						$list.append(buildCard(it));
+					});
+					refreshHeadersAndButtons();
+				}
+
+				$addBtn.on('click', function (e) {
+					e.preventDefault();
+					if (items.length >= 30) { return; }
+					var newItem = { label: '', url: '', new_tab: false };
+					items.push(newItem);
+					var $newCard = buildCard(newItem);
+					$list.append($newCard);
+					refreshHeadersAndButtons();
+					$newCard.find('.nxs-fl-label').trigger('focus');
+				});
+
+				if (setting) {
+					setting.bind(function (nextVal) {
+						if (isSelfUpdating) { return; }
+						var normalizedIncoming = String(nextVal || '');
+						if (normalizedIncoming === serializeCleanFooterLinks(items)) { return; }
+						items = parseFooterLinks(normalizedIncoming);
+						renderAllCards();
+					});
+				}
+
+				renderAllCards();
+			});
+		}
+
+		api.control.each(initFooterLinksControl);
+		api.control.bind('add', initFooterLinksControl);
 	});
 })(wp.customize, jQuery);

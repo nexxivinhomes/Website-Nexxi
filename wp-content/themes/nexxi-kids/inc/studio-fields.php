@@ -794,6 +794,38 @@ return array (
     'l' => 'Chữ liên kết',
     'g' => '',
   ),
+  'footer-col-2__l6' => 
+  array (
+    'r' => 'footer-col-2',
+    't' => 'link',
+    'd' => '',
+    'l' => 'Link khi bấm: “Chính sách bảo mật thông tin”',
+    'g' => '',
+  ),
+  'footer-col-2__t7' => 
+  array (
+    'r' => 'footer-col-2',
+    't' => 'text',
+    'd' => 'Chính sách bảo mật thông tin',
+    'l' => 'Chữ liên kết',
+    'g' => '',
+  ),
+  'footer-col-2__l7' => 
+  array (
+    'r' => 'footer-col-2',
+    't' => 'link',
+    'd' => '',
+    'l' => 'Link khi bấm: “Điều khoản sử dụng & mua hàng”',
+    'g' => '',
+  ),
+  'footer-col-2__t8' => 
+  array (
+    'r' => 'footer-col-2',
+    't' => 'text',
+    'd' => 'Điều khoản sử dụng & mua hàng',
+    'l' => 'Chữ liên kết',
+    'g' => '',
+  ),
   'footer-col-2__l5' => 
   array (
     'r' => 'footer-col-2',
