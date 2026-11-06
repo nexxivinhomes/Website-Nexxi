@@ -179,6 +179,13 @@
 				document.dispatchEvent(new CustomEvent('nexxi:hero-slider-refresh', { detail: { key: key } }));
 			}
 			var el = null;
+			if (key === 'footer_col_1_extra_links' || key.indexOf('footer_col_1_hide_') === 0) {
+				el = document.querySelector('[data-nxr="footer-col-1"] [data-nxs-custom-link]') || document.querySelector('[data-nxr="footer-col-1"] ul') || document.querySelector('[data-nxr="footer-col-1"]');
+			} else if (key === 'footer_col_2_extra_links' || key.indexOf('footer_col_2_hide_') === 0) {
+				el = document.querySelector('[data-nxr="footer-col-2"] [data-nxs-custom-link]') || document.querySelector('[data-nxr="footer-col-2"] ul') || document.querySelector('[data-nxr="footer-col-2"]');
+			} else if (key === 'footer_bottom_extra_links') {
+				el = document.querySelector('[data-nxr="footer-bottom"] [data-nxs-custom-link]') || document.querySelector('[data-nxr="footer-bottom"]');
+			}
 			document.querySelectorAll('[data-nxe]').forEach(function (n) {
 				if (!el && n.getAttribute('data-nxe').split(',').indexOf(key) !== -1) { el = n; }
 			});

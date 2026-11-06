@@ -42,6 +42,30 @@ function nexxi_studio_define_controls() {
 			<?php
 		}
 	}
+
+	/** Dynamic repeater control for adding, reordering, and deleting extra Footer links. */
+	class Nexxi_Studio_Footer_Links_Control extends WP_Customize_Control {
+		public $type = 'nexxi-footer-links';
+		public function render_content() {
+			?>
+			<div class="nxs-fl-wrap" data-nxs-footer-links>
+				<?php if ( $this->label ) : ?>
+					<span class="customize-control-title nxs-fl__heading"><?php echo esc_html( $this->label ); ?></span>
+				<?php endif; ?>
+				<?php if ( $this->description ) : ?>
+					<p class="description customize-control-description nxs-fl__desc"><?php echo wp_kses_post( $this->description ); ?></p>
+				<?php endif; ?>
+				<input type="hidden" <?php $this->link(); ?> value="<?php echo esc_attr( $this->value() ); ?>" data-nxs-fl-input>
+				<div class="nxs-fl-empty" data-nxs-fl-empty>Chưa có liên kết thêm mới nào. Bấm nút bên dưới để thêm mục đầu tiên.</div>
+				<div class="nxs-fl-list" data-nxs-fl-list></div>
+				<button type="button" class="button nxs-fl-add-btn" data-nxs-fl-add>
+					<span class="nxs-fl-add-btn__plus" aria-hidden="true">＋</span>
+					<span>Thêm liên kết mới</span>
+				</button>
+			</div>
+			<?php
+		}
+	}
 }
 
 function nexxi_studio_sanitize_hero_order( $value ) {
@@ -50,12 +74,6 @@ function nexxi_studio_sanitize_hero_order( $value ) {
 
 function nexxi_studio_sanitize_text( $value ) {
 	return sanitize_textarea_field( (string) $value );
-}
-function nexxi_studio_sanitize_link( $value ) {
-	$value = trim( (string) $value );
-	if ( '' === $value ) { return ''; }
-	if ( '#' === $value[0] || ( '/' === $value[0] && ( ! isset( $value[1] ) || '/' !== $value[1] ) ) ) { return sanitize_text_field( $value ); }
-	return esc_url_raw( $value, array( 'http', 'https', 'mailto', 'tel' ) );
 }
 function nexxi_studio_sanitize_check( $value ) {
 	return ( $value && 'false' !== $value ) ? '1' : '';
@@ -129,11 +147,15 @@ function nexxi_studio_customize( WP_Customize_Manager $wp ) {
 			$group = $label;
 			$field_priority = ( 0 === strpos( $key, 'home-hero__bg' ) ) ? ( 10 + (int) substr( $key, -1 ) ) : $priority++;
 			nexxi_studio_add_field( $wp, $key, $field, $section, $field_priority );
+			if ( in_array( $key, array( 'footer-col-1__t1', 'footer-col-2__t1', 'footer-bottom__t1' ), true ) ) {
+				nexxi_studio_footer_extra_links_control( $wp, $region, $section, $priority );
+			}
 		}
 
 		// Region specific extras.
 		if ( 'header-menu' === $region ) { nexxi_studio_menu_controls( $wp, $section, $priority ); }
 		if ( 'footer-social' === $region ) { nexxi_studio_social_controls( $wp, $section, $priority ); }
+		if ( 'footer-col-1' === $region || 'footer-col-2' === $region ) { nexxi_studio_footer_hide_defaults_controls( $wp, $region, $section, $priority ); }
 		if ( 'global-colors' === $region ) { nexxi_studio_color_controls( $wp, $section, $priority ); }
 		if ( 'global-fonts' === $region ) { nexxi_studio_font_controls( $wp, $section, $priority ); }
 		if ( 'global-pages' === $region ) { nexxi_studio_pages_control( $wp, $section, $priority ); }
@@ -200,6 +222,94 @@ function nexxi_studio_social_controls( WP_Customize_Manager $wp, $section, $prio
 	foreach ( nexxi_studio_socials() as $key => $social ) {
 		$wp->add_setting( "nexxi_studio[social_$key]", array( 'type' => 'theme_mod', 'default' => '', 'sanitize_callback' => 'zalo' === $key ? 'sanitize_text_field' : 'esc_url_raw', 'transport' => 'refresh' ) );
 		$wp->add_control( "nexxi_studio[social_$key]", array( 'label' => $social[0], 'section' => $section, 'type' => 'zalo' === $key ? 'text' : 'url', 'priority' => $priority++, 'input_attrs' => array( 'placeholder' => 'zalo' === $key ? 'Số điện thoại Zalo hoặc link zalo.me/…' : 'https://…' ) ) );
+	}
+}
+
+/** Add the "➕ Liên kết tùy chọn thêm" repeater right below the column heading in Footer sections. */
+function nexxi_studio_footer_extra_links_control( WP_Customize_Manager $wp, $region, $section, &$priority ) {
+	$map = array(
+		'footer-col-1'  => array(
+			'setting'      => 'footer_col_1_extra_links',
+			'desc'         => 'Bấm <b>+ Thêm liên kết mới</b> để chèn thêm mục vào cột này (hiển thị nối tiếp bên dưới danh sách mặc định).',
+			'next_heading' => '✏️ Liên kết mặc định có sẵn',
+			'next_desc'    => 'Sửa chữ hiển thị hoặc đường dẫn của 5 mục mặc định (để trống ô Link = giữ đường dẫn tự động).',
+		),
+		'footer-col-2'  => array(
+			'setting'      => 'footer_col_2_extra_links',
+			'desc'         => 'Bấm <b>+ Thêm liên kết mới</b> để chèn thêm mục vào cột này (hiển thị nối tiếp bên dưới danh sách mặc định, ngay phía trên dòng Hotline).',
+			'next_heading' => '✏️ Liên kết mặc định có sẵn',
+			'next_desc'    => 'Sửa chữ hiển thị hoặc đường dẫn của các mục mặc định trong cột Chăm sóc khách hàng.',
+		),
+		'footer-bottom' => array(
+			'setting'      => 'footer_bottom_extra_links',
+			'desc'         => 'Bấm <b>+ Thêm liên kết mới</b> để chèn hàng liên kết phụ vào dòng bản quyền cuối trang (phân tách bằng dấu ·).',
+			'next_heading' => '✏️ Huy hiệu cam kết bên phải',
+			'next_desc'    => 'Biểu tượng và nhãn ngắn nằm bên phải dòng bản quyền.',
+		),
+	);
+	if ( ! isset( $map[ $region ] ) ) {
+		return;
+	}
+	$cfg        = $map[ $region ];
+	$setting_id = 'nexxi_studio[' . $cfg['setting'] . ']';
+
+	$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_fl_head_' . $region, array(
+		'label'       => '➕ Liên kết tùy chọn thêm',
+		'description' => $cfg['desc'],
+		'section'     => $section,
+		'settings'    => array(),
+		'priority'    => $priority++,
+	) ) );
+
+	$wp->add_setting( $setting_id, array(
+		'type'              => 'theme_mod',
+		'default'           => '',
+		'sanitize_callback' => 'nexxi_studio_sanitize_extra_links',
+		'transport'         => 'refresh',
+	) );
+	$wp->add_control( new Nexxi_Studio_Footer_Links_Control( $wp, $setting_id, array(
+		'section'  => $section,
+		'priority' => $priority++,
+	) ) );
+
+	$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_fl_def_' . $region, array(
+		'label'       => $cfg['next_heading'],
+		'description' => $cfg['next_desc'],
+		'section'     => $section,
+		'settings'    => array(),
+		'priority'    => $priority++,
+	) ) );
+}
+
+/** Add checkboxes at the bottom of footer-col-1 & footer-col-2 to optionally hide built-in default links. */
+function nexxi_studio_footer_hide_defaults_controls( WP_Customize_Manager $wp, $region, $section, &$priority ) {
+	$defaults = nexxi_studio_footer_default_links();
+	if ( empty( $defaults[ $region ] ) ) {
+		return;
+	}
+	$prefix = 'footer-col-1' === $region ? 'footer_col_1_hide_' : 'footer_col_2_hide_';
+	$wp->add_control( new Nexxi_Studio_Heading_Control( $wp, 'nxs_fl_hide_h_' . $region, array(
+		'label'       => '👁 Ẩn / Hiện liên kết mặc định',
+		'description' => 'Tích chọn mục bạn muốn <b>ẩn</b> khỏi cột chân trang này (bỏ tích để hiện lại):',
+		'section'     => $section,
+		'settings'    => array(),
+		'priority'    => $priority++,
+	) ) );
+
+	foreach ( $defaults[ $region ] as $idx => $def ) {
+		$setting_id = 'nexxi_studio[' . $prefix . $idx . ']';
+		$wp->add_setting( $setting_id, array(
+			'type'              => 'theme_mod',
+			'default'           => '',
+			'sanitize_callback' => 'nexxi_studio_sanitize_check',
+			'transport'         => 'refresh',
+		) );
+		$wp->add_control( $setting_id, array(
+			'label'    => 'Ẩn mục ' . $idx . ': “' . $def['label'] . '”',
+			'section'  => $section,
+			'type'     => 'checkbox',
+			'priority' => $priority++,
+		) );
 	}
 }
 
@@ -315,6 +425,97 @@ function nexxi_studio_pages_control( WP_Customize_Manager $wp, $section, $priori
 
 /* ------------------------------------------------------------------ scripts */
 
+/** Curated quick-select links (system routes, blog categories, product categories, and all published WordPress pages). */
+function nexxi_studio_quick_links() {
+	$orders_url = function_exists( 'wc_get_account_endpoint_url' ) ? wc_get_account_endpoint_url( 'orders' ) : nexxi_kids_stitch_url( 'account.html' );
+	$links      = array(
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Trang chủ', 'title' => 'Trang chủ', 'url' => '/' ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Cửa hàng (Tất cả sản phẩm)', 'title' => 'Cửa hàng', 'url' => nexxi_studio_relative_url( nexxi_kids_shop_url() ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Thời trang Bé Gái', 'title' => 'Thời trang Bé Gái', 'url' => nexxi_studio_relative_url( add_query_arg( 'cat_group', 'dam-vay', nexxi_kids_shop_url() ) ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Thời trang Bé Trai', 'title' => 'Thời trang Bé Trai', 'url' => nexxi_studio_relative_url( add_query_arg( 'cat_group', 'ao-thoi-trang', nexxi_kids_shop_url() ) ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Set phối & Bộ đồ', 'title' => 'Set phối & Bộ đồ', 'url' => nexxi_studio_relative_url( add_query_arg( 'cat_group', 'set-bo', nexxi_kids_shop_url() ) ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Ưu đãi Flash Sale', 'title' => 'Ưu đãi Flash Sale', 'url' => nexxi_studio_relative_url( nexxi_kids_flash_url() ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Bảng size cho bé', 'title' => 'Cẩm nang chọn size', 'url' => '/#size-guide' ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Giỏ hàng', 'title' => 'Giỏ hàng', 'url' => nexxi_studio_relative_url( nexxi_kids_stitch_url( 'cart.html' ) ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Tài khoản khách hàng', 'title' => 'Tài khoản của mẹ', 'url' => nexxi_studio_relative_url( nexxi_kids_stitch_url( 'account.html' ) ) ),
+		array( 'group' => 'Trang mua sắm & Hệ thống', 'label' => 'Tra cứu đơn hàng', 'title' => 'Tra cứu tình trạng đơn hàng', 'url' => nexxi_studio_relative_url( $orders_url ) ),
+	);
+
+	// Blog archive & post categories (if available).
+	$posts_page_id = (int) get_option( 'page_for_posts' );
+	if ( $posts_page_id > 0 ) {
+		$posts_page = get_post( $posts_page_id );
+		if ( $posts_page && 'publish' === $posts_page->post_status ) {
+			$blog_title = trim( wp_strip_all_tags( $posts_page->post_title ) ) ?: 'Blog & Tin tức';
+			$links[]    = array(
+				'group' => 'Chuyên mục Blog / Bài viết',
+				'label' => $blog_title . ' (Trang bài viết)',
+				'title' => $blog_title,
+				'url'   => nexxi_studio_relative_url( get_permalink( $posts_page_id ) ),
+			);
+		}
+	}
+	$blog_cats = get_categories( array( 'taxonomy' => 'category', 'hide_empty' => false ) );
+	if ( is_array( $blog_cats ) ) {
+		foreach ( $blog_cats as $cat ) {
+			if ( in_array( $cat->slug, array( 'uncategorized', 'chua-phan-loai' ), true ) && (int) $cat->count <= 0 ) {
+				continue;
+			}
+			$cat_link = get_category_link( $cat->term_id );
+			if ( ! is_wp_error( $cat_link ) && $cat_link ) {
+				$cat_name = trim( wp_strip_all_tags( $cat->name ) );
+				$links[]  = array(
+					'group' => 'Chuyên mục Blog / Bài viết',
+					'label' => $cat_name,
+					'title' => $cat_name,
+					'url'   => nexxi_studio_relative_url( $cat_link ),
+				);
+			}
+		}
+	}
+
+	// All published WordPress pages.
+	$pages = get_pages( array( 'post_status' => 'publish', 'sort_column' => 'menu_order,post_title' ) );
+	if ( is_array( $pages ) ) {
+		foreach ( $pages as $page_obj ) {
+			$p_title = trim( wp_strip_all_tags( $page_obj->post_title ) );
+			if ( '' === $p_title ) {
+				continue;
+			}
+			$links[] = array(
+				'group' => 'Trang có sẵn trên Website',
+				'label' => $p_title,
+				'title' => $p_title,
+				'url'   => nexxi_studio_relative_url( get_permalink( $page_obj->ID ) ),
+			);
+		}
+	}
+
+	// Product categories (WooCommerce) if present.
+	if ( taxonomy_exists( 'product_cat' ) ) {
+		$p_cats = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => true, 'number' => 25 ) );
+		if ( is_array( $p_cats ) && ! is_wp_error( $p_cats ) ) {
+			foreach ( $p_cats as $p_cat ) {
+				if ( in_array( $p_cat->slug, array( 'uncategorized', 'chua-phan-loai' ), true ) ) {
+					continue;
+				}
+				$p_link = get_term_link( $p_cat );
+				if ( ! is_wp_error( $p_link ) && $p_link ) {
+					$pc_name = trim( wp_strip_all_tags( $p_cat->name ) );
+					$links[] = array(
+						'group' => 'Danh mục sản phẩm',
+						'label' => $pc_name,
+						'title' => $pc_name,
+						'url'   => nexxi_studio_relative_url( $p_link ),
+					);
+				}
+			}
+		}
+	}
+
+	return $links;
+}
+
 function nexxi_studio_controls_assets() {
 	$base = get_template_directory_uri() . '/assets/studio/';
 	$dir = get_template_directory() . '/assets/studio/';
@@ -328,7 +529,11 @@ function nexxi_studio_controls_assets() {
 	for ( $slot = 1; $slot <= 5; $slot++ ) {
 		$hero_defaults[ $slot ] = nexxi_studio_default( 'home-hero__bg' . $slot );
 	}
-	wp_localize_script( 'nexxi-studio-controls', 'NexxiStudioControls', array( 'regions' => $regions, 'heroDefaults' => $hero_defaults ) );
+	wp_localize_script( 'nexxi-studio-controls', 'NexxiStudioControls', array(
+		'regions'      => $regions,
+		'heroDefaults' => $hero_defaults,
+		'quickLinks'   => nexxi_studio_quick_links(),
+	) );
 }
 add_action( 'customize_controls_enqueue_scripts', 'nexxi_studio_controls_assets' );
 

@@ -56,8 +56,8 @@ function nexxi_studio_regions() {
 		'flash-notify'      => array( 'nxs_flash', 'Đăng ký nhận báo', 'flash', true, 'Cuối trang.' ),
 		'login-story'       => array( 'nxs_account', 'Cột giới thiệu bên trái', 'account', false, '' ),
 		'footer-brand'      => array( 'nxs_footer', 'Giới thiệu thương hiệu', '', false, 'Cột đầu tiên của footer.' ),
-		'footer-social'     => array( 'nxs_footer', 'Mạng xã hội', '', false, 'Các nút tròn dưới phần giới thiệu. Khi có link, biểu tượng mạng xã hội sẽ thay cho 3 biểu tượng trang trí.' ),
-		'footer-col-1'      => array( 'nxs_footer', 'Cột “Bé & Mẹ yêu thích”', '', false, '' ),
+		'footer-social'     => array( 'nxs_footer', 'Mạng xã hội & Shopee', '', false, 'Các nút tròn dưới phần giới thiệu (Facebook, Instagram, TikTok, Shopee, YouTube, Zalo).' ),
+		'footer-col-1'      => array( 'nxs_footer', 'Cột “Bé & Mẹ yêu thích”', '', false, 'Hỗ trợ thêm liên kết mới, sắp xếp thứ tự, sửa hoặc ẩn bớt các mục mặc định.' ),
 		'footer-col-2'      => array( 'nxs_footer', 'Cột “Chăm sóc khách hàng”', '', false, 'Dòng Hotline lấy theo số trong ① Toàn trang › Thông tin cửa hàng.' ),
 		'footer-newsletter' => array( 'nxs_footer', 'Đăng ký nhận quà', '', false, '' ),
 		'footer-bottom'     => array( 'nxs_footer', 'Dòng bản quyền cuối trang', '', false, 'Năm sau dấu © tự cập nhật.' ),
@@ -217,7 +217,7 @@ function nexxi_studio_changed( $key ) {
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
 		if ( $norm === $legacy_ticker ) { return null; }
 	}
-	if ( preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
+	if ( ! preg_match( '~(_extra_links|_hide_\d+)$~', (string) $key ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
 		return null;
 	}
 	if ( preg_match( '~^home-hero__bg[1-5]$~', $key ) && '' === $value ) {
@@ -284,12 +284,77 @@ function nexxi_studio_region_attr( $region ) {
 	return ' data-nxr="' . esc_attr( $region ) . '"';
 }
 
+/** Sanitize an internal path (/...), #anchor, or full http/https/mailto/tel URL. */
+function nexxi_studio_sanitize_link( $value ) {
+	$value = trim( (string) $value );
+	if ( '' === $value ) { return ''; }
+	if ( '#' === $value[0] || ( '/' === $value[0] && ( ! isset( $value[1] ) || '/' !== $value[1] ) ) ) { return sanitize_text_field( $value ); }
+	return esc_url_raw( $value, array( 'http', 'https', 'mailto', 'tel' ) );
+}
+
 /** Turn an editor link (/path, #anchor, full URL, phone) into a URL. */
 function nexxi_studio_url( $value ) {
 	$value = trim( (string) $value );
 	if ( '' === $value ) { return ''; }
 	if ( '/' === $value[0] && ( ! isset( $value[1] ) || '/' !== $value[1] ) ) { return home_url( $value ); }
 	return $value;
+}
+
+/** Convert an internal site URL into a clean root-relative path (supports subdirectory installs). */
+function nexxi_studio_relative_url( $url ) {
+	$url  = trim( (string) $url );
+	$home = untrailingslashit( home_url() );
+	if ( '' !== $home && 0 === strpos( $url, $home ) ) {
+		$rel = substr( $url, strlen( $home ) );
+		return '' === $rel ? '/' : ( '/' === $rel[0] ? $rel : '/' . $rel );
+	}
+	return $url;
+}
+
+/** Parse and sanitize extra footer links JSON/array (max 30 items per region). */
+function nexxi_studio_parse_extra_links( $value ) {
+	$decoded = null;
+	if ( is_array( $value ) ) {
+		$decoded = $value;
+	} elseif ( is_string( $value ) && '' !== trim( $value ) ) {
+		$decoded = json_decode( $value, true );
+		if ( ! is_array( $decoded ) ) {
+			$decoded = json_decode( wp_unslash( $value ), true );
+		}
+	}
+	if ( ! is_array( $decoded ) ) {
+		return array();
+	}
+	$items = array();
+	foreach ( $decoded as $row ) {
+		if ( count( $items ) >= 30 ) {
+			break;
+		}
+		if ( ! is_array( $row ) ) {
+			continue;
+		}
+		$label = isset( $row['label'] ) ? trim( sanitize_text_field( (string) $row['label'] ) ) : '';
+		if ( '' === $label ) {
+			continue;
+		}
+		$url     = isset( $row['url'] ) ? nexxi_studio_sanitize_link( $row['url'] ) : '';
+		$new_tab = ( ! empty( $row['new_tab'] ) && '0' !== $row['new_tab'] && 'false' !== $row['new_tab'] ) ? 1 : 0;
+		$items[] = array(
+			'label'   => $label,
+			'url'     => $url,
+			'new_tab' => $new_tab,
+		);
+	}
+	return $items;
+}
+
+/** Customizer sanitize callback for footer_*_extra_links settings. */
+function nexxi_studio_sanitize_extra_links( $value ) {
+	$items = nexxi_studio_parse_extra_links( $value );
+	if ( ! $items ) {
+		return '';
+	}
+	return (string) wp_json_encode( $items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 }
 
 /* ------------------------------------------------------------------ html helpers */
@@ -383,6 +448,7 @@ function nexxi_studio_apply_late( $html ) {
 		}
 	}
 	$html = nexxi_studio_footer_social( $html );
+	$html = nexxi_studio_footer_links( $html );
 	$html = nexxi_studio_apply_colors( $html );
 	return nexxi_studio_apply_fonts( $html );
 }
@@ -505,9 +571,147 @@ function nexxi_studio_socials() {
 		'facebook'  => array( 'Facebook', '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M13.5 21v-7.5h2.5l.4-3h-2.9V8.6c0-.9.3-1.5 1.5-1.5h1.5V4.4c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.4H8.1v3h2.5V21h2.9z"/></svg>' ),
 		'instagram' => array( 'Instagram', '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r="1" fill="currentColor" stroke="none"/></svg>' ),
 		'tiktok'    => array( 'TikTok', '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M16.6 5.8A4.3 4.3 0 0 1 15.5 3h-3.1v12.4a2.6 2.6 0 1 1-2.6-2.6c.3 0 .5 0 .8.1V9.7a5.8 5.8 0 1 0 4.9 5.7V9.1a7.3 7.3 0 0 0 4.3 1.4V7.4a4.3 4.3 0 0 1-3.2-1.6z"/></svg>' ),
+		'shopee'    => array( 'Shopee', '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7V6a3 3 0 0 1 6 0v1"/><path d="M5.5 7h13l-1.1 12.2a2 2 0 0 1-2 1.8H8.6a2 2 0 0 1-2-1.8L5.5 7z"/><path d="M14.2 11.2c-.3-.7-1.1-1.1-2.1-1.1-1.2 0-2 .6-2 1.4 0 1.8 4.2 1.1 4.2 3.1 0 .9-.9 1.6-2.3 1.6-1.1 0-2-.4-2.3-1.2"/></svg>' ),
 		'youtube'   => array( 'YouTube', '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3L10 15z"/></svg>' ),
 		'zalo'      => array( 'Zalo', '<span style="font:800 10px/1 Quicksand,sans-serif;letter-spacing:-.02em">Zalo</span>' ),
 	);
+}
+
+/** Default footer links metadata for show/hide controls in footer-col-1 and footer-col-2. */
+function nexxi_studio_footer_default_links() {
+	return array(
+		'footer-col-1' => array(
+			1 => array( 'text_key' => 'footer-col-1__t2', 'link_key' => 'footer-col-1__l1', 'label' => 'Thời trang Bé Gái' ),
+			2 => array( 'text_key' => 'footer-col-1__t3', 'link_key' => 'footer-col-1__l2', 'label' => 'Thời trang Bé Trai' ),
+			3 => array( 'text_key' => 'footer-col-1__t4', 'link_key' => 'footer-col-1__l3', 'label' => 'Set phối & Bộ đồ' ),
+			4 => array( 'text_key' => 'footer-col-1__t5', 'link_key' => 'footer-col-1__l4', 'label' => 'Ưu đãi Flash Sale' ),
+			5 => array( 'text_key' => 'footer-col-1__t6', 'link_key' => 'footer-col-1__l5', 'label' => 'Cẩm nang chọn size' ),
+		),
+		'footer-col-2' => array(
+			1 => array( 'text_key' => 'footer-col-2__t2', 'link_key' => 'footer-col-2__l1', 'label' => 'Chính sách đổi hàng 15 ngày' ),
+			2 => array( 'text_key' => 'footer-col-2__t3', 'link_key' => 'footer-col-2__l2', 'label' => 'Chính sách vận chuyển toàn quốc' ),
+			3 => array( 'text_key' => 'footer-col-2__t4', 'link_key' => 'footer-col-2__l3', 'label' => 'Tra cứu tình trạng đơn hàng' ),
+			4 => array( 'text_key' => 'footer-col-2__t5', 'link_key' => 'footer-col-2__l4', 'label' => 'Hỏi đáp thường gặp (FAQ)' ),
+			5 => array( 'text_key' => 'footer-col-2__t7', 'link_key' => 'footer-col-2__l6', 'label' => 'Chính sách bảo mật thông tin' ),
+			6 => array( 'text_key' => 'footer-col-2__t8', 'link_key' => 'footer-col-2__l7', 'label' => 'Điều khoản sử dụng & mua hàng' ),
+		),
+	);
+}
+
+/** Remove the enclosing <li>...</li> element containing $marker inside a footer column fragment. */
+function nexxi_studio_remove_li_by_marker( $fragment, $marker ) {
+	$pos = strpos( $fragment, $marker );
+	if ( false === $pos ) {
+		return $fragment;
+	}
+	$li_start = strrpos( substr( $fragment, 0, $pos ), '<li' );
+	if ( false === $li_start ) {
+		return $fragment;
+	}
+	$li = nexxi_dom_locate( $fragment, '<li', $li_start );
+	if ( ! $li || $li['start'] !== $li_start || $pos >= $li['end'] ) {
+		return $fragment;
+	}
+	return substr( $fragment, 0, $li['start'] ) . substr( $fragment, $li['end'] );
+}
+
+/** Render <li> items for custom extra links in footer-col-1 and footer-col-2. */
+function nexxi_studio_render_footer_li_items( array $items ) {
+	$out = '';
+	foreach ( $items as $item ) {
+		$href = '' !== $item['url'] ? nexxi_studio_url( $item['url'] ) : '#';
+		if ( '' === $href ) {
+			$href = '#';
+		}
+		$target = ! empty( $item['new_tab'] ) ? ' target="_blank" rel="noopener noreferrer"' : '';
+		$out   .= '<li data-nxs-custom-link="1"><a data-nxs-custom-link="1" class="hover:text-secondary transition-colors" href="' . esc_url( $href ) . '"' . $target . '>' . esc_html( $item['label'] ) . '</a></li>';
+	}
+	return $out;
+}
+
+/** Apply hidden default links and render extra custom links across footer-col-1, footer-col-2, and footer-bottom. */
+function nexxi_studio_footer_links( $html ) {
+	$footer_el = nexxi_dom_locate( $html, '<footer' );
+	if ( ! $footer_el ) {
+		return $html;
+	}
+	$footer   = substr( $html, $footer_el['start'], $footer_el['end'] - $footer_el['start'] );
+	$defaults = nexxi_studio_footer_default_links();
+
+	// 1. Column 1: "Bé & Mẹ yêu thích"
+	$col1 = nexxi_dom_locate( $footer, 'data-nxr="footer-col-1"' );
+	if ( $col1 ) {
+		$col1_html = substr( $footer, $col1['start'], $col1['end'] - $col1['start'] );
+		foreach ( $defaults['footer-col-1'] as $idx => $def ) {
+			if ( '1' === nexxi_studio_opt( 'footer_col_1_hide_' . $idx ) ) {
+				$col1_html = nexxi_studio_remove_li_by_marker( $col1_html, 'data-nxl="' . $def['link_key'] . '"' );
+			}
+		}
+		$extra_1 = nexxi_studio_parse_extra_links( nexxi_studio_opt( 'footer_col_1_extra_links' ) );
+		if ( $extra_1 ) {
+			$ul = nexxi_dom_locate( $col1_html, '<ul' );
+			if ( $ul ) {
+				$col1_html = substr( $col1_html, 0, $ul['inner_end'] ) . nexxi_studio_render_footer_li_items( $extra_1 ) . substr( $col1_html, $ul['inner_end'] );
+			}
+		}
+		$footer = substr( $footer, 0, $col1['start'] ) . $col1_html . substr( $footer, $col1['end'] );
+	}
+
+	// 2. Column 2: "Chăm sóc khách hàng" (insert extra links right BEFORE Hotline <li> so Hotline/Zalo/Hours stay anchored at the bottom)
+	$col2 = nexxi_dom_locate( $footer, 'data-nxr="footer-col-2"' );
+	if ( $col2 ) {
+		$col2_html = substr( $footer, $col2['start'], $col2['end'] - $col2['start'] );
+		foreach ( $defaults['footer-col-2'] as $idx => $def ) {
+			if ( '1' === nexxi_studio_opt( 'footer_col_2_hide_' . $idx ) ) {
+				$col2_html = nexxi_studio_remove_li_by_marker( $col2_html, 'data-nxl="' . $def['link_key'] . '"' );
+			}
+		}
+		$extra_2 = nexxi_studio_parse_extra_links( nexxi_studio_opt( 'footer_col_2_extra_links' ) );
+		if ( $extra_2 ) {
+			$li_html     = nexxi_studio_render_footer_li_items( $extra_2 );
+			$insert_pos  = false;
+			$hotline_pos = strpos( $col2_html, 'data-nxe="footer-col-2__t6"' );
+			if ( false !== $hotline_pos ) {
+				$hotline_li = strrpos( substr( $col2_html, 0, $hotline_pos ), '<li' );
+				if ( false !== $hotline_li ) {
+					$insert_pos = $hotline_li;
+				}
+			}
+			if ( false === $insert_pos ) {
+				$ul = nexxi_dom_locate( $col2_html, '<ul' );
+				if ( $ul ) {
+					$insert_pos = $ul['inner_end'];
+				}
+			}
+			if ( false !== $insert_pos ) {
+				$col2_html = substr( $col2_html, 0, $insert_pos ) . $li_html . substr( $col2_html, $insert_pos );
+			}
+		}
+		$footer = substr( $footer, 0, $col2['start'] ) . $col2_html . substr( $footer, $col2['end'] );
+	}
+
+	// 3. Footer Bottom: copyright bar extra links separated by "·"
+	$extra_bottom = nexxi_studio_parse_extra_links( nexxi_studio_opt( 'footer_bottom_extra_links' ) );
+	if ( $extra_bottom ) {
+		$bot = nexxi_dom_locate( $footer, 'data-nxr="footer-bottom"' );
+		if ( $bot ) {
+			$parts = array();
+			foreach ( $extra_bottom as $item ) {
+				$href = '' !== $item['url'] ? nexxi_studio_url( $item['url'] ) : '#';
+				if ( '' === $href ) {
+					$href = '#';
+				}
+				$target  = ! empty( $item['new_tab'] ) ? ' target="_blank" rel="noopener noreferrer"' : '';
+				$parts[] = '<a data-nxs-custom-link="1" class="underline hover:text-secondary transition-colors" href="' . esc_url( $href ) . '"' . $target . '>' . esc_html( $item['label'] ) . '</a>';
+			}
+			$row_html = '<div data-nxs-custom-link="1" class="flex flex-wrap items-center gap-1.5 pt-1 font-label-sm text-label-sm text-on-surface-variant">'
+				. implode( ' <span class="text-outline" aria-hidden="true">·</span> ', $parts )
+				. '</div>';
+			$footer = substr( $footer, 0, $bot['inner_end'] ) . $row_html . substr( $footer, $bot['inner_end'] );
+		}
+	}
+
+	return substr( $html, 0, $footer_el['start'] ) . $footer . substr( $html, $footer_el['end'] );
 }
 
 /** Render the Bộ Công Thương badge in the footer brand column (plus any configured social links). */
