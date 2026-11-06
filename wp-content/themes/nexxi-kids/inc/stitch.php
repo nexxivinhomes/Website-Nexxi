@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261105_pancake_v7_sync_fix_v45';
+	$purge_ver = '20261105_stitch_blog_single_v46';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
@@ -918,7 +918,7 @@ function nexxi_kids_stitch_countdown_digits( $html ) {
 }
 
 function nexxi_kids_render_stitch( $screen ) {
-	$shells = array( 'index' => 'index', 'shop' => 'shop', 'product' => 'product', 'flash-sale' => 'flash-sale', 'cart' => 'cart', 'checkout' => 'checkout', 'account' => 'account', 'login' => 'login', 'members' => 'members', 'page' => 'index' );
+	$shells = array( 'index' => 'index', 'shop' => 'shop', 'product' => 'product', 'flash-sale' => 'flash-sale', 'cart' => 'cart', 'checkout' => 'checkout', 'account' => 'account', 'login' => 'login', 'members' => 'members', 'page' => 'index', 'blog' => 'index', 'single' => 'index' );
 	if ( ! isset( $shells[ $screen ] ) ) { return; }
 	$GLOBALS['nexxi_stitch_screen'] = $screen; // Dùng bởi inc/performance.php để bỏ CSS/JS không cần trên màn hình này.
 	if ( ! headers_sent() ) {
@@ -981,6 +981,12 @@ function nexxi_kids_render_stitch( $screen ) {
 			break;
 		case 'page':
 			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_page_main() );
+			break;
+		case 'blog':
+			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_blog_main() );
+			break;
+		case 'single':
+			$html = nexxi_dom_replace_first_tag( $html, 'main', nexxi_kids_single_post_main() );
 			break;
 	}
 

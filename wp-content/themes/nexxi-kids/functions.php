@@ -2,8 +2,8 @@
 /** NEXXI Kids theme setup and helpers. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'NEXXI_KIDS_VERSION', '1.0.0' );
-foreach ( array( 'performance', 'meta-pixel', 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch', 'stitch-cart', 'stitch-account', 'setup-pages', 'customer-crm-admin', 'flash-sale-admin', 'bulk-discount-admin', 'combo-promo', 'pancake-sync-admin', 'web-product-manager-admin', 'sku-seo-sync', 'zalo-order-notify', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
+define( 'NEXXI_KIDS_VERSION', '1.0.1' );
+foreach ( array( 'performance', 'meta-pixel', 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch-blog', 'stitch', 'stitch-cart', 'stitch-account', 'setup-pages', 'customer-crm-admin', 'flash-sale-admin', 'bulk-discount-admin', 'combo-promo', 'pancake-sync-admin', 'web-product-manager-admin', 'sku-seo-sync', 'zalo-order-notify', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
 	if ( 'pancake-sync-admin' === $nexxi_kids_module && defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
 		continue;
 	}
@@ -32,7 +32,7 @@ function nexxi_kids_setup() {
 add_action( 'after_setup_theme', 'nexxi_kids_setup' );
 
 function nexxi_kids_assets() {
-	if ( is_front_page() || ( function_exists( 'is_woocommerce' ) && is_woocommerce() ) || ( function_exists( 'is_cart' ) && is_cart() ) || ( function_exists( 'is_checkout' ) && is_checkout() ) || ( function_exists( 'is_account_page' ) && is_account_page() ) ) { return; }
+	if ( ! empty( $GLOBALS['nexxi_stitch_screen'] ) || is_front_page() || ( function_exists( 'is_woocommerce' ) && is_woocommerce() ) || ( function_exists( 'is_cart' ) && is_cart() ) || ( function_exists( 'is_checkout' ) && is_checkout() ) || ( function_exists( 'is_account_page' ) && is_account_page() ) ) { return; }
 	wp_enqueue_style( 'nexxi-kids-fonts', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap', array(), null );
 	wp_enqueue_style( 'nexxi-kids-style', get_stylesheet_uri(), array( 'nexxi-kids-fonts' ), NEXXI_KIDS_VERSION );
 	wp_enqueue_style( 'nexxi-kids-theme', get_template_directory_uri() . '/assets/css/theme.css', array( 'nexxi-kids-style' ), NEXXI_KIDS_VERSION );
