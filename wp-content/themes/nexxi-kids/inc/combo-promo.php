@@ -432,9 +432,26 @@ function nexxi_kids_apply_combo_promo_cart_fee( WC_Cart $cart ) {
 add_action( 'woocommerce_cart_calculate_fees', 'nexxi_kids_apply_combo_promo_cart_fee', 20 );
 
 /**
+ * Check whether a WooCommerce cart fee object is the auto-applied Combo Promotion discount fee.
+ *
+ * @param object $fee WooCommerce fee object.
+ * @return bool
+ */
+function nexxi_kids_is_combo_promo_fee( $fee ) {
+	if ( ! is_object( $fee ) || ! isset( $fee->name ) ) {
+		return false;
+	}
+	$name = (string) $fee->name;
+	return ( 0 === strpos( $name, '🎁 Ưu đãi Combo' ) || false !== strpos( $name, 'Ưu đãi Combo (' ) );
+}
+
+/**
  * Append "COMBO -X%" badge onto cart/checkout line item chips so every item in a combo clearly shows its badge.
  */
 function nexxi_kids_combo_item_data_badge( $item_data, $cart_item ) {
+	if ( ! empty( $cart_item['nexxi_skip_combo_badge'] ) ) {
+		return $item_data;
+	}
 	if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
 		return $item_data;
 	}
@@ -528,14 +545,47 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 									<?php echo esc_html( $combo['badge_text'] ); ?> (-<?php echo esc_html( nexxi_kids_money( $combo['discount'] ) ); ?> &rarr; Còn <?php echo esc_html( nexxi_kids_money( $combo['total_after'] ) ); ?>)
 								</span>
 							</div>
-							<div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#45464f;min-width:0;">
+							<div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:#45464f;min-width:0;">
 								<?php foreach ( $combo['lines'] as $cline ) :
 									$c_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $cline['cart_item'] ) : $cline['product']->get_name();
+									$c_vars  = array();
+									if ( function_exists( 'nexxi_kids_cart_item_variation' ) && ! empty( $cline['cart_item'] ) && is_array( $cline['cart_item'] ) ) {
+										$c_vars = nexxi_kids_cart_item_variation( $cline['cart_item'] );
+									}
+									if ( empty( $c_vars ) && ! empty( $cline['product'] ) && ( $cline['product'] instanceof WC_Product ) && $cline['product']->is_type( 'variation' ) ) {
+										foreach ( (array) $cline['product']->get_variation_attributes() as $v_key => $v_val ) {
+											if ( '' === (string) $v_val ) {
+												continue;
+											}
+											$v_tax = 0 === strpos( $v_key, 'attribute_' ) ? substr( $v_key, 10 ) : $v_key;
+											if ( taxonomy_exists( $v_tax ) ) {
+												$v_term = get_term_by( 'slug', $v_val, $v_tax );
+												$v_val  = ( $v_term && ! is_wp_error( $v_term ) ) ? $v_term->name : $v_val;
+											}
+											$v_lbl = wc_attribute_label( $v_tax, $cline['product'] );
+											if ( function_exists( 'nexxi_kids_attr_label' ) ) {
+												$v_lbl = nexxi_kids_attr_label( $v_lbl );
+											}
+											$c_vars[] = array( $v_lbl, $v_val );
+										}
+									}
 									?>
 									<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;">
-										<span style="flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;">
-											• <?php echo esc_html( $c_title ); ?> <strong style="white-space:nowrap;color:#031444;">× <?php echo (int) $cline['qty_in_combo']; ?></strong>
-										</span>
+										<div style="flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;">
+											<div>
+												• <?php echo esc_html( $c_title ); ?> <strong style="white-space:nowrap;color:#031444;">× <?php echo (int) $cline['qty_in_combo']; ?></strong>
+											</div>
+											<?php if ( ! empty( $c_vars ) ) : ?>
+												<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;padding-left:9px;">
+													<?php foreach ( $c_vars as $cv ) : ?>
+														<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(255,218,210,0.65);color:#3f0300;border-radius:999px;padding:1px 7px;font-size:11px;line-height:1.35;font-weight:600;">
+															<span style="opacity:0.8;"><?php echo esc_html( $cv[0] ); ?>:</span>
+															<strong style="font-weight:800;"><?php echo esc_html( $cv[1] ); ?></strong>
+														</span>
+													<?php endforeach; ?>
+												</div>
+											<?php endif; ?>
+										</div>
 										<span style="flex-shrink:0;white-space:nowrap;font-weight:700;color:#ae3115;font-size:12.5px;text-align:right;line-height:1.4;">
 											<?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?>
 										</span>
@@ -544,20 +594,6 @@ function nexxi_kids_render_combo_bill_notice_html( $context = 'cart' ) {
 							</div>
 						</div>
 					<?php endforeach; ?>
-
-					<?php if ( ! empty( $res['leftover_items'] ) ) : ?>
-						<div style="width:100%;max-width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:8px 12px;font-size:12px;color:#475569;">
-							<div style="font-weight:700;color:#031444;margin-bottom:4px;">🛍️ Sản phẩm lẻ ngoài Combo (<?php echo (int) $res['leftover_count']; ?> món):</div>
-							<?php foreach ( $res['leftover_items'] as $litem ) :
-								$l_title = function_exists( 'nexxi_kids_cart_item_title' ) ? nexxi_kids_cart_item_title( $litem['cart_item'] ) : $litem['product']->get_name();
-								?>
-								<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;margin-top:3px;">
-									<span style="flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.4;">• <?php echo esc_html( $l_title ); ?> <strong style="white-space:nowrap;">× <?php echo (int) $litem['qty_leftover']; ?></strong></span>
-									<span style="flex-shrink:0;white-space:nowrap;font-weight:600;text-align:right;line-height:1.4;"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span>
-								</div>
-							<?php endforeach; ?>
-						</div>
-					<?php endif; ?>
 				</div>
 			<?php endif; ?>
 		<?php endif; ?>
@@ -609,15 +645,33 @@ add_filter(
 );
 
 /**
+ * Output the `<tr class="nexxi-combo-checkout-row">` row inside Checkout review-order table.
+ *
+ * @param bool $is_first_row Whether this row is the very first visible row in the table (Combo-only mode).
+ */
+function nexxi_kids_output_checkout_combo_row( $is_first_row = false ) {
+	if ( ! empty( $GLOBALS['nexxi_combo_checkout_row_rendered'] ) ) {
+		return;
+	}
+	$html = nexxi_kids_render_combo_bill_notice_html( 'checkout' );
+	if ( '' === $html ) {
+		return;
+	}
+	$GLOBALS['nexxi_combo_checkout_row_rendered'] = true;
+	$row_cls  = 'nexxi-combo-checkout-row' . ( $is_first_row ? ' is-first-row' : '' );
+	$td_style = $is_first_row
+		? 'padding:14px 16px 12px;border-top:none;max-width:100%;box-sizing:border-box;'
+		: 'padding:8px 16px;border-top:1px dashed #e4e2de;max-width:100%;box-sizing:border-box;';
+	echo '<tr class="' . esc_attr( $row_cls ) . '"><td colspan="2" style="' . esc_attr( $td_style ) . '">' . $html . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+}
+
+/**
  * Display the Combo Promotion notification & framed breakdown on the Checkout bill & Cart Totals sidebar.
  */
 add_action(
 	'woocommerce_review_order_before_order_total',
 	static function () {
-		$html = nexxi_kids_render_combo_bill_notice_html( 'checkout' );
-		if ( '' !== $html ) {
-			echo '<tr class="nexxi-combo-checkout-row"><td colspan="2" style="padding:8px 16px;border-top:1px dashed #e4e2de;max-width:100%;box-sizing:border-box;">' . $html . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		}
+		nexxi_kids_output_checkout_combo_row( false );
 	}
 );
 

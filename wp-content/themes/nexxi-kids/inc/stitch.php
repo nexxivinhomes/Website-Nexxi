@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261107_cart_checkout_stock_guard_v49';
+	$purge_ver = '20261107_checkout_review_compact_v50';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans

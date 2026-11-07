@@ -240,6 +240,12 @@ body > header nav a span { white-space: nowrap !important; }
   border-top: 1px dashed #e4e2de !important;
   overflow: hidden;
 }
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table.nexxi-review-combo-only tfoot tr:first-child th,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table.nexxi-review-combo-only tfoot tr:first-child td,
+.nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.nexxi-combo-checkout-row.is-first-row td {
+  border-top: 0 !important;
+  padding: 14px 16px 12px !important;
+}
 .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total th,
 .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td {
   background: #fff8f5 !important;
@@ -1381,6 +1387,10 @@ body.nexxi-mob-drawer-open {
   }
   .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.nexxi-combo-checkout-row td {
     padding: 8px 10px !important;
+  }
+  .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.nexxi-combo-checkout-row.is-first-row td {
+    padding: 12px 11px 10px !important;
+    border-top: 0 !important;
   }
   .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td,
   .nexxi-stitch-commerce .woocommerce table.shop_table.woocommerce-checkout-review-order-table tfoot tr.order-total td .woocommerce-Price-amount {
