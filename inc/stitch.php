@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261107_seo_gsc_router_v48';
+	$purge_ver = '20261107_cart_checkout_stock_guard_v49';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
@@ -872,6 +872,46 @@ add_filter( 'wpseo_schema_website', static function ( $data ) {
 }, 20 );
 
 /** Wrap WooCommerce shortcode output in the Stitch commerce main. */
+/**
+ * Prevent orphaned 'error' notices from lingering in WC()->session when custom AJAX add_to_cart fails.
+ * Stitch PDP & Shop cards do not render wc_print_notices(), so an unconsumed error notice in session
+ * would otherwise trap subsequent "Mua ngay" -> /thanh-toan/ navigation on checkout/cart-errors.php.
+ */
+add_filter(
+	'woocommerce_cart_redirect_after_error',
+	static function ( $url, $product_id ) {
+		$wc_ajax = isset( $_REQUEST['wc-ajax'] ) ? sanitize_key( wp_unslash( $_REQUEST['wc-ajax'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( 'add_to_cart' !== $wc_ajax || ! function_exists( 'WC' ) || ! WC()->session ) {
+			return $url;
+		}
+
+		$err_notices = function_exists( 'wc_get_notices' ) ? wc_get_notices( 'error' ) : array();
+		$clean_msg   = '';
+		if ( ! empty( $err_notices ) && is_array( $err_notices ) ) {
+			$last_err = end( $err_notices );
+			$raw_html = is_array( $last_err ) && isset( $last_err['notice'] ) ? (string) $last_err['notice'] : ( is_scalar( $last_err ) ? (string) $last_err : '' );
+			if ( '' !== $raw_html ) {
+				$raw_html  = preg_replace( '~<a\b[^>]*class="[^"]*button[^"]*"[^>]*>.*?</a>~is', '', $raw_html );
+				$clean_msg = trim( preg_replace( '~\s+~u', ' ', html_entity_decode( wp_strip_all_tags( (string) $raw_html ), ENT_QUOTES, 'UTF-8' ) ) );
+			}
+		}
+
+		if ( '' !== $clean_msg && ! headers_sent() ) {
+			@header( 'X-Nexxi-ATC-Error: ' . rawurlencode( $clean_msg ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+
+		$all_notices = WC()->session->get( 'wc_notices', array() );
+		if ( is_array( $all_notices ) && isset( $all_notices['error'] ) ) {
+			unset( $all_notices['error'] );
+			WC()->session->set( 'wc_notices', $all_notices );
+		}
+
+		return $url;
+	},
+	999,
+	2
+);
+
 function nexxi_kids_stitch_commerce_main( $content, $heading = '' ) {
 	$head = $heading ? '<div class="nexxi-stitch-commerce__heading"><span class="font-label-sm text-label-sm text-secondary">NEXXI KIDS BOUTIQUE</span><h1 class="font-display-lg text-display-lg-mobile md:text-display-lg text-primary">' . esc_html( $heading ) . '</h1></div>' : '';
 	return '<main class="nexxi-stitch-commerce w-full pt-28 md:pt-36 bg-background min-h-screen"><div class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin py-space-xl">' . $head . $content . '</div></main>';

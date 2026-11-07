@@ -582,8 +582,8 @@ add_filter(
 			return $price_html;
 		}
 		$eff = nexxi_kids_get_cart_item_effective_prices( $cart_item );
-		if ( $eff['reg_price'] > $eff['unit_price'] && $eff['unit_price'] > 0 ) {
-			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['reg_price'] ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['unit_price'] ) . '</strong>';
+		if ( $eff['regular_price'] > $eff['effective_price'] && $eff['effective_price'] > 0 ) {
+			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['regular_price'] ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['effective_price'] ) . '</strong>';
 		}
 		return $price_html;
 	},
@@ -599,8 +599,8 @@ add_filter(
 		}
 		$qty = isset( $cart_item['quantity'] ) ? max( 1, (int) $cart_item['quantity'] ) : 1;
 		$eff = nexxi_kids_get_cart_item_effective_prices( $cart_item );
-		if ( $eff['reg_price'] > $eff['unit_price'] && $eff['unit_price'] > 0 ) {
-			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['reg_price'] * $qty ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['unit_price'] * $qty ) . '</strong>';
+		if ( $eff['regular_price'] > $eff['effective_price'] && $eff['effective_price'] > 0 ) {
+			return '<del style="color:#94a3b8;font-size:0.88em;margin-right:4px;">' . wc_price( $eff['regular_price'] * $qty ) . '</del> <strong style="color:#0f172a;">' . wc_price( $eff['effective_price'] * $qty ) . '</strong>';
 		}
 		return $subtotal_html;
 	},
