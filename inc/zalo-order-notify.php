@@ -1069,7 +1069,17 @@ function nexxi_kids_handle_new_order_zalo_queue( $order_or_id ) {
 
 	// Send immediately ONLY if interval is set to Instant (0) AND current time is within active hours.
 	if ( $interval_min <= 0 && $in_hours ) {
-		nexxi_kids_send_zalo_order_notification( $order, false );
+		$oid_async = $order->get_id();
+		if ( function_exists( 'nexxi_meta_capi_queue_job' ) && $oid_async > 0 ) {
+			nexxi_meta_capi_queue_job( static function () use ( $oid_async ) {
+				$fresh_order = wc_get_order( $oid_async );
+				if ( $fresh_order instanceof WC_Order ) {
+					nexxi_kids_send_zalo_order_notification( $fresh_order, false );
+				}
+			} );
+		} else {
+			nexxi_kids_send_zalo_order_notification( $order, false );
+		}
 	} else {
 		$reason = ! $in_hours
 			? sprintf( 'đặt ngoài khung giờ hoạt động (%s – %s), sẽ tổng hợp báo lúc %s sáng kế tiếp', $cfg['active_start_time'], $cfg['active_end_time'], $cfg['active_start_time'] )

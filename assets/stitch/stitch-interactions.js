@@ -43,9 +43,9 @@
 
   /* ---------- Cart ---------- */
   const paintCartCount = count => $$('[data-nexxi-cart-count]').forEach(badge => { badge.textContent = String(count); });
-  const addToCart = async (productId, quantity = 1) => {
+  const addToCart = async (productId, quantity = 1, buyNow = false) => {
     if (!config.ajaxAdd) throw new Error('no-endpoint');
-    const body = new URLSearchParams({product_id: String(productId), quantity: String(Math.max(1, quantity))});
+    const body = new URLSearchParams({product_id: String(productId), quantity: String(Math.max(1, quantity)), buy_now: buyNow ? '1' : '0'});
     const response = await fetch(config.ajaxAdd, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body});
     const data = await response.json().catch(() => null);
     if (!response.ok || !data || data.error) {
@@ -55,7 +55,7 @@
     }
     const fragments = data.fragments || {};
     if (fragments['nexxi-cart-count'] !== undefined) paintCartCount(fragments['nexxi-cart-count']);
-    if (fragments['nexxi-fbq-atc'] && typeof window.fbq === 'function') window.fbq('track', 'AddToCart', fragments['nexxi-fbq-atc']);
+    if (!buyNow && fragments['nexxi-fbq-atc'] && typeof window.fbq === 'function') window.fbq('track', 'AddToCart', fragments['nexxi-fbq-atc']);
     if (window.jQuery) window.jQuery(document.body).trigger('added_to_cart', [fragments, data.cart_hash]);
     return data;
   };
@@ -608,7 +608,7 @@
       }
       busy(button, true);
       try {
-        await addToCart(target, state.qty);
+        await addToCart(target, state.qty, buyNow);
         if (buyNow) { location.href = config.checkout; return; }
         addedToast(product.name);
       } catch (error) { failedToast(error); }

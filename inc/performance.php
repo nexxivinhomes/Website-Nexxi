@@ -290,7 +290,7 @@ function nexxi_perf_prefer_webp( $html ) {
 }
 
 /* ==========================================================================
- * 4. CACHE TRANG
+ * 4. CACHE TRANG & TƯƠNG THÍCH ĐO LƯỜNG (LITESPEED / ATTRIBUTION)
  * ========================================================================== */
 
 /** Số giây cache trang cho khách: 1 giờ, nhưng hết hạn đúng lúc Flash Sale kết thúc. */
@@ -304,6 +304,136 @@ function nexxi_perf_page_cache_ttl() {
 	}
 	return (int) $ttl;
 }
+
+/**
+ * Bảo vệ tuyệt đối các script định danh nguồn đơn hàng (WooCommerce Order Attribution,
+ * Sourcebuster) và Meta Pixel khỏi bị LiteSpeed Cache biến thành type="litespeed/javascript".
+ */
+add_filter(
+	'script_loader_tag',
+	static function ( $tag, $handle, $src ) {
+		$protected_handles = array( 'wc-order-attribution', 'sourcebuster-js', 'sourcebuster' );
+		$src_str           = (string) $src;
+		$is_protected      = in_array( (string) $handle, $protected_handles, true )
+			|| false !== stripos( $src_str, 'order-attribution' )
+			|| false !== stripos( $src_str, 'sourcebuster' )
+			|| false !== stripos( $src_str, 'fbevents.js' );
+		if ( ! $is_protected || ! is_string( $tag ) || '' === $tag ) {
+			return $tag;
+		}
+		return preg_replace( '~<script\b(?![^>]*data-no-optimize)~i', '<script data-no-optimize="1" data-no-defer="1"', $tag );
+	},
+	999,
+	3
+);
+
+/** Loại trừ script đo lường khỏi danh sách Defer / Delay của LiteSpeed Cache. */
+function nexxi_perf_append_tracking_js_excludes( $list ) {
+	$list = is_array( $list ) ? $list : array();
+	foreach ( array( 'order-attribution', 'wc-order-attribution', 'sourcebuster', 'fbevents.js', 'fbq(', '_nexxi_utm' ) as $needle ) {
+		if ( ! in_array( $needle, $list, true ) ) {
+			$list[] = $needle;
+		}
+	}
+	return $list;
+}
+add_filter( 'litespeed_optm_js_defer_exc', 'nexxi_perf_append_tracking_js_excludes', 999 );
+add_filter( 'litespeed_optm_js_exc', 'nexxi_perf_append_tracking_js_excludes', 999 );
+
+add_filter(
+	'litespeed_optm_js_delay_inc',
+	static function ( $list ) {
+		if ( ! is_array( $list ) || empty( $list ) ) {
+			return array();
+		}
+		$blocked = array( 'order-attribution', 'sourcebuster', 'fbevents.js', 'fbq(' );
+		return array_values(
+			array_filter(
+				$list,
+				static function ( $item ) use ( $blocked ) {
+					$s = (string) $item;
+					foreach ( $blocked as $b ) {
+						if ( false !== stripos( $s, $b ) ) {
+							return false;
+						}
+					}
+					return true;
+				}
+			)
+		);
+	},
+	9999
+);
+
+// Khóa tắt LiteSpeed Guest Mode / Guest Optimization ở runtime để không nạp guest.vary.php gây reload đúp PageView & đứt UTM.
+add_filter( 'litespeed_conf_guest', '__return_zero', 999 );
+add_filter( 'litespeed_conf_guest_optm', '__return_zero', 999 );
+do_action( 'litespeed_conf_force', 'guest', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+do_action( 'litespeed_conf_force', 'guest_optm', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+add_action(
+	'litespeed_init',
+	static function () {
+		do_action( 'litespeed_conf_force', 'guest', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+		do_action( 'litespeed_conf_force', 'guest_optm', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	},
+	1
+);
+add_action(
+	'init',
+	static function () {
+		do_action( 'litespeed_conf_force', 'guest', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+		do_action( 'litespeed_conf_force', 'guest_optm', false ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	},
+	1
+);
+
+/**
+ * Đồng bộ 1 lần duy nhất theo phiên bản bản vá đo lường (nexxi_tracking_patch_ver):
+ * 1. Tắt cấu hình LiteSpeed Guest Mode / Guest Optimization lưu trong DB (loại bỏ triệt để guest.vary.php).
+ * 2. Ngắt kích hoạt an toàn plugin thừa snapchat-for-woocommerce (tránh in IP khách vào HTML cache).
+ * 3. Purge toàn bộ LiteSpeed Cache để HTML mới sạch 100% có hiệu lực tức thì.
+ */
+add_action(
+	'init',
+	static function () {
+		$patch_ver = '20261107_v1';
+		if ( get_option( 'nexxi_tracking_patch_ver' ) === $patch_ver ) {
+			return;
+		}
+		update_option( 'nexxi_tracking_patch_ver', $patch_ver, true );
+
+		if ( false !== get_option( 'litespeed.conf.guest', false ) ) {
+			update_option( 'litespeed.conf.guest', 0 );
+		}
+		if ( false !== get_option( 'litespeed.conf.guest_optm', false ) ) {
+			update_option( 'litespeed.conf.guest_optm', 0 );
+		}
+		if ( has_action( 'litespeed_update_confs' ) ) {
+			try {
+				do_action( 'litespeed_update_confs', array( 'guest' => 0, 'guest_optm' => 0 ) ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+			} catch ( Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+				// Bỏ qua nếu phiên bản LiteSpeed không hỗ trợ hook cập nhật nhanh.
+			}
+		}
+
+		if ( ! function_exists( 'is_plugin_active' ) || ! function_exists( 'deactivate_plugins' ) ) {
+			$plugin_inc = ABSPATH . 'wp-admin/includes/plugin.php';
+			if ( is_readable( $plugin_inc ) ) {
+				require_once $plugin_inc;
+			}
+		}
+		$snap_plugin = 'snapchat-for-woocommerce/snapchat-for-woocommerce.php';
+		if ( function_exists( 'is_plugin_active' ) && function_exists( 'deactivate_plugins' ) && is_plugin_active( $snap_plugin ) ) {
+			deactivate_plugins( $snap_plugin, true );
+		}
+
+		if ( class_exists( 'LiteSpeed_Cache_API' ) && method_exists( 'LiteSpeed_Cache_API', 'purge_all' ) ) {
+			LiteSpeed_Cache_API::purge_all();
+		}
+		do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	},
+	5
+);
 
 /* ==========================================================================
  * 5. TRANG QUẢN TRỊ
