@@ -2,7 +2,8 @@
 /**
  * NEXXI Kids — E-commerce & Brand Structured Data (Schema.org JSON-LD).
  *
- * - Restores Google Merchant-compliant @type="Product" + "Offer" JSON-LD on 100% of single product pages.
+ * - Outputs Google Merchant-compliant @type="ProductGroup" (variable products with hasVariant)
+ *   and @type="Product" + "Offer" (with StrikethroughPrice, mpn, PeopleAudience) on single product pages.
  * - Sanitizes Yoast SEO runtime schema graph (WebPage, BreadcrumbList, ImageObject, Organization).
  */
 if ( ! defined( 'ABSPATH' ) ) {
@@ -40,18 +41,20 @@ function nexxi_kids_schema_clean_pos_prefix( $raw_text ) {
 }
 
 /**
- * Normalize a SKU string by trimming whitespace and trailing hyphens.
+ * Normalize a SKU string by stripping tags, replacing internal whitespace with hyphens,
+ * and trimming leading/trailing whitespace or hyphens.
  *
  * @param mixed $raw_sku Raw SKU value.
  * @return string
  */
 function nexxi_kids_schema_normalize_sku( $raw_sku ) {
-	$sku = trim( (string) $raw_sku );
+	$sku = trim( wp_strip_all_tags( (string) $raw_sku ) );
 	if ( '' === $sku ) {
 		return '';
 	}
-	$sku = ltrim( $sku, " \t\n\r\0\x0B-" );
-	$sku = rtrim( $sku, "- \t\n\r\0\x0B" );
+	$sku = preg_replace( '/\s+/u', '-', $sku );
+	$sku = preg_replace( '/-+/', '-', (string) $sku );
+	$sku = trim( (string) $sku, " \t\n\r\0\x0B-" );
 	return $sku;
 }
 
@@ -117,8 +120,75 @@ function nexxi_kids_schema_ensure_absolute_url( $url ) {
 }
 
 /**
+ * Check whether an image URL is a WooCommerce placeholder, SVG icon, WP emoji, or data URI.
+ *
+ * @param mixed $url Candidate image URL.
+ * @return bool
+ */
+function nexxi_kids_schema_is_placeholder_image_url( $url ) {
+	if ( ! is_string( $url ) ) {
+		return true;
+	}
+	$clean = strtolower( trim( $url ) );
+	if ( '' === $clean || 0 === strpos( $clean, 'data:' ) ) {
+		return true;
+	}
+	$path = (string) wp_parse_url( $clean, PHP_URL_PATH );
+	if ( '' !== $path && preg_match( '~\.svg$~i', $path ) ) {
+		return true;
+	}
+	$blocked_patterns = array(
+		'woocommerce-placeholder',
+		'/woocommerce/assets/images/placeholder',
+		's.w.org/images/core/emoji',
+		'/wp-includes/images/smilies/',
+		'blank.gif',
+		'spacer.gif',
+	);
+	foreach ( $blocked_patterns as $pattern ) {
+		if ( false !== strpos( $clean, $pattern ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Extract valid, non-placeholder HTTP(S) image URLs from HTML content (description fallback).
+ *
+ * @param string $html Raw HTML content.
+ * @return array<int, string>
+ */
+function nexxi_kids_schema_extract_html_image_urls( $html ) {
+	if ( ! is_string( $html ) || '' === trim( $html ) || false === stripos( $html, '<img' ) ) {
+		return array();
+	}
+	$found = array();
+	if ( preg_match_all( '~<img\b[^>]*>~iu', $html, $img_tags ) ) {
+		foreach ( $img_tags[0] as $img_tag ) {
+			$candidate = '';
+			foreach ( array( 'data-lazy-src', 'data-src', 'src' ) as $attr_name ) {
+				if ( preg_match( '~\b' . preg_quote( $attr_name, '~' ) . '\s*=\s*(["\'])([^"\']+)\1~iu', $img_tag, $m ) ) {
+					$decoded = html_entity_decode( $m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+					$abs     = nexxi_kids_schema_ensure_absolute_url( $decoded );
+					if ( '' !== $abs && ! nexxi_kids_schema_is_placeholder_image_url( $abs ) ) {
+						$candidate = $abs;
+						break;
+					}
+				}
+			}
+			if ( '' !== $candidate ) {
+				$found[] = $candidate;
+			}
+		}
+	}
+	return array_values( array_unique( $found ) );
+}
+
+/**
  * Collect unique, non-empty full-resolution product image URLs from main image,
- * gallery attachments, variation thumbnails, and _nexxi_class_image_map.
+ * gallery attachments, variation thumbnails, _nexxi_class_image_map, and HTML description fallback.
+ * Never returns WooCommerce placeholder images.
  *
  * @param WC_Product $product WooCommerce product instance.
  * @return array<int, string>
@@ -176,25 +246,27 @@ function nexxi_kids_schema_collect_product_images( WC_Product $product ) {
 	foreach ( array_unique( $att_ids ) as $att_id ) {
 		$full_url = wp_get_attachment_image_url( $att_id, 'full' );
 		$abs_url  = nexxi_kids_schema_ensure_absolute_url( $full_url );
-		if ( '' !== $abs_url ) {
+		if ( '' !== $abs_url && ! nexxi_kids_schema_is_placeholder_image_url( $abs_url ) ) {
 			$images[] = $abs_url;
 		}
 	}
 
 	foreach ( $direct_urls as $raw_url ) {
 		$abs_url = nexxi_kids_schema_ensure_absolute_url( $raw_url );
-		if ( '' !== $abs_url ) {
+		if ( '' !== $abs_url && ! nexxi_kids_schema_is_placeholder_image_url( $abs_url ) ) {
 			$images[] = $abs_url;
 		}
 	}
 
 	$images = array_values( array_unique( array_filter( $images ) ) );
 
-	if ( empty( $images ) && function_exists( 'wc_placeholder_img_src' ) ) {
-		$placeholder = nexxi_kids_schema_ensure_absolute_url( wc_placeholder_img_src( 'full' ) );
-		if ( '' !== $placeholder ) {
-			$images[] = $placeholder;
-		}
+	// Fallback: scan real <img> URLs embedded in product description or short description.
+	if ( empty( $images ) ) {
+		$desc_imgs = array_merge(
+			nexxi_kids_schema_extract_html_image_urls( (string) $product->get_description() ),
+			nexxi_kids_schema_extract_html_image_urls( (string) $product->get_short_description() )
+		);
+		$images    = array_values( array_unique( array_filter( $desc_imgs ) ) );
 	}
 
 	return $images;
@@ -252,18 +324,214 @@ function nexxi_kids_schema_build_description( WC_Product $product, $clean_name =
 }
 
 /**
- * Official NEXXI 15-day exchange/return policy Schema object (VN).
+ * Format category/attribute display labels cleanly (ALL-CAPS -> Title Case while preserving acronyms).
  *
+ * @param string $raw_label Raw taxonomy term or attribute label.
+ * @return string
+ */
+function nexxi_kids_schema_format_label( $raw_label ) {
+	$clean = trim( wp_strip_all_tags( (string) $raw_label ) );
+	if ( '' === $clean ) {
+		return '';
+	}
+	$clean = html_entity_decode( $clean, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	$clean = trim( preg_replace( '/\s+/u', ' ', (string) $clean ) );
+	if ( '' === $clean ) {
+		return '';
+	}
+
+	if ( function_exists( 'nexxi_seo_format_term_name' ) ) {
+		$formatted = trim( (string) nexxi_seo_format_term_name( $clean ) );
+		if ( '' !== $formatted ) {
+			return $formatted;
+		}
+	}
+
+	if ( function_exists( 'mb_strtoupper' ) && function_exists( 'mb_strtolower' ) && function_exists( 'mb_convert_case' ) ) {
+		$upper = mb_strtoupper( $clean, 'UTF-8' );
+		$lower = mb_strtolower( $clean, 'UTF-8' );
+		if ( $clean === $upper && $clean !== $lower && mb_strlen( $clean, 'UTF-8' ) > 2 ) {
+			$titled = mb_convert_case( $lower, MB_CASE_TITLE, 'UTF-8' );
+			$titled = preg_replace_callback(
+				'/\b(Nexxi|Xs|Xl|Xxl|2xl|3xl|Uv|3d)\b/u',
+				static function ( $m ) {
+					return strtoupper( $m[1] );
+				},
+				(string) $titled
+			);
+			return trim( (string) $titled );
+		}
+	}
+
+	return $clean;
+}
+
+/**
+ * Strip Vietnamese diacritics to lowercase ASCII slug tokens for reliable gender/role matching.
+ *
+ * @param string $text Input UTF-8 string.
+ * @return string
+ */
+function nexxi_kids_schema_ascii_slug( $text ) {
+	$raw = trim( wp_strip_all_tags( (string) $text ) );
+	if ( '' === $raw ) {
+		return '';
+	}
+	if ( function_exists( 'remove_accents' ) ) {
+		$raw = remove_accents( $raw );
+	}
+	$vi_map = array(
+		'à' => 'a', 'á' => 'a', 'ạ' => 'a', 'ả' => 'a', 'ã' => 'a',
+		'â' => 'a', 'ầ' => 'a', 'ấ' => 'a', 'ậ' => 'a', 'ẩ' => 'a', 'ẫ' => 'a',
+		'ă' => 'a', 'ằ' => 'a', 'ắ' => 'a', 'ặ' => 'a', 'ẳ' => 'a', 'ẵ' => 'a',
+		'è' => 'e', 'é' => 'e', 'ẹ' => 'e', 'ẻ' => 'e', 'ẽ' => 'e',
+		'ê' => 'e', 'ề' => 'e', 'ế' => 'e', 'ệ' => 'e', 'ể' => 'e', 'ễ' => 'e',
+		'ì' => 'i', 'í' => 'i', 'ị' => 'i', 'ỉ' => 'i', 'ĩ' => 'i',
+		'ò' => 'o', 'ó' => 'o', 'ọ' => 'o', 'ỏ' => 'o', 'õ' => 'o',
+		'ô' => 'o', 'ồ' => 'o', 'ố' => 'o', 'ộ' => 'o', 'ổ' => 'o', 'ỗ' => 'o',
+		'ơ' => 'o', 'ờ' => 'o', 'ớ' => 'o', 'ợ' => 'o', 'ở' => 'o', 'ỡ' => 'o',
+		'ù' => 'u', 'ú' => 'u', 'ụ' => 'u', 'ủ' => 'u', 'ũ' => 'u',
+		'ư' => 'u', 'ừ' => 'u', 'ứ' => 'u', 'ự' => 'u', 'ử' => 'u', 'ữ' => 'u',
+		'ỳ' => 'y', 'ý' => 'y', 'ỵ' => 'y', 'ỷ' => 'y', 'ỹ' => 'y',
+		'đ' => 'd', 'Đ' => 'd',
+	);
+	$raw    = strtr( function_exists( 'mb_strtolower' ) ? mb_strtolower( $raw, 'UTF-8' ) : strtolower( $raw ), $vi_map );
+	$slug   = preg_replace( '/[^a-z0-9]+/', '-', $raw );
+	return trim( (string) $slug, '-' );
+}
+
+/**
+ * Resolve normalized primary category (Title Case), PeopleAudience (gender + 1..13 yrs), and optional material.
+ *
+ * @param WC_Product $product    WooCommerce product instance.
+ * @param string     $clean_name Clean product title.
+ * @return array{category: string, audience: array<string, mixed>, material: string}
+ */
+function nexxi_kids_schema_resolve_merchandising_meta( WC_Product $product, $clean_name = '' ) {
+	$product_id   = (int) $product->get_id();
+	$category     = '';
+	$signal_parts = array( $clean_name );
+
+	$terms = get_the_terms( $product_id, 'product_cat' );
+	if ( is_array( $terms ) && ! is_wp_error( $terms ) ) {
+		foreach ( $terms as $term ) {
+			if ( ! is_object( $term ) || empty( $term->slug ) || empty( $term->name ) ) {
+				continue;
+			}
+			if ( in_array( $term->slug, array( 'chua-phan-loai', 'uncategorized' ), true ) ) {
+				continue;
+			}
+			if ( '' === $category ) {
+				$category = nexxi_kids_schema_format_label( (string) $term->name );
+			}
+			$signal_parts[] = (string) $term->slug;
+			$signal_parts[] = (string) $term->name;
+		}
+	}
+
+	$haystack  = '-' . nexxi_kids_schema_ascii_slug( implode( ' ', $signal_parts ) ) . '-';
+	$is_unisex = ( false !== strpos( $haystack, '-unisex-' ) )
+		|| ( false !== strpos( $haystack, '-be-gai-' ) && false !== strpos( $haystack, '-be-trai-' ) );
+	$is_female = (bool) preg_match( '~-(be-gai|dam|vay|chan-vay|bup-be|cong-chua|co-yem|croptop|bikini)-~', $haystack );
+	$is_male   = (bool) preg_match( '~-(be-trai|cong-tu|soai-ca|bo-vest)-~', $haystack );
+
+	if ( $is_unisex || ( $is_female && $is_male ) ) {
+		$suggested_gender = 'unisex';
+	} elseif ( $is_female ) {
+		$suggested_gender = 'https://schema.org/Female';
+	} elseif ( $is_male ) {
+		$suggested_gender = 'https://schema.org/Male';
+	} else {
+		$suggested_gender = 'unisex';
+	}
+
+	$material = '';
+	$mat_terms = get_the_terms( $product_id, 'pa_chat-lieu' );
+	if ( is_array( $mat_terms ) && ! is_wp_error( $mat_terms ) ) {
+		$mat_names = array();
+		foreach ( $mat_terms as $mt ) {
+			if ( is_object( $mt ) && ! empty( $mt->name ) ) {
+				$lbl = nexxi_kids_schema_format_label( (string) $mt->name );
+				if ( '' !== $lbl ) {
+					$mat_names[] = $lbl;
+				}
+			}
+		}
+		if ( ! empty( $mat_names ) ) {
+			$material = implode( ', ', array_unique( $mat_names ) );
+		}
+	}
+
+	return array(
+		'category' => $category,
+		'audience' => array(
+			'@type'           => 'PeopleAudience',
+			'suggestedGender' => $suggested_gender,
+			'suggestedMinAge' => 1,
+			'suggestedMaxAge' => 13,
+		),
+		'material' => $material,
+	);
+}
+
+/**
+ * Official NEXXI 15-day exchange/return policy Schema object (VN).
+ * Customer pays return postal shipping when exchanging size/style (matches /doi-tra/ policy).
+ *
+ * @param bool $include_id Whether to attach the canonical @id (used on Organization node).
  * @return array<string, mixed>
  */
-function nexxi_kids_get_merchant_return_policy_schema() {
-	return array(
+function nexxi_kids_get_merchant_return_policy_schema( $include_id = false ) {
+	$policy = array(
 		'@type'                => 'MerchantReturnPolicy',
 		'applicableCountry'    => 'VN',
 		'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
 		'merchantReturnDays'   => 15,
 		'returnMethod'         => 'https://schema.org/ReturnByMail',
-		'returnFees'           => 'https://schema.org/ReturnShippingFees',
+		'returnFees'           => 'https://schema.org/ReturnFeesCustomerResponsibility',
+		'merchantReturnLink'   => home_url( '/doi-tra/' ),
+	);
+
+	if ( $include_id ) {
+		$policy = array( '@id' => home_url( '/doi-tra/#return-policy' ) ) + $policy;
+	}
+
+	return $policy;
+}
+
+/**
+ * Official NEXXI Club loyalty program Schema object nested under Organization.
+ *
+ * @return array<string, mixed>
+ */
+function nexxi_kids_get_member_program_schema() {
+	$account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/tai-khoan/' );
+	$account_url = nexxi_kids_schema_ensure_absolute_url( $account_url );
+	if ( '' === $account_url ) {
+		$account_url = home_url( '/tai-khoan/' );
+	}
+
+	return array(
+		'@type'       => 'MemberProgram',
+		'@id'         => home_url( '/tai-khoan/#nexxi-club' ),
+		'name'        => 'NEXXI Club',
+		'description' => 'Chương trình thành viên NEXXI Club tích điểm tự động trên mọi đơn hàng (10.000₫ = 1 điểm thành viên).',
+		'url'         => $account_url,
+		'hasTiers'    => array(
+			array(
+				'@type'                  => 'MemberProgramTier',
+				'@id'                    => home_url( '/tai-khoan/#nexxi-club-member' ),
+				'name'                   => 'Thành viên NEXXI Club',
+				'url'                    => $account_url,
+				'hasTierBenefit'         => array(
+					'https://schema.org/TierBenefitLoyaltyPoints',
+				),
+				'membershipPointsEarned' => array(
+					'@type' => 'QuantitativeValue',
+					'value' => 0.0001,
+				),
+			),
+		),
 	);
 }
 
@@ -303,7 +571,93 @@ function nexxi_kids_get_offer_shipping_details_schema() {
 }
 
 /**
- * Build Google Merchant-compliant Offer object (never AggregateOffer) matching exact storefront display price.
+ * Resolve ISO 8601 (YYYY-MM-DD) priceValidUntil date for a product or its variations.
+ *
+ * @param WC_Product               $product WooCommerce product instance.
+ * @param array<string,mixed>|null $prog    Combined sale program data if available.
+ * @return string
+ */
+function nexxi_kids_schema_resolve_price_valid_until( WC_Product $product, $prog = null ) {
+	$price_valid_until = gmdate( 'Y-12-31', strtotime( '+1 year' ) );
+
+	if ( is_array( $prog ) && ! empty( $prog['flash_on_sale'] ) && function_exists( 'nexxi_kids_flash_end' ) ) {
+		$fs_end = (int) nexxi_kids_flash_end();
+		if ( $fs_end > time() ) {
+			return function_exists( 'wp_date' ) ? wp_date( 'Y-m-d', $fs_end ) : gmdate( 'Y-m-d', $fs_end );
+		}
+	}
+
+	if ( method_exists( $product, 'get_date_on_sale_to' ) ) {
+		$sale_to = $product->get_date_on_sale_to();
+		if ( is_object( $sale_to ) && method_exists( $sale_to, 'getTimestamp' ) && $sale_to->getTimestamp() > time() ) {
+			return $sale_to->date( 'Y-m-d' );
+		}
+	}
+
+	return $price_valid_until;
+}
+
+/**
+ * Construct a single Google Merchant-compliant Offer node with StrikethroughPrice when regular > sale.
+ *
+ * @param string $offer_url         Offer landing URL (product or specific variant URL).
+ * @param float  $sale_price        Active selling price in VND.
+ * @param float  $regular_price     Original regular price in VND (0 if not discounted).
+ * @param string $availability      Schema.org availability URI.
+ * @param string $price_valid_until ISO YYYY-MM-DD date string.
+ * @return array<string, mixed>|null
+ */
+function nexxi_kids_schema_build_offer_node( $offer_url, $sale_price, $regular_price, $availability, $price_valid_until ) {
+	$price_int   = (int) round( (float) $sale_price );
+	$regular_int = (int) round( (float) $regular_price );
+	if ( $price_int <= 0 ) {
+		return null;
+	}
+
+	$offer = array(
+		'@type'           => 'Offer',
+		'url'             => $offer_url,
+		'priceCurrency'   => 'VND',
+		'price'           => (string) $price_int,
+		'priceValidUntil' => $price_valid_until,
+	);
+
+	if ( $regular_int > $price_int ) {
+		$offer['priceSpecification'] = array(
+			'@type'         => 'UnitPriceSpecification',
+			'priceType'     => 'https://schema.org/StrikethroughPrice',
+			'price'         => (string) $regular_int,
+			'priceCurrency' => 'VND',
+		);
+	} elseif ( function_exists( 'nexxi_kids_calculate_order_points' ) ) {
+		$pts = (int) nexxi_kids_calculate_order_points( $price_int );
+		if ( $pts > 0 ) {
+			$offer['priceSpecification'] = array(
+				'@type'                  => 'UnitPriceSpecification',
+				'membershipPointsEarned' => $pts,
+				'validForMemberTier'     => array(
+					'@type' => 'MemberProgramTier',
+					'@id'   => home_url( '/tai-khoan/#nexxi-club-member' ),
+				),
+			);
+		}
+	}
+
+	$offer['itemCondition']           = 'https://schema.org/NewCondition';
+	$offer['availability']            = $availability;
+	$offer['seller']                  = array(
+		'@type' => 'Organization',
+		'@id'   => home_url( '/#organization' ),
+		'name'  => 'NEXXI Kids Fashion',
+	);
+	$offer['shippingDetails']         = nexxi_kids_get_offer_shipping_details_schema();
+	$offer['hasMerchantReturnPolicy'] = nexxi_kids_get_merchant_return_policy_schema( false );
+
+	return $offer;
+}
+
+/**
+ * Build Google Merchant-compliant Offer object (never AggregateOffer) for a single/simple product.
  *
  * @param WC_Product $product   WooCommerce product instance.
  * @param string     $permalink Canonical product permalink.
@@ -314,14 +668,19 @@ function nexxi_kids_schema_build_offer( WC_Product $product, $permalink ) {
 		nexxi_kids_normalize_variable_sale( $product );
 	}
 
-	$prog      = function_exists( 'nexxi_kids_get_program_sale' ) ? nexxi_kids_get_program_sale( $product, 'combined' ) : null;
-	$raw_price = 0.0;
+	$prog        = function_exists( 'nexxi_kids_get_program_sale' ) ? nexxi_kids_get_program_sale( $product, 'combined' ) : null;
+	$raw_price   = 0.0;
+	$regular_raw = 0.0;
 
-	if ( is_array( $prog ) && isset( $prog['sale'] ) && (float) $prog['sale'] > 0 ) {
-		$raw_price = (float) $prog['sale'];
+	if ( is_array( $prog ) ) {
+		if ( isset( $prog['sale'] ) && (float) $prog['sale'] > 0 ) {
+			$raw_price = (float) $prog['sale'];
+		}
+		if ( isset( $prog['regular'] ) && (float) $prog['regular'] > 0 ) {
+			$regular_raw = (float) $prog['regular'];
+		}
 	}
 
-	// Fallback when program sale helper is unavailable or returned 0 (including variable min!=max without program override).
 	if ( $raw_price <= 0 ) {
 		$raw_price = (float) $product->get_price();
 		if ( $raw_price <= 0 && $product->is_type( 'variable' ) && method_exists( $product, 'get_variation_price' ) ) {
@@ -332,23 +691,14 @@ function nexxi_kids_schema_build_offer( WC_Product $product, $permalink ) {
 		}
 	}
 
-	$price_int = (int) round( $raw_price );
-	if ( $price_int <= 0 ) {
-		return null;
+	if ( $regular_raw <= 0 ) {
+		$regular_raw = (float) $product->get_regular_price();
+		if ( $regular_raw <= 0 && $product->is_type( 'variable' ) && method_exists( $product, 'get_variation_regular_price' ) ) {
+			$regular_raw = (float) $product->get_variation_regular_price( 'min', true );
+		}
 	}
 
-	$price_valid_until = gmdate( 'Y-12-31', strtotime( '+1 year' ) );
-	if ( is_array( $prog ) && ! empty( $prog['flash_on_sale'] ) && function_exists( 'nexxi_kids_flash_end' ) ) {
-		$fs_end = (int) nexxi_kids_flash_end();
-		if ( $fs_end > time() ) {
-			$price_valid_until = function_exists( 'wp_date' ) ? wp_date( 'Y-m-d', $fs_end ) : gmdate( 'Y-m-d', $fs_end );
-		}
-	} elseif ( method_exists( $product, 'get_date_on_sale_to' ) ) {
-		$sale_to = $product->get_date_on_sale_to();
-		if ( is_object( $sale_to ) && method_exists( $sale_to, 'getTimestamp' ) && $sale_to->getTimestamp() > time() ) {
-			$price_valid_until = $sale_to->date( 'Y-m-d' );
-		}
-	}
+	$price_valid_until = nexxi_kids_schema_resolve_price_valid_until( $product, $prog );
 
 	$stock_status = method_exists( $product, 'get_stock_status' ) ? (string) $product->get_stock_status() : '';
 	if ( 'onbackorder' === $stock_status ) {
@@ -359,26 +709,460 @@ function nexxi_kids_schema_build_offer( WC_Product $product, $permalink ) {
 		$availability = 'https://schema.org/OutOfStock';
 	}
 
+	return nexxi_kids_schema_build_offer_node( $permalink, $raw_price, $regular_raw, $availability, $price_valid_until );
+}
+
+/**
+ * Retrieve variation attribute definitions (delegating to Nexxi_Kids_Catalog when active, with WC fallback).
+ *
+ * @param WC_Product $product WooCommerce variable product.
+ * @return array<int, array<string, mixed>>
+ */
+function nexxi_kids_schema_get_variation_attribute_defs( WC_Product $product ) {
+	if ( class_exists( 'Nexxi_Kids_Catalog' ) && method_exists( 'Nexxi_Kids_Catalog', 'variation_attributes' ) ) {
+		$defs = Nexxi_Kids_Catalog::variation_attributes( $product );
+		if ( is_array( $defs ) && ! empty( $defs ) ) {
+			return $defs;
+		}
+	}
+
+	if ( ! method_exists( $product, 'get_attributes' ) ) {
+		return array();
+	}
+
+	$list  = array();
+	$taken = array();
+	foreach ( (array) $product->get_attributes() as $attr ) {
+		if ( ! is_object( $attr ) || ! method_exists( $attr, 'get_variation' ) || ! $attr->get_variation() ) {
+			continue;
+		}
+		$name   = (string) $attr->get_name();
+		$label  = function_exists( 'wc_attribute_label' ) ? (string) wc_attribute_label( $name, $product ) : $name;
+		$is_tax = method_exists( $attr, 'is_taxonomy' ) ? (bool) $attr->is_taxonomy() : ( 0 === strpos( $name, 'pa_' ) );
+		$hay    = '-' . nexxi_kids_schema_ascii_slug( $name . ' ' . $label ) . '-';
+		$role   = '';
+		if ( preg_match( '~(size|kich-co|kich-thuoc|-co-)~', $hay ) ) {
+			$role = 'size';
+		} elseif ( preg_match( '~(mau|color|colour)~', $hay ) ) {
+			$role = 'color';
+		}
+		if ( '' !== $role && isset( $taken[ $role ] ) ) {
+			$role = '';
+		}
+		if ( '' !== $role ) {
+			$taken[ $role ] = true;
+		}
+
+		$options = array();
+		if ( $is_tax ) {
+			$terms = get_the_terms( (int) $product->get_id(), $name );
+			if ( is_array( $terms ) && ! is_wp_error( $terms ) ) {
+				foreach ( $terms as $t ) {
+					if ( is_object( $t ) && ! empty( $t->slug ) ) {
+						$options[] = array(
+							'value' => (string) $t->slug,
+							'name'  => (string) $t->name,
+						);
+					}
+				}
+			}
+		} elseif ( method_exists( $attr, 'get_options' ) ) {
+			foreach ( (array) $attr->get_options() as $opt ) {
+				$opt_str   = trim( (string) $opt );
+				$options[] = array(
+					'value' => sanitize_title( $opt_str ),
+					'name'  => $opt_str,
+				);
+			}
+		}
+
+		$list[] = array(
+			'key'      => sanitize_title( $name ),
+			'label'    => $label,
+			'role'     => $role,
+			'taxonomy' => $is_tax,
+			'options'  => $options,
+		);
+	}
+
+	return $list;
+}
+
+/**
+ * Build @type="Product" variant nodes and variesBy dimension URIs for a WooCommerce variable product.
+ *
+ * @param WC_Product               $product           Variable WooCommerce product.
+ * @param string                   $permalink         Canonical parent product URL.
+ * @param string                   $clean_name        Clean parent product title.
+ * @param string                   $description       Clean parent product description.
+ * @param string                   $parent_sku        Normalized parent SKU / productGroupID.
+ * @param array<int, string>       $images            Verified real parent/gallery image URLs.
+ * @param array<string,mixed>|null $prog              Combined sale program metadata.
+ * @param string                   $price_valid_until ISO YYYY-MM-DD date string.
+ * @return array{variants: array<int, array<string, mixed>>, varies_by: array<int, string>}
+ */
+function nexxi_kids_schema_build_variants( WC_Product $product, $permalink, $clean_name, $description, $parent_sku, array $images, $prog, $price_valid_until ) {
+	$children = array_values( array_filter( array_map( 'absint', (array) $product->get_children() ) ) );
+	if ( empty( $children ) || empty( $images ) ) {
+		return array(
+			'variants'  => array(),
+			'varies_by' => array(),
+		);
+	}
+
+	if ( function_exists( '_prime_post_caches' ) ) {
+		_prime_post_caches( $children, false, true );
+	} elseif ( function_exists( 'update_meta_cache' ) ) {
+		update_meta_cache( 'post', $children );
+	}
+
+	$defs          = nexxi_kids_schema_get_variation_attribute_defs( $product );
+	$color_img_map = array();
+	$class_map     = get_post_meta( (int) $product->get_id(), '_nexxi_class_image_map', true );
+	if ( is_array( $class_map ) ) {
+		foreach ( $class_map as $ckey => $cinfo ) {
+			if ( ! is_array( $cinfo ) ) {
+				continue;
+			}
+			$c_url = '';
+			if ( ! empty( $cinfo['att_id'] ) && (int) $cinfo['att_id'] > 0 ) {
+				$c_url = wp_get_attachment_image_url( (int) $cinfo['att_id'], 'full' );
+			}
+			if ( ! $c_url && ! empty( $cinfo['url'] ) && is_string( $cinfo['url'] ) ) {
+				$c_url = $cinfo['url'];
+			}
+			$abs_c_url = nexxi_kids_schema_ensure_absolute_url( $c_url );
+			if ( '' !== $abs_c_url && ! nexxi_kids_schema_is_placeholder_image_url( $abs_c_url ) ) {
+				$color_img_map[ (string) $ckey ]                        = $abs_c_url;
+				$color_img_map[ nexxi_kids_schema_ascii_slug( $ckey ) ] = $abs_c_url;
+			}
+		}
+	}
+
+	$variants      = array();
+	$used_skus     = array();
+	$used_urls     = array();
+	$has_size_dim  = false;
+	$has_color_dim = false;
+	$parent_in_stk = (bool) $product->is_in_stock();
+	$prog_reg      = ( is_array( $prog ) && ! empty( $prog['regular'] ) ) ? (float) $prog['regular'] : 0.0;
+	$prog_on_sale  = ( is_array( $prog ) && ! empty( $prog['on_sale'] ) && function_exists( 'nexxi_kids_calc_combined_variation_price' ) );
+
+	foreach ( $children as $child_id ) {
+		$status = function_exists( 'get_post_status' ) ? get_post_status( $child_id ) : 'publish';
+		if ( false !== $status && 'publish' !== $status ) {
+			continue;
+		}
+
+		$meta_reg   = (float) get_post_meta( $child_id, '_regular_price', true );
+		$meta_price = (float) get_post_meta( $child_id, '_price', true );
+		$var_reg    = $meta_reg > 0 ? $meta_reg : ( $meta_price > 0 ? $meta_price : $prog_reg );
+		$var_sale   = ( $prog_on_sale && $var_reg > 0 )
+			? (float) nexxi_kids_calc_combined_variation_price( $var_reg, $prog )
+			: ( $meta_price > 0 ? $meta_price : $var_reg );
+
+		if ( (int) round( $var_sale ) <= 0 ) {
+			continue;
+		}
+
+		$manage_stock = 'yes' === (string) get_post_meta( $child_id, '_manage_stock', true );
+		$stock_qty    = $manage_stock ? (int) get_post_meta( $child_id, '_stock', true ) : null;
+		$backorders   = (string) get_post_meta( $child_id, '_backorders', true );
+		$stock_status = (string) get_post_meta( $child_id, '_stock_status', true );
+		$backorder_ok = in_array( $backorders, array( 'yes', 'notify' ), true );
+
+		if ( 'onbackorder' === $stock_status || ( $manage_stock && $stock_qty <= 0 && $backorder_ok ) ) {
+			$var_availability = 'https://schema.org/BackOrder';
+		} elseif ( ( $manage_stock ? ( $stock_qty > 0 ) : ( 'outofstock' !== $stock_status ) ) && $parent_in_stk ) {
+			$var_availability = 'https://schema.org/InStock';
+		} else {
+			$var_availability = 'https://schema.org/OutOfStock';
+		}
+
+		$size_label  = '';
+		$color_label = '';
+		$color_slug  = '';
+		$other_parts = array();
+		$query_args  = array();
+		$sku_tokens  = array();
+
+		if ( ! empty( $defs ) ) {
+			foreach ( $defs as $def ) {
+				$def_key  = isset( $def['key'] ) ? (string) $def['key'] : '';
+				if ( '' === $def_key ) {
+					continue;
+				}
+				$meta_key = 'attribute_' . $def_key;
+				$raw_val  = trim( (string) get_post_meta( $child_id, $meta_key, true ) );
+				if ( '' === $raw_val && 0 !== strpos( $def_key, 'pa_' ) ) {
+					$alt_val = trim( (string) get_post_meta( $child_id, 'attribute_pa_' . $def_key, true ) );
+					if ( '' !== $alt_val ) {
+						$meta_key = 'attribute_pa_' . $def_key;
+						$raw_val  = $alt_val;
+					}
+				}
+				if ( '' === $raw_val ) {
+					continue;
+				}
+
+				$query_args[ $meta_key ] = $raw_val;
+				$norm_cmp                = ! empty( $def['taxonomy'] ) ? $raw_val : sanitize_title( $raw_val );
+				$display_val             = $raw_val;
+
+				if ( ! empty( $def['options'] ) && is_array( $def['options'] ) ) {
+					foreach ( $def['options'] as $opt ) {
+						if ( is_array( $opt ) && isset( $opt['value'] ) && (string) $opt['value'] === $norm_cmp && ! empty( $opt['name'] ) ) {
+							$display_val = (string) $opt['name'];
+							break;
+						}
+					}
+				}
+
+				$display_clean = nexxi_kids_schema_format_label( $display_val );
+				$sku_tokens[]  = strtoupper( nexxi_kids_schema_ascii_slug( $display_clean ? $display_clean : $raw_val ) );
+
+				$role = isset( $def['role'] ) ? (string) $def['role'] : '';
+				if ( 'size' === $role ) {
+					$size_label   = $display_clean;
+					$has_size_dim = true;
+				} elseif ( 'color' === $role ) {
+					$color_label   = $display_clean;
+					$color_slug    = $norm_cmp;
+					$has_color_dim = true;
+				} elseif ( '' !== $display_clean ) {
+					$other_parts[] = $display_clean;
+				}
+			}
+		} else {
+			$all_meta = get_post_meta( $child_id );
+			if ( is_array( $all_meta ) ) {
+				foreach ( $all_meta as $mkey => $mvals ) {
+					if ( 0 !== strpos( (string) $mkey, 'attribute_' ) || empty( $mvals[0] ) ) {
+						continue;
+					}
+					$mval = trim( (string) $mvals[0] );
+					if ( '' === $mval ) {
+						continue;
+					}
+					$query_args[ (string) $mkey ] = $mval;
+					$sku_tokens[]                 = strtoupper( nexxi_kids_schema_ascii_slug( $mval ) );
+					$hay_attr                     = '-' . nexxi_kids_schema_ascii_slug( (string) $mkey ) . '-';
+					if ( '' === $size_label && preg_match( '~(size|kich-co|kich-thuoc|-co-)~', $hay_attr ) ) {
+						$size_label   = nexxi_kids_schema_format_label( $mval );
+						$has_size_dim = true;
+					} elseif ( '' === $color_label && preg_match( '~(mau|color|colour)~', $hay_attr ) ) {
+						$color_label   = nexxi_kids_schema_format_label( $mval );
+						$color_slug    = sanitize_title( $mval );
+						$has_color_dim = true;
+					} else {
+						$other_parts[] = nexxi_kids_schema_format_label( $mval );
+					}
+				}
+			}
+		}
+
+		$var_url = ! empty( $query_args )
+			? add_query_arg( $query_args, $permalink )
+			: add_query_arg( 'variation_id', $child_id, $permalink );
+		if ( isset( $used_urls[ $var_url ] ) ) {
+			$var_url = add_query_arg( 'variation_id', $child_id, $var_url );
+		}
+		$used_urls[ $var_url ] = true;
+
+		$raw_child_sku = nexxi_kids_schema_normalize_sku( get_post_meta( $child_id, '_sku', true ) );
+		$var_sku       = $raw_child_sku;
+		if ( '' === $var_sku || ( count( $children ) > 1 && $var_sku === $parent_sku ) || isset( $used_skus[ $var_sku ] ) ) {
+			$suffix  = implode( '-', array_filter( $sku_tokens ) );
+			$suffix  = trim( preg_replace( '/-+/', '-', $suffix ), '-' );
+			$var_sku = '' !== $suffix ? ( $parent_sku . '-' . $suffix ) : ( $parent_sku . '-' . $child_id );
+			if ( isset( $used_skus[ $var_sku ] ) ) {
+				$var_sku .= '-' . $child_id;
+			}
+		}
+		$used_skus[ $var_sku ] = true;
+
+		$var_image = '';
+		$var_tid   = (int) get_post_meta( $child_id, '_thumbnail_id', true );
+		if ( $var_tid > 0 ) {
+			$cand_img = nexxi_kids_schema_ensure_absolute_url( wp_get_attachment_image_url( $var_tid, 'full' ) );
+			if ( '' !== $cand_img && ! nexxi_kids_schema_is_placeholder_image_url( $cand_img ) ) {
+				$var_image = $cand_img;
+			}
+		}
+		if ( '' === $var_image && '' !== $color_slug ) {
+			$ascii_color = nexxi_kids_schema_ascii_slug( $color_label ? $color_label : $color_slug );
+			if ( isset( $color_img_map[ $color_slug ] ) ) {
+				$var_image = $color_img_map[ $color_slug ];
+			} elseif ( isset( $color_img_map[ $ascii_color ] ) ) {
+				$var_image = $color_img_map[ $ascii_color ];
+			}
+		}
+		if ( '' === $var_image ) {
+			$var_image = $images[0];
+		}
+
+		$title_parts = array();
+		if ( '' !== $color_label ) {
+			$title_parts[] = $color_label;
+		}
+		if ( '' !== $size_label ) {
+			$title_parts[] = preg_match( '/^\d+(?:\s*[-–]\s*\d+)?$/u', $size_label ) ? ( 'Size ' . $size_label ) : $size_label;
+		}
+		foreach ( $other_parts as $op ) {
+			if ( '' !== $op ) {
+				$title_parts[] = $op;
+			}
+		}
+		$var_name = ! empty( $title_parts )
+			? ( $clean_name . ' - ' . implode( ' - ', $title_parts ) )
+			: $clean_name;
+
+		$var_offer = nexxi_kids_schema_build_offer_node(
+			$var_url,
+			$var_sale,
+			$var_reg,
+			$var_availability,
+			$price_valid_until
+		);
+		if ( null === $var_offer ) {
+			continue;
+		}
+
+		$variant_node = array(
+			'@type'       => 'Product',
+			'@id'         => $permalink . '#variant-' . $child_id,
+			'name'        => $var_name,
+			'description' => $description,
+			'sku'         => $var_sku,
+			'mpn'         => $var_sku,
+			'image'       => $var_image,
+			'url'         => $var_url,
+		);
+		if ( '' !== $size_label ) {
+			$variant_node['size'] = $size_label;
+		}
+		if ( '' !== $color_label ) {
+			$variant_node['color'] = $color_label;
+		}
+		$variant_node['offers'] = $var_offer;
+
+		$variants[] = $variant_node;
+	}
+
+	$varies_by = array();
+	if ( $has_size_dim ) {
+		$varies_by[] = 'https://schema.org/size';
+	}
+	if ( $has_color_dim ) {
+		$varies_by[] = 'https://schema.org/color';
+	}
+
 	return array(
-		'@type'                   => 'Offer',
-		'url'                     => $permalink,
-		'priceCurrency'           => 'VND',
-		'price'                   => (string) $price_int,
-		'priceValidUntil'         => $price_valid_until,
-		'itemCondition'           => 'https://schema.org/NewCondition',
-		'availability'            => $availability,
-		'seller'                  => array(
-			'@type' => 'Organization',
-			'@id'   => home_url( '/#organization' ),
-			'name'  => 'NEXXI Kids Fashion',
-		),
-		'shippingDetails'         => nexxi_kids_get_offer_shipping_details_schema(),
-		'hasMerchantReturnPolicy' => nexxi_kids_get_merchant_return_policy_schema(),
+		'variants'  => $variants,
+		'varies_by' => $varies_by,
 	);
 }
 
 /**
- * Build complete Schema.org Product JSON-LD array for a WooCommerce product.
+ * Build verified AggregateRating and approved Review array strictly when genuine reviews exist (> 0).
+ * NEVER fabricates ratings or reviews.
+ *
+ * @param int   $product_id   Product post ID.
+ * @param int   $review_count Approved review count.
+ * @param float $avg_rating   Average star rating.
+ * @return array<string, mixed>
+ */
+function nexxi_kids_schema_build_reviews_data( $product_id, $review_count, $avg_rating ) {
+	if ( $review_count <= 0 || $avg_rating <= 0 ) {
+		return array();
+	}
+
+	$clamped_rating = min( 5.0, max( 1.0, round( (float) $avg_rating, 2 ) ) );
+	$result         = array(
+		'aggregateRating' => array(
+			'@type'       => 'AggregateRating',
+			'ratingValue' => (string) $clamped_rating,
+			'reviewCount' => (int) $review_count,
+			'bestRating'  => '5',
+			'worstRating' => '1',
+		),
+	);
+
+	$comments = get_comments(
+		array(
+			'post_id' => (int) $product_id,
+			'status'  => 'approve',
+			'type'    => 'review',
+			'number'  => 5,
+			'orderby' => 'comment_date_gmt',
+			'order'   => 'DESC',
+		)
+	);
+
+	if ( is_array( $comments ) && ! empty( $comments ) ) {
+		$review_items = array();
+		foreach ( $comments as $comment ) {
+			if ( ! is_object( $comment ) || empty( $comment->comment_ID ) ) {
+				continue;
+			}
+			$star_rating = (int) get_comment_meta( (int) $comment->comment_ID, 'rating', true );
+			if ( $star_rating < 1 || $star_rating > 5 ) {
+				continue;
+			}
+			$author_name = trim( wp_strip_all_tags( (string) ( $comment->comment_author ?? '' ) ) );
+			if ( '' === $author_name ) {
+				continue;
+			}
+
+			$review_entry = array(
+				'@type'        => 'Review',
+				'author'       => array(
+					'@type' => 'Person',
+					'name'  => $author_name,
+				),
+				'reviewRating' => array(
+					'@type'       => 'Rating',
+					'ratingValue' => (string) $star_rating,
+					'bestRating'  => '5',
+					'worstRating' => '1',
+				),
+			);
+
+			$date_iso = '';
+			if ( ! empty( $comment->comment_date_gmt ) && '0000-00-00 00:00:00' !== $comment->comment_date_gmt ) {
+				$ts = strtotime( $comment->comment_date_gmt . ' UTC' );
+				if ( false !== $ts ) {
+					$date_iso = gmdate( 'Y-m-d', $ts );
+				}
+			} elseif ( ! empty( $comment->comment_date ) ) {
+				$ts = strtotime( $comment->comment_date );
+				if ( false !== $ts ) {
+					$date_iso = gmdate( 'Y-m-d', $ts );
+				}
+			}
+			if ( '' !== $date_iso ) {
+				$review_entry['datePublished'] = $date_iso;
+			}
+
+			$review_body = nexxi_kids_schema_sanitize_description_text( (string) ( $comment->comment_content ?? '' ) );
+			if ( '' !== $review_body ) {
+				$review_entry['reviewBody'] = $review_body;
+			}
+
+			$review_items[] = $review_entry;
+		}
+
+		if ( ! empty( $review_items ) ) {
+			$result['review'] = $review_items;
+		}
+	}
+
+	return $result;
+}
+
+/**
+ * Build complete Schema.org ProductGroup (for variable products) or Product JSON-LD array.
+ * Returns null if the product has no real non-placeholder images (avoiding GSC image errors/warnings).
  *
  * @param WC_Product $product WooCommerce product instance.
  * @return array<string, mixed>|null
@@ -403,19 +1187,81 @@ function nexxi_kids_build_product_schema( WC_Product $product ) {
 		return null;
 	}
 
-	$offer        = nexxi_kids_schema_build_offer( $product, $permalink );
-	$review_count = (int) $product->get_review_count();
-	$avg_rating   = (float) $product->get_average_rating();
-	$has_reviews  = ( $review_count > 0 && $avg_rating > 0 );
-
-	// Google Rich Results requires at least one of offers, review, or aggregateRating on Product.
-	if ( null === $offer && ! $has_reviews ) {
+	$images = nexxi_kids_schema_collect_product_images( $product );
+	if ( empty( $images ) ) {
+		// Do not output Product/ProductGroup with fake placeholder images or missing required "image".
 		return null;
 	}
 
-	$images      = nexxi_kids_schema_collect_product_images( $product );
-	$description = nexxi_kids_schema_build_description( $product, $clean_name );
-	$sku         = nexxi_kids_schema_resolve_sku( $product );
+	if ( function_exists( 'nexxi_kids_normalize_variable_sale' ) ) {
+		nexxi_kids_normalize_variable_sale( $product );
+	}
+	$prog              = function_exists( 'nexxi_kids_get_program_sale' ) ? nexxi_kids_get_program_sale( $product, 'combined' ) : null;
+	$price_valid_until = nexxi_kids_schema_resolve_price_valid_until( $product, $prog );
+	$description       = nexxi_kids_schema_build_description( $product, $clean_name );
+	$sku               = nexxi_kids_schema_resolve_sku( $product );
+	$merch_meta        = nexxi_kids_schema_resolve_merchandising_meta( $product, $clean_name );
+
+	// Strict anti-spam lock: ONLY attach aggregateRating/review when real customer ratings exist (> 0).
+	$review_count = (int) $product->get_review_count();
+	$avg_rating   = (float) $product->get_average_rating();
+	$has_reviews  = ( $review_count > 0 && $avg_rating > 0 );
+	$reviews_data = $has_reviews ? nexxi_kids_schema_build_reviews_data( $product_id, $review_count, $avg_rating ) : array();
+
+	if ( $product->is_type( 'variable' ) ) {
+		$variant_bundle = nexxi_kids_schema_build_variants(
+			$product,
+			$permalink,
+			$clean_name,
+			$description,
+			$sku,
+			$images,
+			$prog,
+			$price_valid_until
+		);
+
+		if ( ! empty( $variant_bundle['variants'] ) ) {
+			$group = array(
+				'@context'       => 'https://schema.org',
+				'@type'          => 'ProductGroup',
+				'@id'            => $permalink . '#product',
+				'name'           => $clean_name,
+				'description'    => $description,
+				'url'            => $permalink,
+				'image'          => $images,
+				'productGroupID' => $sku,
+				'brand'          => array(
+					'@type' => 'Brand',
+					'name'  => 'NEXXI Kids Fashion',
+				),
+			);
+
+			if ( ! empty( $variant_bundle['varies_by'] ) ) {
+				$group['variesBy'] = $variant_bundle['varies_by'];
+			}
+			if ( '' !== $merch_meta['category'] ) {
+				$group['category'] = $merch_meta['category'];
+			}
+			$group['audience'] = $merch_meta['audience'];
+			if ( '' !== $merch_meta['material'] ) {
+				$group['material'] = $merch_meta['material'];
+			}
+			if ( ! empty( $reviews_data['aggregateRating'] ) ) {
+				$group['aggregateRating'] = $reviews_data['aggregateRating'];
+			}
+			if ( ! empty( $reviews_data['review'] ) ) {
+				$group['review'] = $reviews_data['review'];
+			}
+			$group['hasVariant'] = $variant_bundle['variants'];
+
+			return $group;
+		}
+	}
+
+	$offer = nexxi_kids_schema_build_offer( $product, $permalink );
+	if ( null === $offer && ! $has_reviews ) {
+		return null;
+	}
 
 	$schema = array(
 		'@context'    => 'https://schema.org',
@@ -426,110 +1272,28 @@ function nexxi_kids_build_product_schema( WC_Product $product ) {
 		'image'       => $images,
 		'description' => $description,
 		'sku'         => $sku,
+		'mpn'         => $sku,
 		'brand'       => array(
 			'@type' => 'Brand',
 			'name'  => 'NEXXI Kids Fashion',
 		),
 	);
 
-	// Attach non-placeholder product category when available.
-	$terms = get_the_terms( $product_id, 'product_cat' );
-	if ( is_array( $terms ) && ! is_wp_error( $terms ) ) {
-		foreach ( $terms as $term ) {
-			if ( ! is_object( $term ) || empty( $term->slug ) || empty( $term->name ) ) {
-				continue;
-			}
-			if ( in_array( $term->slug, array( 'chua-phan-loai', 'uncategorized' ), true ) ) {
-				continue;
-			}
-			$schema['category'] = trim( wp_strip_all_tags( (string) $term->name ) );
-			break;
-		}
+	if ( '' !== $merch_meta['category'] ) {
+		$schema['category'] = $merch_meta['category'];
 	}
-
+	$schema['audience'] = $merch_meta['audience'];
+	if ( '' !== $merch_meta['material'] ) {
+		$schema['material'] = $merch_meta['material'];
+	}
 	if ( null !== $offer ) {
 		$schema['offers'] = $offer;
 	}
-
-	// Strictly attach aggregateRating & approved reviews ONLY when genuine ratings exist (> 0).
-	if ( $has_reviews ) {
-		$clamped_rating            = min( 5.0, max( 1.0, round( $avg_rating, 2 ) ) );
-		$schema['aggregateRating'] = array(
-			'@type'       => 'AggregateRating',
-			'ratingValue' => (string) $clamped_rating,
-			'reviewCount' => $review_count,
-			'bestRating'  => '5',
-			'worstRating' => '1',
-		);
-
-		$comments = get_comments(
-			array(
-				'post_id' => $product_id,
-				'status'  => 'approve',
-				'type'    => 'review',
-				'number'  => 5,
-				'orderby' => 'comment_date_gmt',
-				'order'   => 'DESC',
-			)
-		);
-
-		if ( is_array( $comments ) && ! empty( $comments ) ) {
-			$review_items = array();
-			foreach ( $comments as $comment ) {
-				if ( ! is_object( $comment ) || empty( $comment->comment_ID ) ) {
-					continue;
-				}
-				$star_rating = (int) get_comment_meta( (int) $comment->comment_ID, 'rating', true );
-				if ( $star_rating < 1 || $star_rating > 5 ) {
-					continue;
-				}
-				$author_name = trim( wp_strip_all_tags( (string) ( $comment->comment_author ?? '' ) ) );
-				if ( '' === $author_name ) {
-					continue;
-				}
-
-				$review_entry = array(
-					'@type'        => 'Review',
-					'author'       => array(
-						'@type' => 'Person',
-						'name'  => $author_name,
-					),
-					'reviewRating' => array(
-						'@type'       => 'Rating',
-						'ratingValue' => (string) $star_rating,
-						'bestRating'  => '5',
-						'worstRating' => '1',
-					),
-				);
-
-				$date_iso = '';
-				if ( ! empty( $comment->comment_date_gmt ) && '0000-00-00 00:00:00' !== $comment->comment_date_gmt ) {
-					$ts = strtotime( $comment->comment_date_gmt . ' UTC' );
-					if ( false !== $ts ) {
-						$date_iso = gmdate( 'Y-m-d', $ts );
-					}
-				} elseif ( ! empty( $comment->comment_date ) ) {
-					$ts = strtotime( $comment->comment_date );
-					if ( false !== $ts ) {
-						$date_iso = gmdate( 'Y-m-d', $ts );
-					}
-				}
-				if ( '' !== $date_iso ) {
-					$review_entry['datePublished'] = $date_iso;
-				}
-
-				$review_body = nexxi_kids_schema_sanitize_description_text( (string) ( $comment->comment_content ?? '' ) );
-				if ( '' !== $review_body ) {
-					$review_entry['reviewBody'] = $review_body;
-				}
-
-				$review_items[] = $review_entry;
-			}
-
-			if ( ! empty( $review_items ) ) {
-				$schema['review'] = $review_items;
-			}
-		}
+	if ( ! empty( $reviews_data['aggregateRating'] ) ) {
+		$schema['aggregateRating'] = $reviews_data['aggregateRating'];
+	}
+	if ( ! empty( $reviews_data['review'] ) ) {
+		$schema['review'] = $reviews_data['review'];
 	}
 
 	return $schema;
@@ -818,7 +1582,8 @@ function nexxi_kids_filter_wpseo_schema_main_image( $data, $context = null ) {
 add_filter( 'wpseo_schema_main_image', 'nexxi_kids_filter_wpseo_schema_main_image', 99, 2 );
 
 /**
- * Enrich Yoast SEO Organization schema with verified NEXXI contact details, social/gov profiles, and 15-day return policy.
+ * Enrich Yoast SEO Organization schema with unified brand name, verified NEXXI contact details,
+ * social/gov profiles, 15-day return policy (@id), and NEXXI Club loyalty program.
  *
  * @param array<string, mixed> $data    Yoast Organization schema array.
  * @param mixed                $context Yoast meta surface context (optional).
@@ -829,9 +1594,7 @@ function nexxi_kids_filter_wpseo_schema_organization( $data, $context = null ) {
 		return $data;
 	}
 
-	if ( empty( $data['name'] ) ) {
-		$data['name'] = 'NEXXI Kids Fashion';
-	}
+	$data['name'] = 'NEXXI Kids Fashion';
 	if ( empty( $data['url'] ) ) {
 		$data['url'] = home_url( '/' );
 	}
@@ -886,7 +1649,10 @@ function nexxi_kids_filter_wpseo_schema_organization( $data, $context = null ) {
 	}
 
 	$data['sameAs']                  = array_values( $merged_same_as );
-	$data['hasMerchantReturnPolicy'] = nexxi_kids_get_merchant_return_policy_schema();
+	$data['hasMerchantReturnPolicy'] = nexxi_kids_get_merchant_return_policy_schema( true );
+	if ( function_exists( 'nexxi_kids_calculate_order_points' ) ) {
+		$data['hasMemberProgram'] = nexxi_kids_get_member_program_schema();
+	}
 
 	return $data;
 }

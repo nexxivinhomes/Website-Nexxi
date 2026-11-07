@@ -236,10 +236,46 @@ function nexxi_seo_is_noindex_context() {
  * ========================================================================== */
 
 /**
- * Làm sạch tức thì file vật lý ABSPATH . 'llms.txt' trên ổ đĩa (do LiteSpeed phục vụ trực tiếp file tĩnh),
- * gỡ bỏ các dòng rác/tiện ích, cập nhật mô tả chuẩn 18+ cho Trang chủ và đặt lịch làm mới qua cron Yoast.
+ * Bảng ánh xạ dự phòng cho các slug mã lô POS cũ từng xuất hiện trong /llms.txt sang URL & tiêu đề sạch hiện hành.
+ *
+ * @return array<string,array{url:string,title:string}>
  */
-function nexxi_seo_sanitize_physical_llms_txt() {
+function nexxi_seo_llms_legacy_pos_map() {
+	return array(
+		'2503-8bo-gan-xop-new-york'                  => array(
+			'url'   => home_url( '/san-pham/bo-thun-form-rong-be-trai-nexxi-set-bo-vai-gan-xop-ca-sau-phoi-vien-soc-outfit-the-thao-size-dai-25-50kg/' ),
+			'title' => 'Bộ Thun Form Rộng Bé Trai NEXXI – Set Bộ Vải Gân Xốp Cá Sấu Phối Viền Sọc (25–50kg)',
+		),
+		'2505-8ao-thun-co-be-in-hinh-kitty-2-mau-016' => array(
+			'url'   => home_url( '/san-pham/ao-thun-co-be-in-hinh-kitty-2-mau-016-nexxi/' ),
+			'title' => 'Áo Thun Cổ Bẻ In Hình Kitty 2 Màu Bé Gái NEXXI',
+		),
+		'2503-2quan-jean-lung-ngo-ong-xep-ly'        => array(
+			'url'   => home_url( '/san-pham/quan-jean-lung-ong-xep-ly-thoi-trang-cho-be-nexxi/' ),
+			'title' => 'Quần Jean Lửng Ống Xếp Ly Thời Trang Cho Bé NEXXI',
+		),
+		'2503-4dam-linen-2-no-in-kitty-pretty'       => array(
+			'url'   => home_url( '/san-pham/dam-linen-2-no-tay-canh-tien-in-pretty-de-thuong-be-gai-nexxi/' ),
+			'title' => 'Đầm Linen 2 Nơ Tay Cánh Tiên In Pretty Dễ Thương Bé Gái NEXXI',
+		),
+		'2501-2quan-kaki-lung-tui-hop-in-jf'         => array(
+			'url'   => home_url( '/san-pham/quan-short-kaki-be-trai-nexxi-phoi-tui-hop-vai-kaki-cotton-mem-co-dan-cho-be-mac-di-hoc-di-choi/' ),
+			'title' => 'Quần Short Kaki Bé Trai NEXXI Phối Túi Hộp Vải Kaki Cotton Mềm Co Giãn',
+		),
+	);
+}
+
+/**
+ * Làm sạch tức thì file vật lý ABSPATH . 'llms.txt' trên ổ đĩa (do LiteSpeed phục vụ trực tiếp file tĩnh):
+ * - Gỡ bỏ các dòng rác/tiện ích (/gio-hang/, /thanh-toan/, /hello-world/...).
+ * - Thay thế toàn bộ URL mã lô POS cũ (/san-pham/2503-8...) bằng permalink chuẩn hiện hành (0 redirect 301).
+ * - Bổ sung dòng tóm tắt chuẩn llmstxt.org (> ...) ngay dưới tiêu đề H1 và chuẩn hóa tên danh mục IN HOA.
+ *
+ * @param bool $schedule_yoast_rebuild Có đặt lịch cron Yoast tái tạo llms.txt hay không (tránh lặp vô hạn trong hook cron).
+ */
+function nexxi_seo_sanitize_physical_llms_txt( $schedule_yoast_rebuild = true ) {
+	global $wpdb;
+
 	if ( defined( 'ABSPATH' ) ) {
 		$llms_file = ABSPATH . 'llms.txt';
 		if ( is_file( $llms_file ) && is_writable( $llms_file ) ) {
@@ -259,7 +295,12 @@ function nexxi_seo_sanitize_physical_llms_txt() {
 					'/chua-phan-loai/',
 					'/author/',
 				);
-				$kept_lines = array();
+				$pos_map        = nexxi_seo_llms_legacy_pos_map();
+				$has_blockquote = (bool) preg_match( '/^>\s+\S+/m', $raw );
+				$summary_quote  = '> Thương hiệu thời trang trẻ em thiết kế Hàn Quốc NEXXI Kids (12–45kg): chuyên đầm bé gái, chân váy, set phối và đồ bộ bé trai mềm mát. Website thương mại điện tử bán lẻ & bán sỉ toàn quốc dành cho phụ huynh, người giám hộ và đại lý từ đủ 18 tuổi trở lên; miễn phí vận chuyển & hỗ trợ đổi hàng 15 ngày.';
+				$kept_lines     = array();
+				$inserted_quote = false;
+
 				foreach ( (array) preg_split( '/\R/u', $raw ) as $line ) {
 					$drop = false;
 					foreach ( $blocked_tokens as $token ) {
@@ -271,9 +312,63 @@ function nexxi_seo_sanitize_physical_llms_txt() {
 					if ( $drop ) {
 						continue;
 					}
-					$line         = str_ireplace( 'Phong cách khác, giá trị khác', NEXXI_SEO_HOME_DESC, $line );
+
+					$line = str_ireplace( 'Phong cách khác, giá trị khác', NEXXI_SEO_HOME_DESC, $line );
+
+					// Thay mọi dòng link sản phẩm chứa slug cũ / mã POS bằng tiêu đề sạch + permalink 200 OK hiện tại.
+					if ( preg_match( '/^(\s*-\s*)\[([^\]]+)\]\((https?:\/\/[^)\s]+\/san-pham\/([^\/)\s]+)\/?)\)(.*)$/u', $line, $pm ) ) {
+						$prefix   = $pm[1];
+						$lbl      = str_replace( '\\.', '.', $pm[2] );
+						$old_slug = sanitize_title( strtolower( trim( $pm[4] ) ) );
+						$tail     = $pm[5];
+						$new_url  = '';
+						$new_lbl  = nexxi_seo_clean_product_title( $lbl );
+
+						$prod_obj = get_page_by_path( $old_slug, OBJECT, 'product' );
+						if ( ! ( $prod_obj instanceof WP_Post ) || 'publish' !== $prod_obj->post_status ) {
+							// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+							$mapped_pid = (int) $wpdb->get_var(
+								$wpdb->prepare(
+									"SELECT p.ID FROM {$wpdb->postmeta} pm
+									 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+									 WHERE pm.meta_key = '_wp_old_slug' AND pm.meta_value = %s
+									   AND p.post_type = 'product' AND p.post_status = 'publish'
+									 LIMIT 1",
+									$old_slug
+								)
+							);
+							if ( $mapped_pid > 0 ) {
+								$prod_obj = get_post( $mapped_pid );
+							}
+						}
+
+						if ( $prod_obj instanceof WP_Post && 'publish' === $prod_obj->post_status ) {
+							$new_url = (string) get_permalink( $prod_obj->ID );
+							$new_lbl = nexxi_seo_clean_product_title( $prod_obj->post_title );
+						} elseif ( isset( $pos_map[ $old_slug ] ) ) {
+							$new_url = $pos_map[ $old_slug ]['url'];
+							$new_lbl = $pos_map[ $old_slug ]['title'];
+						}
+
+						if ( '' !== $new_url ) {
+							$line = $prefix . '[' . $new_lbl . '](' . $new_url . ')' . $tail;
+						}
+					} elseif ( preg_match( '/^(\s*-\s*)\[([^\]]+)\]\((https?:\/\/[^)\s]+\/danh-muc-san-pham\/[^)\s]+)\)(.*)$/u', $line, $cm ) ) {
+						$nice_cat = nexxi_seo_format_term_name( $cm[2] );
+						if ( '' !== $nice_cat ) {
+							$line = $cm[1] . '[' . $nice_cat . '](' . $cm[3] . ')' . $cm[4];
+						}
+					}
+
 					$kept_lines[] = $line;
+
+					if ( ! $has_blockquote && ! $inserted_quote && 0 === strpos( ltrim( $line ), '# ' ) ) {
+						$kept_lines[]   = '';
+						$kept_lines[]   = $summary_quote;
+						$inserted_quote = true;
+					}
 				}
+
 				$cleaned = implode( "\n", $kept_lines );
 				$cleaned = (string) preg_replace( "/\n{3,}/", "\n\n", $cleaned );
 				$cleaned = rtrim( $cleaned ) . "\n";
@@ -282,12 +377,44 @@ function nexxi_seo_sanitize_physical_llms_txt() {
 		}
 	}
 
-	foreach ( array( 'wpseo_llms_txt_population', 'wpseo_populate_llms_txt' ) as $llms_hook ) {
-		if ( has_action( $llms_hook ) && ! wp_next_scheduled( $llms_hook ) ) {
-			wp_schedule_single_event( time() + 10, $llms_hook );
+	if ( $schedule_yoast_rebuild ) {
+		foreach ( array( 'wpseo_llms_txt_population', 'wpseo_populate_llms_txt' ) as $llms_hook ) {
+			if ( has_action( $llms_hook ) && ! wp_next_scheduled( $llms_hook ) ) {
+				wp_schedule_single_event( time() + 10, $llms_hook );
+			}
 		}
 	}
 }
+
+// Hậu xử lý tự động mỗi khi cron Yoast SEO tái tạo xong llms.txt và tự động làm mới khi nâng phiên bản theme.
+add_action(
+	'wpseo_llms_txt_population',
+	static function () {
+		nexxi_seo_sanitize_physical_llms_txt( false );
+	},
+	999
+);
+add_action(
+	'wpseo_populate_llms_txt',
+	static function () {
+		nexxi_seo_sanitize_physical_llms_txt( false );
+	},
+	999
+);
+add_action(
+	'init',
+	static function () {
+		if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return;
+		}
+		$target_ver = defined( 'NEXXI_KIDS_VERSION' ) ? NEXXI_KIDS_VERSION : '1.0.4';
+		if ( get_option( 'nexxi_seo_llms_refreshed_ver' ) !== $target_ver ) {
+			update_option( 'nexxi_seo_llms_refreshed_ver', $target_ver, true );
+			nexxi_seo_sanitize_physical_llms_txt( true );
+		}
+	},
+	25
+);
 
 /**
  * Xóa sạch bảng bộ nhớ đệm wp_yoast_indexable, wp_yoast_indexable_hierarchy & Sitemap cache
@@ -551,8 +678,341 @@ function nexxi_seo_run_p0_migration() {
 }
 
 /* ==========================================================================
- * 3. RUNTIME HTTP STATUS (410 GONE & AUTHOR 301)
+ * 3. RUNTIME HTTP STATUS, FEED CLEANUP & LEGACY HARAVAN/SAPO ROUTER
  * ========================================================================== */
+
+// Tắt đoán mò 404 sai đích của WordPress (ngăn /chan-vay hoặc slug cũ nhảy bừa sang 1 sản phẩm ngẫu nhiên).
+add_filter( 'do_redirect_guess_404_permalink', '__return_false', 99 );
+
+// Gỡ bỏ toàn bộ thẻ <link rel="alternate" type="application/rss+xml"> dư thừa khỏi <head> (~382 feed endpoints).
+add_action(
+	'after_setup_theme',
+	static function () {
+		remove_theme_support( 'automatic-feed-links' );
+		remove_action( 'wp_head', 'feed_links', 2 );
+		remove_action( 'wp_head', 'feed_links_extra', 3 );
+	},
+	99
+);
+add_filter( 'feed_links_show_posts_feed', '__return_false', 99 );
+add_filter( 'feed_links_show_comments_feed', '__return_false', 99 );
+add_filter( 'post_comments_feed_link', '__return_empty_string', 99 );
+
+/**
+ * Xuất phản hồi chuẩn HTTP 410 Gone kèm X-Robots-Tag: noindex, nofollow để Google rút nhanh khỏi chỉ mục.
+ */
+function nexxi_seo_send_410_gone() {
+	global $wp_query;
+	if ( $wp_query instanceof WP_Query ) {
+		$wp_query->set_404();
+	}
+	status_header( 410 );
+	nocache_headers();
+	if ( ! headers_sent() ) {
+		header( 'Content-Type: text/html; charset=UTF-8' );
+		header( 'X-Robots-Tag: noindex, nofollow', true );
+	}
+	$home_href = esc_url( home_url( '/' ) );
+	$shop_href = esc_url( function_exists( 'nexxi_kids_shop_url' ) ? nexxi_kids_shop_url() : home_url( '/cua-hang/' ) );
+	echo '<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+		. '<meta name="robots" content="noindex, nofollow">'
+		. '<title>410 Gone – Nội dung không còn tồn tại | NEXXI Kids</title>'
+		. '<style>body{font-family:system-ui,-apple-system,sans-serif;background:#fbf9f5;color:#031444;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.box{max-width:460px;background:#fff;padding:32px;border-radius:24px;box-shadow:0 12px 32px rgba(3,20,68,.06)}h1{font-size:22px;margin:0 0 10px}p{font-size:15px;color:#45464f;line-height:1.6;margin:0 0 20px}.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}a{text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:700;font-size:14px}.p{background:#ae3115;color:#fff}.s{background:#f5f3ef;color:#031444}</style>'
+		. '</head><body><main class="box"><h1>Trang này đã ngừng phục vụ vĩnh viễn (410)</h1>'
+		. '<p>Đường dẫn hoặc dòng sản phẩm cũ không còn tồn tại trên hệ thống NEXXI Kids Fashion. Mời ba mẹ khám phá các thiết kế mới nhất cho bé yêu.</p>'
+		. '<div class="btns"><a class="p" href="' . $home_href . '">Về Trang Chủ</a><a class="s" href="' . $shop_href . '">Xem Cửa Hàng</a></div>'
+		. '</main></body></html>';
+	exit;
+}
+
+/**
+ * Bảng ánh xạ tường minh 1-đối-1 cho 9 mẫu sản phẩm di sản Haravan/Sapo hiện vẫn đang mở bán
+ * trên WooCommerce nhưng khác biến thể chính tả/cấu trúc slug (hotrend/hottrend, sn/sat-nach, ta-cheo/ta-xeo...).
+ *
+ * @return array<string, array{sku: string, slug: string}>
+ */
+function nexxi_seo_explicit_legacy_product_map() {
+	return array(
+		'bo-ao-thun-form-rong-quan-legging-dui-in-hinh-no-va-kuromi-hotrend-cho-be-gai' => array(
+			'sku'  => '2QLOAI201',
+			'slug' => 'bo-ao-thun-form-rong-quan-legging-dui-in-hinh-no-va-kuromi-hottrend-cho-be-gai',
+		),
+		'ao-thun-sat-nach-be-trai-in-nhieu-hinh'                                        => array(
+			'sku'  => '2TTNSNH01',
+			'slug' => 'ao-thun-trang-sat-nach-nhieu-hinh-nexxi',
+		),
+		'chan-vay-thun-xep-ly-be-gai-kuromi'                                            => array(
+			'sku'  => '2VTXIK301',
+			'slug' => 'chan-vay-thun-xep-ly-in-kuromi-3-nexxi',
+		),
+		'2404-8ao-thun-gan-sn-croptop-los-angeles'                                      => array(
+			'sku'  => '2TGSCLA01',
+			'slug' => 'ao-thun-gan-sat-nach-croptop-los-angeles-nexxi',
+		),
+		'ao-thun-gan-sn-croptop-los-angeles'                                            => array(
+			'sku'  => '2TGSCLA01',
+			'slug' => 'ao-thun-gan-sat-nach-croptop-los-angeles-nexxi',
+		),
+		'ao-thun-co-be-hoa-tiet-khung-long-be-trai'                                     => array(
+			'sku'  => '2TCBKLN01',
+			'slug' => 'ao-polo-be-trai-nexxi-ao-thun-co-be-hoa-tiet-khung-long-explorer-new-sieu-hot',
+		),
+		'ao-thun-polo-be-trai-in-hoa-tiet-khung-long'                                   => array(
+			'sku'  => '2TCBKLN01',
+			'slug' => 'ao-polo-be-trai-nexxi-ao-thun-co-be-hoa-tiet-khung-long-explorer-new-sieu-hot',
+		),
+		'chan-vay-jean-cotton-xep-ly-be-gai'                                            => array(
+			'sku'  => '2VJCXLFDT01',
+			'slug' => 'chan-vay-jean-xep-ly-form-dai-be-gai-jean-cotton-mem-min-lung-thun-co-gian-co-chip-nexxi',
+		),
+		'quan-legging-dui-nexxi-cho-be-in-hinh-kuromi-sieu-co-dan-thoang-mat'           => array(
+			'sku'  => '2LDIK01',
+			'slug' => 'quan-legging-dui-nexxi-cho-be-in-hinh-kuromi-sieu-co-dan-thoang-mat-nexxi',
+		),
+		'ao-thun-polo-be-trai-in-hoa-tiet-bien-nexxi'                                   => array(
+			'sku'  => '2TCBHTBH01',
+			'slug' => 'ao-polo-be-trai-nexxi-thun-ca-sau-co-gian-4-chieu-tham-hut-mo-hoi-in-hoa-tiet-bien-cho-be-12-50kg',
+		),
+		'ao-thun-polo-be-trai-in-hoa-tiet-bien'                                         => array(
+			'sku'  => '2TCBHTBH01',
+			'slug' => 'ao-polo-be-trai-nexxi-thun-ca-sau-co-gian-4-chieu-tham-hut-mo-hoi-in-hoa-tiet-bien-cho-be-12-50kg',
+		),
+		'quan-vay-kaki-tui-hop-ta-cheo-be-gai-1'                                        => array(
+			'sku'  => '2VKTKPT01',
+			'slug' => 'quan-vay-kaki-be-gai-nexxi-kaki-lung-thun-ta-xeo-phoi-tui-hop-hot-trend',
+		),
+		'quan-vay-kaki-tui-hop-ta-cheo-be-gai'                                          => array(
+			'sku'  => '2VKTKPT01',
+			'slug' => 'quan-vay-kaki-be-gai-nexxi-kaki-lung-thun-ta-xeo-phoi-tui-hop-hot-trend',
+		),
+	);
+}
+
+/**
+ * Tìm URL sản phẩm đang publish tương ứng với slug di sản (khớp bảng 1-đối-1 theo slug/SKU,
+ * khớp tự động post_name sau khi bóc hậu tố -1/-2 hoặc tiền tố mã POS, và khớp _wp_old_slug).
+ *
+ * @param string $raw_slug Slug sản phẩm cũ.
+ * @return string URL chuẩn hoặc chuỗi rỗng nếu sản phẩm đã ngừng kinh doanh.
+ */
+function nexxi_seo_resolve_live_product_by_legacy_slug( $raw_slug ) {
+	global $wpdb;
+
+	$slug = sanitize_title( rawurldecode( trim( (string) $raw_slug, '/' ) ) );
+	if ( '' === $slug ) {
+		return '';
+	}
+
+	$no_num     = (string) preg_replace( '/-\d+$/', '', $slug );
+	$no_pos     = (string) preg_replace( '/^\d{3,4}-\d*-?/', '', $no_num );
+	$no_nexxi   = (string) preg_replace( '/-nexxi$/', '', $no_pos );
+	$with_nexxi = '' !== $no_nexxi ? $no_nexxi . '-nexxi' : '';
+
+	$explicit_map = nexxi_seo_explicit_legacy_product_map();
+	foreach ( array_unique( array_filter( array( $slug, $no_num, $no_pos, $no_nexxi ) ) ) as $lookup_key ) {
+		if ( ! isset( $explicit_map[ $lookup_key ] ) ) {
+			continue;
+		}
+		$target = $explicit_map[ $lookup_key ];
+		if ( ! empty( $target['slug'] ) ) {
+			$post_obj = get_page_by_path( $target['slug'], OBJECT, 'product' );
+			if ( $post_obj instanceof WP_Post && 'publish' === $post_obj->post_status ) {
+				$plink = get_permalink( $post_obj->ID );
+				if ( is_string( $plink ) && '' !== $plink ) {
+					return $plink;
+				}
+			}
+		}
+		if ( ! empty( $target['sku'] ) && function_exists( 'wc_get_product_id_by_sku' ) ) {
+			$sku_pid = (int) wc_get_product_id_by_sku( $target['sku'] );
+			if ( $sku_pid > 0 && 'publish' === get_post_status( $sku_pid ) ) {
+				$plink = get_permalink( $sku_pid );
+				if ( is_string( $plink ) && '' !== $plink ) {
+					return $plink;
+				}
+			}
+		}
+	}
+
+	$candidates = array_values( array_unique( array_filter( array( $slug, $no_num, $no_pos, $with_nexxi, $no_nexxi ) ) ) );
+	foreach ( $candidates as $cand ) {
+		$post_obj = get_page_by_path( $cand, OBJECT, 'product' );
+		if ( $post_obj instanceof WP_Post && 'publish' === $post_obj->post_status ) {
+			$plink = get_permalink( $post_obj->ID );
+			if ( is_string( $plink ) && '' !== $plink ) {
+				return $plink;
+			}
+		}
+	}
+
+	if ( ! empty( $candidates ) && ( $wpdb instanceof wpdb ) ) {
+		$placeholders = implode( ',', array_fill( 0, count( $candidates ), '%s' ) );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$found_id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT p.ID
+				   FROM {$wpdb->postmeta} pm
+				   INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				  WHERE pm.meta_key = '_wp_old_slug'
+				    AND pm.meta_value IN ({$placeholders})
+				    AND p.post_type = 'product'
+				    AND p.post_status = 'publish'
+				  ORDER BY p.ID DESC
+				  LIMIT 1",
+				$candidates
+			)
+		);
+		if ( $found_id > 0 ) {
+			$plink = get_permalink( $found_id );
+			if ( is_string( $plink ) && '' !== $plink ) {
+				return $plink;
+			}
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Chọn URL danh mục sản phẩm hợp lệ đầu tiên đang tồn tại trên WooCommerce theo thứ tự ưu tiên từ cụ thể -> cha -> cửa hàng.
+ *
+ * @param string[] $candidate_slugs Danh sách slug product_cat ưu tiên.
+ * @return string URL đích trả HTTP 200 trực tiếp (0 chuỗi chuyển hướng).
+ */
+function nexxi_seo_first_valid_product_cat_url( array $candidate_slugs ) {
+	$excluded = nexxi_seo_excluded_term_ids();
+	foreach ( $candidate_slugs as $c_slug ) {
+		$term = get_term_by( 'slug', $c_slug, 'product_cat' );
+		if ( $term instanceof WP_Term && ! in_array( (int) $term->term_id, $excluded, true ) && (int) $term->count > 0 ) {
+			$link = get_term_link( $term );
+			if ( ! is_wp_error( $link ) && is_string( $link ) && '' !== $link ) {
+				return $link;
+			}
+		}
+	}
+	foreach ( $candidate_slugs as $c_slug ) {
+		$term = get_term_by( 'slug', $c_slug, 'product_cat' );
+		if ( $term instanceof WP_Term && ! in_array( (int) $term->term_id, $excluded, true ) ) {
+			$link = get_term_link( $term );
+			if ( ! is_wp_error( $link ) && is_string( $link ) && '' !== $link ) {
+				return $link;
+			}
+		}
+	}
+	return function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/cua-hang/' );
+}
+
+/**
+ * Phân tích từ khóa loại trang phục trong slug sản phẩm di sản đã ngừng bán để ánh xạ về đúng danh mục con tương ứng.
+ *
+ * @param string $raw_slug Slug sản phẩm cũ.
+ * @return string URL danh mục đích hợp lệ.
+ */
+function nexxi_seo_resolve_legacy_garment_category_url( $raw_slug ) {
+	$clean = sanitize_title( rawurldecode( trim( (string) $raw_slug, '/' ) ) );
+	$clean = (string) preg_replace( '/^\d{3,4}-\d*-?/', '', $clean );
+	$clean = (string) preg_replace(
+		array( '/^b-o-/', '/^cvay-/', '/^qsot-/', '/^qlung-/', '/^qdai-/', '/^somi-/' ),
+		array( 'bo-', 'chan-vay-', 'quan-sot-', 'quan-lung-', 'quan-dai-', 'so-mi-' ),
+		$clean
+	);
+
+	if ( preg_match( '/(?:^|-)ao-dai(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'ao-dai' ) );
+	}
+	if ( preg_match( '/(?:^|-)ao-khoac(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'ao-khoac' ) );
+	}
+	if ( preg_match( '/(?:^|-)quan-vay(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'quan-vay', 'chan-vay' ) );
+	}
+	if ( 0 === strpos( $clean, 'set-' ) ) {
+		if ( preg_match( '/^set-vay(?:-|$)/', $clean ) || preg_match( '/(?:^|-)(?:vay|chan-vay|dam)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'set-vay', 'set-phoi', 'dam' ) );
+		}
+		if ( 0 === strpos( $clean, 'set-bo-' ) || 'set-bo' === $clean ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo', 'set-phoi' ) );
+		}
+		return nexxi_seo_first_valid_product_cat_url( array( 'set-phoi', 'bo' ) );
+	}
+	if ( preg_match( '/^chan-vay(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'chan-vay', 'vay-ngan', 'dam' ) );
+	}
+	if ( preg_match( '/^vay(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'vay-ngan', 'chan-vay', 'dam' ) );
+	}
+	if ( preg_match( '/^dam(?:-|$)/', $clean ) ) {
+		if ( preg_match( '/(?:^|-)thun(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'dam-thun', 'dam' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:sat-nach|sn|2-day|hai-day)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'dam-sat-nach', 'dam' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:ngan-tay|tay-phong|tay-canh-tien)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'dam-ngan-tay', 'dam' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:kieu|babydoll|cong-chua|voan|linen|ren)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'dam-kieu', 'dam' ) );
+		}
+		return nexxi_seo_first_valid_product_cat_url( array( 'dam' ) );
+	}
+	if ( preg_match( '/^bo(?:-|$)/', $clean ) ) {
+		if ( preg_match( '/(?:^|-)(?:dai-tay|tay-dai)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-dai-tay', 'bo' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:sat-nach|sn|ba-lo)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-sat-nach', 'bo' ) );
+		}
+		if ( preg_match( '/(?:^|-)lung(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-lung', 'bo-thun', 'bo' ) );
+		}
+		if ( preg_match( '/(?:^|-)ngan-tay(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-ngan-tay', 'bo' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:kieu|linen)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-kieu', 'bo' ) );
+		}
+		if ( preg_match( '/(?:^|-)thun(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'bo-thun', 'bo' ) );
+		}
+		return nexxi_seo_first_valid_product_cat_url( array( 'bo' ) );
+	}
+	if ( preg_match( '/^(?:ao-so-mi|so-mi)(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'ao-so-mi', 'ao-kieu' ) );
+	}
+	if ( preg_match( '/^ao(?:-|$)/', $clean ) ) {
+		if ( preg_match( '/(?:^|-)(?:co-be|polo)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'ao-thun-co-be', 'ao-thun' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:dai-tay|tay-dai)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'ao-thun-dai-tay', 'ao-thun' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:kieu|babydoll|ren|2-day|hai-day)(?:-|$)/', $clean ) ) {
+			if ( preg_match( '/(?:^|-)(?:sat-nach|sn|ngan-tay)(?:-|$)/', $clean ) ) {
+				return nexxi_seo_first_valid_product_cat_url( array( 'ao-kieu-sat-nach-ngan-tay', 'ao-kieu' ) );
+			}
+			return nexxi_seo_first_valid_product_cat_url( array( 'ao-kieu' ) );
+		}
+		if ( preg_match( '/(?:^|-)(?:sat-nach|sn|ba-lo)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'ao-thun-sat-nach', 'ao-thun' ) );
+		}
+		if ( preg_match( '/(?:^|-)ngan-tay(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'ao-thun-ngan-tay', 'ao-thun' ) );
+		}
+		return nexxi_seo_first_valid_product_cat_url( array( 'ao-thun' ) );
+	}
+	if ( preg_match( '/^quan(?:-|$)/', $clean ) ) {
+		if ( preg_match( '/(?:^|-)(?:short|sot|quan-dui|legging-dui)(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'quan-sot', 'quan-lung', 'quan-dai' ) );
+		}
+		if ( preg_match( '/^quan-(?:jean-|kaki-|thun-|tay-)?lung(?:-|$)/', $clean ) || preg_match( '/(?:^|-)ngo(?:-|$)/', $clean ) ) {
+			return nexxi_seo_first_valid_product_cat_url( array( 'quan-lung', 'quan-sot', 'quan-dai' ) );
+		}
+		return nexxi_seo_first_valid_product_cat_url( array( 'quan-dai', 'quan-sot' ) );
+	}
+
+	return function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/cua-hang/' );
+}
 
 add_action(
 	'template_redirect',
@@ -562,7 +1022,7 @@ add_action(
 		}
 
 		$req_uri   = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$req_path  = (string) wp_parse_url( $req_uri, PHP_URL_PATH );
+		$req_path  = rawurldecode( (string) wp_parse_url( $req_uri, PHP_URL_PATH ) );
 		$home_path = (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH );
 		if ( '' !== $home_path && '/' !== $home_path ) {
 			$base = rtrim( $home_path, '/' );
@@ -570,36 +1030,178 @@ add_action(
 				$req_path = substr( $req_path, strlen( $base ) );
 			}
 		}
-		$norm_path = '/' . trim( strtolower( $req_path ), '/' );
+		$trimmed_raw = trim( $req_path, '/' );
+		$norm_path   = '/' . strtolower( $trimmed_raw );
 
-		// Trả chuẩn HTTP 410 Gone cho trang mẫu mặc định WordPress để Google rút nhanh khỏi chỉ mục.
-		if ( in_array( $norm_path, array( '/hello-world', '/sample-page' ), true ) ) {
-			global $wp_query;
-			if ( $wp_query instanceof WP_Query ) {
-				$wp_query->set_404();
-			}
-			status_header( 410 );
-			nocache_headers();
-			if ( ! headers_sent() ) {
-				header( 'Content-Type: text/html; charset=UTF-8' );
-				header( 'X-Robots-Tag: noindex, nofollow', true );
-			}
-			$home_href = esc_url( home_url( '/' ) );
-			$shop_href = esc_url( function_exists( 'nexxi_kids_shop_url' ) ? nexxi_kids_shop_url() : home_url( '/cua-hang/' ) );
-			echo '<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-				. '<meta name="robots" content="noindex, nofollow">'
-				. '<title>410 Gone – Nội dung không còn tồn tại | NEXXI Kids</title>'
-				. '<style>body{font-family:system-ui,-apple-system,sans-serif;background:#fbf9f5;color:#031444;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.box{max-width:460px;background:#fff;padding:32px;border-radius:24px;box-shadow:0 12px 32px rgba(3,20,68,.06)}h1{font-size:22px;margin:0 0 10px}p{font-size:15px;color:#45464f;line-height:1.6;margin:0 0 20px}.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}a{text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:700;font-size:14px}.p{background:#ae3115;color:#fff}.s{background:#f5f3ef;color:#031444}</style>'
-				. '</head><body><main class="box"><h1>Trang này đã bị gỡ bỏ vĩnh viễn (410)</h1>'
-				. '<p>Đường dẫn mẫu không còn tồn tại trên hệ thống NEXXI Kids Fashion. Mời ba mẹ khám phá các thiết kế mới nhất cho bé yêu.</p>'
-				. '<div class="btns"><a class="p" href="' . $home_href . '">Về Trang Chủ</a><a class="s" href="' . $shop_href . '">Xem Cửa Hàng</a></div>'
-				. '</main></body></html>';
+		// 1. Trả 410 Gone cho trang mẫu mặc định WordPress, danh mục ngừng kinh doanh /collections/quan-chip và URL gõ nhầm /Cho.
+		if ( in_array( $norm_path, array( '/hello-world', '/sample-page', '/collections/quan-chip' ), true ) ) {
+			nexxi_seo_send_410_gone();
+		}
+		if ( is_404() && '/cho' === $norm_path ) {
+			nexxi_seo_send_410_gone();
+		}
+
+		// 2. Chuyển hướng 301 toàn bộ đường dẫn /author/* (kể cả user không tồn tại đang bị 404) & ?author= về Trang chủ.
+		if ( is_author() || '/author' === $norm_path || 0 === strpos( $norm_path, '/author/' ) ) {
+			wp_safe_redirect( home_url( '/' ), 301 );
 			exit;
 		}
 
-		// Chuyển hướng 301 mọi trang lưu trữ tác giả (/author/nexxi/, /?author=1) về Trang chủ.
-		if ( is_author() ) {
-			wp_safe_redirect( home_url( '/' ), 301 );
+		// 3. Dọn sạch RSS /feed/ dư thừa: chuyển hướng 301 comment feed & product/shop/product_cat/product_tag feed về trang HTML gốc; gắn noindex cho /feed/ bài viết chính.
+		if ( is_feed() ) {
+			if ( is_comment_feed() ) {
+				$target = is_singular() && get_queried_object_id() > 0 ? get_permalink( get_queried_object_id() ) : home_url( '/' );
+				wp_safe_redirect( $target ? $target : home_url( '/' ), 301 );
+				exit;
+			}
+			if ( is_singular( 'product' ) && get_queried_object_id() > 0 ) {
+				$target = get_permalink( get_queried_object_id() );
+				wp_safe_redirect( $target ? $target : home_url( '/cua-hang/' ), 301 );
+				exit;
+			}
+			if ( is_post_type_archive( 'product' ) || ( function_exists( 'is_shop' ) && is_shop() ) ) {
+				$shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/cua-hang/' );
+				wp_safe_redirect( $shop_url, 301 );
+				exit;
+			}
+			if ( is_tax( 'product_cat' ) || is_tax( 'product_tag' ) || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) ) {
+				$term  = get_queried_object();
+				$tlink = ( $term instanceof WP_Term ) ? get_term_link( $term ) : '';
+				$dest  = ( ! is_wp_error( $tlink ) && is_string( $tlink ) && '' !== $tlink ) ? $tlink : home_url( '/cua-hang/' );
+				wp_safe_redirect( $dest, 301 );
+				exit;
+			}
+			if ( ! headers_sent() ) {
+				header( 'X-Robots-Tag: noindex, follow', true );
+			}
+			return;
+		}
+
+		// Bắt thêm trường hợp /san-pham/<slug>/feed bị 404 (hoặc slug POS cũ kèm /feed).
+		if ( is_404() && preg_match( '#^/san-pham/([^/]+)/feed(?:/(?:rss|rss2|atom|rdf))?$#i', $norm_path, $feed_m ) ) {
+			$prod_url = nexxi_seo_resolve_live_product_by_legacy_slug( $feed_m[1] );
+			wp_safe_redirect( '' !== $prod_url ? $prod_url : home_url( '/cua-hang/' ), 301 );
+			exit;
+		}
+
+		// 4. Bóc sạch tham số chết ?flash_sale=1 trên trang chi tiết sản phẩm (khi không kèm tham số giỏ hàng/quảng cáo/preview).
+		if ( isset( $_GET['flash_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$keep_query = false;
+			$preserve   = array(
+				'add-to-cart',
+				'remove_item',
+				'undo_item',
+				'added-to-cart',
+				'quantity',
+				'variation_id',
+				'fbclid',
+				'gclid',
+				'ttclid',
+				'gad_source',
+				'gbraid',
+				'wbraid',
+				'msclkid',
+				'preview',
+				'preview_id',
+				'customize_changeset_uuid',
+			);
+			foreach ( array_keys( $_GET ) as $qkey ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$qk = strtolower( (string) $qkey );
+				if ( 0 === strpos( $qk, 'utm_' ) || in_array( $qk, $preserve, true ) ) {
+					$keep_query = true;
+					break;
+				}
+			}
+			if ( ! $keep_query ) {
+				if ( is_singular( 'product' ) && get_queried_object_id() > 0 ) {
+					$clean_permalink = get_permalink( get_queried_object_id() );
+					if ( is_string( $clean_permalink ) && '' !== $clean_permalink ) {
+						wp_safe_redirect( $clean_permalink, 301 );
+						exit;
+					}
+				} elseif ( is_404() && preg_match( '#^/san-pham/([^/]+)$#i', $norm_path, $sp_m ) ) {
+					$resolved_sp = nexxi_seo_resolve_live_product_by_legacy_slug( $sp_m[1] );
+					if ( '' !== $resolved_sp ) {
+						wp_safe_redirect( $resolved_sp, 301 );
+						exit;
+					}
+				}
+			}
+		}
+
+		// 5. Bộ Router Chuyển Hướng Di Sản Haravan/Sapo -> WooCommerce:
+		// 5a. Nhóm /collections/<slug>, /pages/<slug> và các trang chính sách / danh mục gốc ở root.
+		$static_301_routes = array(
+			'/collections/chan-vay'                    => '/danh-muc-san-pham/chan-vay/',
+			'/collections/dam-vay'                     => '/danh-muc-san-pham/dam/',
+			'/collections/set-bo'                      => '/danh-muc-san-pham/bo/',
+			'/collections/all'                         => '/cua-hang/',
+			'/collections/san-pham-moi'                => '/cua-hang/',
+			'/collections/be-gai'                      => '/cua-hang/',
+			'/collections/be-trai'                     => '/cua-hang/',
+			'/collections/new-arrival-be-gai'          => '/cua-hang/',
+			'/collections/new-arrival-be-trai'         => '/cua-hang/',
+			'/collections/frontpage'                   => '/',
+			'/pages/chinh-sach-doi-tra-va-hoan-tien'   => '/doi-tra/',
+			'/chinh-sach-doi-tra-va-hoan-tien'         => '/doi-tra/',
+			'/pages/chinh-sach-van-chuyen-va-giao-nhan' => '/van-chuyen/',
+			'/chinh-sach-van-chuyen-va-giao-nhan'      => '/van-chuyen/',
+			'/pages/chinh-sach-bao-mat-thong-tin'      => '/chinh-sach-bao-mat/',
+			'/chinh-sach-bao-mat-thong-tin'            => '/chinh-sach-bao-mat/',
+			'/pages/chinh-sach-kiem-hang'              => '/dieu-khoan-su-dung/',
+			'/chinh-sach-kiem-hang'                    => '/dieu-khoan-su-dung/',
+			'/pages/chinh-sach-thanh-toan'             => '/dieu-khoan-su-dung/',
+			'/chinh-sach-thanh-toan'                   => '/dieu-khoan-su-dung/',
+			'/pages/he-thong-cua-hang'                 => '/lien-he/',
+			'/he-thong-cua-hang'                       => '/lien-he/',
+			'/pages/chinh-sach-xu-ly-khieu-nai'        => '/lien-he/',
+			'/chinh-sach-xu-ly-khieu-nai'              => '/lien-he/',
+			'/pages/huong-dan-chon-size'               => '/#bang-size',
+			'/huong-dan-chon-size'                     => '/#bang-size',
+			'/chan-vay'                                => '/danh-muc-san-pham/chan-vay/',
+			'/be-gai'                                  => '/cua-hang/',
+			'/be-trai'                                 => '/cua-hang/',
+		);
+		if ( isset( $static_301_routes[ $norm_path ] ) && ( 0 === strpos( $norm_path, '/collections/' ) || 0 === strpos( $norm_path, '/pages/' ) || is_404() ) ) {
+			wp_safe_redirect( home_url( $static_301_routes[ $norm_path ] ), 301 );
+			exit;
+		}
+
+		// Dự phòng cho các đường dẫn /collections/<slug> khác nếu phát sinh từ backlink cũ.
+		if ( is_404() && preg_match( '#^/collections/([^/]+)$#i', $norm_path, $col_m ) ) {
+			$col_slug = sanitize_title( $col_m[1] );
+			if ( preg_match( '/(?:^|-)(?:quan-chip|do-lot|quan-lot)(?:-|$)/', $col_slug ) ) {
+				nexxi_seo_send_410_gone();
+			}
+			$col_dest = nexxi_seo_first_valid_product_cat_url( array( $col_slug ) );
+			wp_safe_redirect( $col_dest, 301 );
+			exit;
+		}
+
+		// 5b. Nhóm 232 URL sản phẩm di sản (/products/<slug> và /<slug> 1 cấp đang 404 khớp mẫu trang phục cũ).
+		$legacy_product_slug = '';
+		if ( preg_match( '#^/products/([^/]+)$#i', $norm_path, $prod_m ) ) {
+			$legacy_product_slug = $prod_m[1];
+		} elseif ( is_404() && false === strpos( $trimmed_raw, '/' ) && preg_match( '/^(?:\d{3,4}-|b-o-|ao-|dam-|vay-|chan-vay-|set-|bo-|quan-|so-mi-|loc-)/i', $trimmed_raw ) ) {
+			$legacy_product_slug = $trimmed_raw;
+		}
+
+		if ( '' !== $legacy_product_slug ) {
+			// Bước A: Ưu tiên map 301 1-đối-1 về sản phẩm hiện đang mở bán.
+			$live_product_url = nexxi_seo_resolve_live_product_by_legacy_slug( $legacy_product_slug );
+			if ( '' !== $live_product_url ) {
+				wp_safe_redirect( $live_product_url, 301 );
+				exit;
+			}
+
+			// Bước B: Trả 410 Gone cho nhóm đồ lót / quần chip đã ngừng kinh doanh vĩnh viễn.
+			if ( preg_match( '/(?:^|-)(?:quan-chip|do-lot|quan-lot)(?:-|$)/i', $legacy_product_slug ) ) {
+				nexxi_seo_send_410_gone();
+			}
+
+			// Bước C: Map ngữ nghĩa từ khóa trang phục về đúng danh mục con đang tồn tại (0 chuỗi redirect, 0 404).
+			$cat_dest_url = nexxi_seo_resolve_legacy_garment_category_url( $legacy_product_slug );
+			wp_safe_redirect( $cat_dest_url, 301 );
 			exit;
 		}
 	},
@@ -866,6 +1468,18 @@ function nexxi_seo_filter_robots_txt( $output, $public ) {
 		'/wp-content/uploads/woocommerce_uploads/',
 		'/*?add-to-cart=',
 		'/*?*add-to-cart=',
+		'/*?orderby=',
+		'/*?*orderby=',
+		'/*?filter_',
+		'/*?*filter_',
+		'/*?query_type_',
+		'/*?*query_type_',
+		'/*?min_price=',
+		'/*?*min_price=',
+		'/*?max_price=',
+		'/*?*max_price=',
+		'/*?flash_sale=',
+		'/*?*flash_sale=',
 		'/*?s=',
 		'/*?*s=',
 		'/search/',

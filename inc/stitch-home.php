@@ -45,11 +45,16 @@ function nexxi_kids_stitch_home( $html ) {
 	// Hero CTAs, category cards and lookbook buttons.
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-shop', 'href', nexxi_kids_shop_url() );
 	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-account', 'href', wc_get_page_permalink( 'myaccount' ) );
+	$html = nexxi_dom_set_attr( $html, 'nx:home-cta-account', 'rel', 'nofollow' );
 	foreach ( nexxi_kids_home_category_slugs() as $index => $slug ) {
-		$html = nexxi_dom_set_attr( $html, 'nx:home-cat-' . ( $index + 1 ), 'href', add_query_arg( 'cat_group', $slug, nexxi_kids_shop_url() ) );
+		$cat_sel = 'nx:home-cat-' . ( $index + 1 );
+		$html    = nexxi_dom_set_attr( $html, $cat_sel, 'href', add_query_arg( 'cat_group', $slug, nexxi_kids_shop_url() ) );
+		$html    = nexxi_dom_set_attr( $html, $cat_sel, 'rel', 'nofollow' );
 	}
 	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-1', 'href', add_query_arg( 'cat_group', 'dam-vay', nexxi_kids_shop_url() ) );
+	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-1', 'rel', 'nofollow' );
 	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'href', add_query_arg( 'cat_group', 'set-bo', nexxi_kids_shop_url() ) );
+	$html = nexxi_dom_set_attr( $html, 'nx:home-lookbook-2', 'rel', 'nofollow' );
 
 	// Flash Sale rail: 5 products per row, max 2 rows, horizontal scroll with left/right arrows.
 	$sale  = nexxi_kids_sale_products( 20 );
@@ -104,7 +109,7 @@ function nexxi_kids_stitch_home( $html ) {
 
 function nexxi_kids_home_tabs( array $products = array() ) {
 	$url = add_query_arg( 'orderby', 'popularity', nexxi_kids_shop_url() );
-	return '<a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( $url ) . '"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:scale-110">local_fire_department</span><span>Xem tất cả sản phẩm bán chạy →</span></a>';
+	return '<a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( $url ) . '" rel="nofollow"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:scale-110">local_fire_department</span><span>Xem tất cả sản phẩm bán chạy →</span></a>';
 }
 
 function nexxi_kids_home_commitments() {
@@ -121,7 +126,7 @@ function nexxi_kids_home_new_arrivals() {
 	if ( ! $products ) { return ''; }
 	$cards = '';
 	foreach ( $products as $product ) { $cards .= nexxi_kids_card_new_arrival( $product ); }
-	return '<section class="w-full px-margin-mobile md:px-margin py-space-xl"' . nexxi_studio_region_attr( 'home-new' ) . '><div class="flex flex-wrap items-end justify-between gap-space-md mb-space-lg"><div><span class="inline-flex items-center gap-1 px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm uppercase mb-1.5"' . nexxi_studio_attr( 'home-new__t1' ) . '>' . nexxi_studio_t( 'home-new__t1' ) . '</span><h2 class="font-headline-lg text-headline-lg text-primary"' . nexxi_studio_attr( 'home-new__t2' ) . '>' . nexxi_studio_t( 'home-new__t2' ) . '</h2></div><a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( add_query_arg( 'orderby', 'date', nexxi_kids_shop_url() ) ) . '"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:rotate-12">auto_awesome</span><span' . nexxi_studio_attr( 'home-new__t3' ) . '>' . nexxi_studio_t( 'home-new__t3' ) . '</span></a></div><div class="nexxi-home-new-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-space-md">' . $cards . '</div></section>';
+	return '<section class="w-full px-margin-mobile md:px-margin py-space-xl"' . nexxi_studio_region_attr( 'home-new' ) . '><div class="flex flex-wrap items-end justify-between gap-space-md mb-space-lg"><div><span class="inline-flex items-center gap-1 px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm uppercase mb-1.5"' . nexxi_studio_attr( 'home-new__t1' ) . '>' . nexxi_studio_t( 'home-new__t1' ) . '</span><h2 class="font-headline-lg text-headline-lg text-primary"' . nexxi_studio_attr( 'home-new__t2' ) . '>' . nexxi_studio_t( 'home-new__t2' ) . '</h2></div><a class="nexxi-btn-view-all group inline-flex items-center gap-2 px-space-lg py-2.5 rounded-full font-label-md text-label-md font-bold transition-all duration-300" href="' . esc_url( add_query_arg( 'orderby', 'date', nexxi_kids_shop_url() ) ) . '" rel="nofollow"><span class="material-symbols-outlined text-[18px] transition-transform duration-300 group-hover:rotate-12">auto_awesome</span><span' . nexxi_studio_attr( 'home-new__t3' ) . '>' . nexxi_studio_t( 'home-new__t3' ) . '</span></a></div><div class="nexxi-home-new-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-space-md">' . $cards . '</div></section>';
 }
 
 /** Latest approved 4–5★ product reviews; Stitch sample quotes when the shop has none yet. */
@@ -157,6 +162,7 @@ function nexxi_kids_size_guide_section() {
 	};
 	ob_start(); ?>
 <section class="w-full px-margin-mobile md:px-margin py-space-xl scroll-mt-32" id="size-guide"<?php echo nexxi_studio_region_attr( 'home-size' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
+<span id="bang-size" aria-hidden="true"></span>
 <div class="rounded-3xl bg-surface-container-low p-space-md md:p-space-lg shadow-sm">
 <div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md mb-space-lg">
 <div><div class="inline-flex items-center gap-1.5 px-space-md py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm uppercase mb-2"><span class="material-symbols-outlined text-[16px]">straighten</span><span data-nxe="home-size__t1"><?php echo nexxi_studio_t( 'home-size__t1' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span></div>
@@ -171,7 +177,7 @@ function nexxi_kids_size_guide_section() {
 <label class="block"><span class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Thông số chiều cao (cm):</span><span class="relative flex items-center"><input class="w-full bg-surface-container-lowest px-space-md py-2 rounded-lg font-title-md text-title-md text-primary outline-none focus:ring-2 focus:ring-secondary-container" data-advisor-height max="170" min="75" step="1" type="number" value="96" inputmode="numeric" autocomplete="off" data-lpignore="true"><span class="absolute right-3 font-label-sm text-label-sm text-outline">cm</span></span></label>
 </div>
 <div class="bg-surface-container-lowest rounded-lg p-space-sm flex items-center gap-space-xs"><span class="material-symbols-outlined text-secondary text-[22px]">thumb_up</span><div><p class="font-label-md text-label-md text-primary" data-advisor-title>Khuyên dùng: <strong class="text-secondary font-bold">Size 3</strong></p><p class="font-body-sm text-body-sm text-on-surface-variant" data-advisor-desc>Mẹ có thể chọn size lớn hơn nếu bé nằm giữa hai size.</p></div></div>
-<a class="w-full inline-flex items-center justify-center gap-1 px-space-md py-2.5 rounded-full bg-secondary text-on-secondary font-label-md text-label-md hover:bg-secondary-container transition-all" data-advisor-link href="<?php echo esc_url( nexxi_kids_shop_url() ); ?>"><span class="material-symbols-outlined text-[18px]">checkroom</span> Xem đồ vừa size của bé</a>
+<a class="w-full inline-flex items-center justify-center gap-1 px-space-md py-2.5 rounded-full bg-secondary text-on-secondary font-label-md text-label-md hover:bg-secondary-container transition-all" data-advisor-link href="<?php echo esc_url( nexxi_kids_shop_url() ); ?>" rel="nofollow"><span class="material-symbols-outlined text-[18px]">checkroom</span> Xem đồ vừa size của bé</a>
 </div>
 <div class="lg:col-span-8 bg-surface-container-lowest rounded-xl p-space-md shadow-sm grid grid-cols-1 md:grid-cols-2 gap-space-md overflow-x-auto">
 <?php echo $table( array_slice( $chart, 0, 8, true ) ) . $table( array_slice( $chart, 8, null, true ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>

@@ -294,14 +294,18 @@ function nexxi_kids_stitch_shop( $html ) {
 	return nexxi_dom_remove( $html, 'nx:shop-script' );
 }
 
-/** Sort options (Stitch labels) mapped to WooCommerce orderby. */
+/** Return ' rel="nofollow"' whenever a storefront URL carries query parameters (filters, sorting, on_sale). */
+function nexxi_kids_rel_nofollow_if_query( $url ) {
+	return false !== strpos( (string) $url, '?' ) ? ' rel="nofollow"' : '';
+}
+
+/** Sort options (Stitch labels) mapped to short WooCommerce orderby keys (avoids exposing ?orderby= URLs to crawlers). */
 function nexxi_kids_sort_select( $class, array $labels ) {
 	$state = nexxi_kids_shop_state();
 	$current = isset( $state['orderby'] ) ? $state['orderby'] : ( ! empty( $state['on_sale'] ) ? ( isset( $labels['sale'] ) ? 'sale' : 'popularity' ) : 'date' );
 	$out = '<select class="' . esc_attr( $class ) . '" data-nexxi-sort aria-label="Sắp xếp sản phẩm">';
 	foreach ( $labels as $value => $label ) {
-		$url = nexxi_kids_shop_link( array( 'orderby' => $value ) );
-		$out .= '<option value="' . esc_url( $url ) . '"' . selected( $value === $current, true, false ) . '>' . esc_html( $label ) . '</option>';
+		$out .= '<option value="' . esc_attr( $value ) . '"' . selected( $value === $current, true, false ) . '>' . esc_html( $label ) . '</option>';
 	}
 	return $out . '</select>';
 }
@@ -317,14 +321,15 @@ function nexxi_kids_shop_quickfilters() {
 	$groups = nexxi_kids_cat_groups();
 	$active_cg = isset( $state['cat_group'] ) ? $state['cat_group'] : '';
 	$active_term = nexxi_kids_current_shop_term();
+	$all_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() );
 	$out = '<div class="flex flex-wrap items-center justify-between gap-space-md w-full"><div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Bộ Sưu Tập:</span>';
-	$out .= '<a class="' . esc_attr( ! $active_cg && ! ( $active_term instanceof WP_Term ) ? $age_active : $idle ) . ' shrink-0" href="' . esc_url( nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() ) ) . '">Tất cả</a>';
+	$out .= '<a class="' . esc_attr( ! $active_cg && ! ( $active_term instanceof WP_Term ) ? $age_active : $idle ) . ' shrink-0" href="' . esc_url( $all_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $all_url ) . '>Tất cả</a>';
 	foreach ( $groups as $cg_key => $cg_info ) {
 		$is_on = ( $active_cg === $cg_key );
 		$cg_url = $is_on
 			? nexxi_kids_shop_link( array( 'cat_group' => null ), nexxi_kids_shop_url() )
 			: nexxi_kids_shop_link( array( 'cat_group' => $cg_key, 'product_cat' => null ), nexxi_kids_shop_url() );
-		$out .= '<a class="' . esc_attr( $is_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $cg_url ) . '">' . esc_html( $cg_info['short'] ) . '</a>';
+		$out .= '<a class="' . esc_attr( $is_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $cg_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $cg_url ) . '>' . esc_html( $cg_info['short'] ) . '</a>';
 	}
 	$out .= '</div><div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Danh Mục:</span>';
 	$current = function_exists( 'is_product_category' ) && is_product_category() ? get_queried_object_id() : 0;
@@ -332,12 +337,13 @@ function nexxi_kids_shop_quickfilters() {
 	foreach ( is_wp_error( $cats ) ? array() : $cats as $cat ) {
 		$active = $current === $cat->term_id;
 		$url = $active ? nexxi_kids_shop_link( array(), nexxi_kids_shop_url() ) : nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $cat ) );
-		$out .= '<a class="' . esc_attr( $active ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $url ) . '">' . ( $active ? '<span class="material-symbols-outlined text-[16px]">child_care</span> ' : '' ) . esc_html( $cat->name ) . '</a>';
+		$out .= '<a class="' . esc_attr( $active ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $url ) . '"' . nexxi_kids_rel_nofollow_if_query( $url ) . '>' . ( $active ? '<span class="material-symbols-outlined text-[16px]">child_care</span> ' : '' ) . esc_html( $cat->name ) . '</a>';
 	}
 	$out .= '</div></div><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md pt-space-xs"><div class="flex items-center gap-space-xs overflow-x-auto pb-1 max-w-full"><span class="font-label-sm text-label-sm text-outline mr-space-xs shrink-0 uppercase tracking-wider">Kiểu dáng:</span>';
 	$styles = nexxi_kids_chosen( 'kieu-dang' );
 	foreach ( nexxi_kids_attribute_terms( 'kieu-dang' ) as $t ) {
-		$out .= '<a class="' . esc_attr( in_array( $t->slug, $styles, true ) ? $style_active : $style_idle ) . '" href="' . esc_url( nexxi_kids_toggle_link( 'kieu-dang', $t->slug ) ) . '">' . esc_html( $t->name ) . '</a>';
+		$t_url = nexxi_kids_toggle_link( 'kieu-dang', $t->slug );
+		$out .= '<a class="' . esc_attr( in_array( $t->slug, $styles, true ) ? $style_active : $style_idle ) . '" href="' . esc_url( $t_url ) . '" rel="nofollow">' . esc_html( $t->name ) . '</a>';
 	}
 	$out .= '</div><div class="flex items-center gap-space-sm shrink-0 w-full md:w-auto justify-end"><span class="font-label-sm text-label-sm text-outline">Sắp xếp:</span><div class="relative inline-block">';
 	$out .= nexxi_kids_sort_select( 'appearance-none bg-surface-container-lowest text-on-surface font-label-md text-label-md py-1.5 pl-space-md pr-space-xl rounded-full shadow-sm focus:outline-none cursor-pointer', array( 'date' => '✨ Mới nhất tuần này', 'popularity' => '🔥 Bán chạy nhất mẹ chọn', 'sale' => '🏷️ Ưu đãi tốt nhất', 'price' => 'Giá tăng dần', 'price-desc' => 'Giá giảm dần' ) );
@@ -367,7 +373,7 @@ function nexxi_kids_filter_checks( $slug, $title, $icon ) {
 function nexxi_kids_shop_sidebar() {
 	$state = nexxi_kids_shop_state();
 	$reset = nexxi_kids_shop_link( array_fill_keys( array_diff( array_keys( $state ), array( 's', 'post_type', 'on_sale' ) ), null ) );
-	$out = '<div class="nexxi-shop-filter-card bg-surface-container-lowest rounded-lg p-space-lg shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] space-y-space-lg"><div class="flex items-center justify-between pb-space-xs"><button type="button" class="nexxi-mobile-filter-btn flex items-center gap-space-xs text-primary font-title-md text-title-md text-left" data-nexxi-mobile-filter-toggle aria-expanded="false"><span class="material-symbols-outlined text-secondary">tune</span><span>Bộ Lọc Cho Mẹ</span><span class="nexxi-mobile-filter-chevron material-symbols-outlined text-[18px] text-outline lg:hidden">expand_more</span></button><a class="font-label-sm text-label-sm text-secondary hover:underline cursor-pointer" href="' . esc_url( $reset ) . '">Thiết lập lại</a></div><div class="nexxi-mobile-filter-body space-y-space-lg" data-nexxi-mobile-filter-body>';
+	$out = '<div class="nexxi-shop-filter-card bg-surface-container-lowest rounded-lg p-space-lg shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] space-y-space-lg"><div class="flex items-center justify-between pb-space-xs"><button type="button" class="nexxi-mobile-filter-btn flex items-center gap-space-xs text-primary font-title-md text-title-md text-left" data-nexxi-mobile-filter-toggle aria-expanded="false"><span class="material-symbols-outlined text-secondary">tune</span><span>Bộ Lọc Cho Mẹ</span><span class="nexxi-mobile-filter-chevron material-symbols-outlined text-[18px] text-outline lg:hidden">expand_more</span></button><a class="font-label-sm text-label-sm text-secondary hover:underline cursor-pointer" href="' . esc_url( $reset ) . '"' . nexxi_kids_rel_nofollow_if_query( $reset ) . '>Thiết lập lại</a></div><div class="nexxi-mobile-filter-body space-y-space-lg" data-nexxi-mobile-filter-body>';
 	$out .= nexxi_kids_filter_checks( 'size', 'Size & Cân Nặng Bé', 'straighten' );
 	$out .= nexxi_kids_filter_checks( 'chat-lieu', 'Chất Liệu', 'checkroom' );
 
@@ -377,7 +383,7 @@ function nexxi_kids_shop_sidebar() {
 		$out .= '<div class="space-y-space-sm pt-space-xs"><h3 class="font-headline-sm text-headline-sm text-primary flex items-center justify-between">Màu Sắc Kẹo Ngọt<span class="material-symbols-outlined text-[18px] text-outline">palette</span></h3><div class="grid grid-cols-2 gap-space-xs pt-1">';
 		foreach ( $colors as $t ) {
 			$on = in_array( $t->slug, $chosen, true );
-			$out .= '<a class="flex items-center gap-2 p-1.5 rounded-full ' . ( $on ? 'bg-secondary-fixed text-on-secondary-fixed font-bold' : 'bg-surface-container-low hover:bg-surface-container' ) . ' text-left transition-all" href="' . esc_url( nexxi_kids_toggle_link( 'mau-sac', $t->slug ) ) . '" aria-pressed="' . ( $on ? 'true' : 'false' ) . '"><span class="w-4 h-4 rounded-full shadow-sm shrink-0" style="background:' . esc_attr( Nexxi_Kids_Catalog::color_hex( $t ) ) . '"></span><span class="font-body-sm text-body-sm ' . ( $on ? '' : 'text-on-surface' ) . ' truncate">' . esc_html( $t->name ) . '</span></a>';
+			$out .= '<a class="flex items-center gap-2 p-1.5 rounded-full ' . ( $on ? 'bg-secondary-fixed text-on-secondary-fixed font-bold' : 'bg-surface-container-low hover:bg-surface-container' ) . ' text-left transition-all" href="' . esc_url( nexxi_kids_toggle_link( 'mau-sac', $t->slug ) ) . '" rel="nofollow" aria-pressed="' . ( $on ? 'true' : 'false' ) . '"><span class="w-4 h-4 rounded-full shadow-sm shrink-0" style="background:' . esc_attr( Nexxi_Kids_Catalog::color_hex( $t ) ) . '"></span><span class="font-body-sm text-body-sm ' . ( $on ? '' : 'text-on-surface' ) . ' truncate">' . esc_html( $t->name ) . '</span></a>';
 		}
 		$out .= '</div></div>';
 	}
@@ -421,7 +427,7 @@ function nexxi_kids_shop_status( $shown, $total ) {
 	}
 	$out .= '<span class="font-label-sm text-label-sm text-outline">Đang chọn:</span>';
 	foreach ( $chips as $chip ) {
-		$out .= '<span class="inline-flex items-center gap-1 bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-space-sm py-1 rounded-full">' . esc_html( $chip[0] ) . ' <a class="hover:text-secondary flex items-center" href="' . esc_url( $chip[1] ) . '" aria-label="Bỏ lọc ' . esc_attr( $chip[0] ) . '"><span class="material-symbols-outlined text-[14px]">close</span></a></span>';
+		$out .= '<span class="inline-flex items-center gap-1 bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-space-sm py-1 rounded-full">' . esc_html( $chip[0] ) . ' <a class="hover:text-secondary flex items-center" href="' . esc_url( $chip[1] ) . '"' . nexxi_kids_rel_nofollow_if_query( $chip[1] ) . ' aria-label="Bỏ lọc ' . esc_attr( $chip[0] ) . '"><span class="material-symbols-outlined text-[14px]">close</span></a></span>';
 	}
 	return $out . '<a class="font-label-sm text-label-sm text-outline hover:text-secondary underline ml-1" href="' . esc_url( nexxi_kids_shop_url() ) . '">Xóa tất cả</a></div>';
 }
@@ -436,15 +442,22 @@ function nexxi_kids_pagination() {
 	$out = '<nav data-nx="shop-pagination" aria-label="Pagination" class="pt-space-xl flex flex-col sm:flex-row items-center justify-between gap-space-md"><div class="font-body-sm text-body-sm text-outline">Hiển thị trang ' . $page . ' trong ' . $pages . ' trang danh mục</div>';
 	if ( $pages <= 1 ) { return $out . '</nav>'; }
 	$out .= '<div class="flex items-center gap-space-xs">';
-	if ( $page > 1 ) { $out .= '<a class="px-space-md h-10 rounded-full bg-surface-container-lowest hover:bg-surface-container text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm transition-colors" href="' . esc_url( get_pagenum_link( $page - 1 ) ) . '"><span class="material-symbols-outlined text-[18px]">arrow_back</span><span>Trang Trước</span></a>'; }
+	if ( $page > 1 ) {
+		$prev_url = get_pagenum_link( $page - 1 );
+		$out .= '<a class="px-space-md h-10 rounded-full bg-surface-container-lowest hover:bg-surface-container text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm transition-colors" href="' . esc_url( $prev_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $prev_url ) . '><span class="material-symbols-outlined text-[18px]">arrow_back</span><span>Trang Trước</span></a>';
+	}
 	$last = 0;
 	for ( $i = 1; $i <= $pages; $i++ ) {
 		if ( 1 !== $i && $pages !== $i && abs( $i - $page ) > 1 ) { continue; }
 		if ( $last && $i - $last > 1 ) { $out .= '<span class="px-1 text-outline font-bold">...</span>'; }
-		$out .= $i === $page ? '<span class="' . esc_attr( $active ) . '" aria-current="page">' . $i . '</span>' : '<a class="' . esc_attr( $idle ) . '" href="' . esc_url( get_pagenum_link( $i ) ) . '">' . $i . '</a>';
+		$p_url = get_pagenum_link( $i );
+		$out .= $i === $page ? '<span class="' . esc_attr( $active ) . '" aria-current="page">' . $i . '</span>' : '<a class="' . esc_attr( $idle ) . '" href="' . esc_url( $p_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $p_url ) . '>' . $i . '</a>';
 		$last = $i;
 	}
-	if ( $page < $pages ) { $out .= '<a class="px-space-md h-10 rounded-full bg-surface-container-lowest hover:bg-surface-container text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm transition-colors" href="' . esc_url( get_pagenum_link( $page + 1 ) ) . '"><span>Tiếp Theo</span><span class="material-symbols-outlined text-[18px]">arrow_forward</span></a>'; }
+	if ( $page < $pages ) {
+		$next_url = get_pagenum_link( $page + 1 );
+		$out .= '<a class="px-space-md h-10 rounded-full bg-surface-container-lowest hover:bg-surface-container text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm transition-colors" href="' . esc_url( $next_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $next_url ) . '><span>Tiếp Theo</span><span class="material-symbols-outlined text-[18px]">arrow_forward</span></a>';
+	}
 	return $out . '</div></nav>';
 }
 
@@ -467,13 +480,13 @@ function nexxi_kids_stitch_flash( $html ) {
 	$current = function_exists( 'is_product_category' ) && is_product_category() ? get_queried_object_id() : 0;
 	$active = 'filter-btn active bg-primary text-on-primary px-space-md py-2 rounded-full transition-all shadow-sm flex items-center gap-1.5';
 	$idle = 'filter-btn bg-surface-container hover:bg-surface-container-high text-on-surface-variant px-space-md py-2 rounded-full transition-all flex items-center gap-1';
-	$chips = '<a class="' . esc_attr( $current ? $idle : $active ) . '" href="' . esc_url( nexxi_kids_flash_url() ) . '"><span>Tất Cả Deal Hot</span><span class="text-xs bg-secondary-container text-on-secondary px-1.5 py-0.5 rounded-full font-bold">' . count( $sale_products ) . '</span></a>';
+	$chips = '<a class="' . esc_attr( $current ? $idle : $active ) . '" href="' . esc_url( nexxi_kids_flash_url() ) . '" rel="nofollow"><span>Tất Cả Deal Hot</span><span class="text-xs bg-secondary-container text-on-secondary px-1.5 py-0.5 rounded-full font-bold">' . count( $sale_products ) . '</span></a>';
 	$cats = $sale_products ? wp_get_object_terms( $sale_products, 'product_cat' ) : array();
 	$seen = array();
 	foreach ( is_wp_error( $cats ) ? array() : $cats as $cat ) {
 		if ( isset( $seen[ $cat->term_id ] ) ) { continue; }
 		$seen[ $cat->term_id ] = true;
-		$chips .= '<a class="' . esc_attr( $current === $cat->term_id ? $active : $idle ) . '" href="' . esc_url( add_query_arg( 'on_sale', '1', get_term_link( $cat ) ) ) . '"><span>' . esc_html( $cat->name ) . '</span></a>';
+		$chips .= '<a class="' . esc_attr( $current === $cat->term_id ? $active : $idle ) . '" href="' . esc_url( add_query_arg( 'on_sale', '1', get_term_link( $cat ) ) ) . '" rel="nofollow"><span>' . esc_html( $cat->name ) . '</span></a>';
 	}
 	$html = nexxi_dom_set_inner( $html, 'nx:flash-filters', $chips );
 

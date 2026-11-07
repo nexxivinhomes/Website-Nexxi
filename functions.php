@@ -2,7 +2,7 @@
 /** NEXXI Kids theme setup and helpers. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'NEXXI_KIDS_VERSION', '1.0.3' );
+define( 'NEXXI_KIDS_VERSION', '1.0.4' );
 foreach ( array( 'performance', 'meta-pixel', 'stitch-dom', 'stitch-data', 'stitch-components', 'stitch-home', 'stitch-shop', 'stitch-product', 'stitch-pages', 'stitch-blog', 'stitch', 'stitch-cart', 'stitch-account', 'setup-pages', 'customer-crm-admin', 'flash-sale-admin', 'bulk-discount-admin', 'combo-promo', 'pancake-sync-admin', 'web-product-manager-admin', 'sku-seo-sync', 'zalo-order-notify', 'studio', 'studio-customizer' ) as $nexxi_kids_module ) {
 	if ( 'pancake-sync-admin' === $nexxi_kids_module && defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
 		continue;
@@ -22,7 +22,6 @@ function nexxi_kids_setup() {
 	add_theme_support( 'post-thumbnails' );
 	add_theme_support( 'custom-logo', array( 'height' => 90, 'width' => 420, 'flex-height' => true, 'flex-width' => true ) );
 	add_theme_support( 'html5', array( 'search-form', 'comment-form', 'comment-list', 'gallery', 'caption', 'style', 'script', 'navigation-widgets' ) );
-	add_theme_support( 'automatic-feed-links' );
 	add_theme_support( 'woocommerce', array( 'thumbnail_image_width' => 480, 'single_image_width' => 760, 'product_grid' => array( 'default_rows' => 3, 'min_rows' => 1, 'max_rows' => 8, 'default_columns' => 4, 'min_columns' => 2, 'max_columns' => 5 ) ) );
 	add_theme_support( 'wc-product-gallery-zoom' );
 	add_theme_support( 'wc-product-gallery-lightbox' );
