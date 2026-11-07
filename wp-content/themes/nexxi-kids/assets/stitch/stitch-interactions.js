@@ -47,10 +47,14 @@
     if (!config.ajaxAdd) throw new Error('no-endpoint');
     const body = new URLSearchParams({product_id: String(productId), quantity: String(Math.max(1, quantity)), buy_now: buyNow ? '1' : '0'});
     const response = await fetch(config.ajaxAdd, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body});
+    const rawAtcErr = response.headers.get('X-Nexxi-ATC-Error') || '';
     const data = await response.json().catch(() => null);
     if (!response.ok || !data || data.error) {
       const error = new Error('add-failed');
       error.productUrl = data && data.product_url;
+      if (rawAtcErr) {
+        try { error.serverMessage = decodeURIComponent(rawAtcErr).trim(); } catch (e) { error.serverMessage = ''; }
+      }
       throw error;
     }
     const fragments = data.fragments || {};
@@ -62,7 +66,8 @@
   const busy = (button, state) => { if (button) { button.classList.toggle('is-loading', state); button.setAttribute('aria-busy', state ? 'true' : 'false'); } };
   const addedToast = () => toast('Đã thêm vào giỏ hàng', {icon: 'check_circle', duration: 2200});
   const failedToast = error => {
-    toast('Mẫu này vừa hết hàng hoặc chưa thể thêm, mẹ thử chọn size khác nhé.', {error: true, duration: 4200});
+    const msg = (error && error.serverMessage) ? error.serverMessage : 'Mẫu này vừa hết hàng hoặc chưa thể thêm, mẹ thử chọn size khác nhé.';
+    toast(msg, {error: true, duration: 4500});
     return error;
   };
 

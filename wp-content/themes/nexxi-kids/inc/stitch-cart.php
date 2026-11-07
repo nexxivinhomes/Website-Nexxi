@@ -3,12 +3,93 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /**
+ * Inspect real stock / availability status of a cart item (matching WC_Cart::check_cart_item_stock 1-to-1,
+ * including held stock from pending orders).
+ *
+ * @param array        $cart_item WooCommerce cart item array.
+ * @param WC_Cart|null $cart      Optional WC_Cart instance.
+ * @return array{type:string,available:int,message:string}|null Null if valid, or issue descriptor array.
+ */
+function nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart = null ) {
+	$product = ( is_array( $cart_item ) && isset( $cart_item['data'] ) && $cart_item['data'] instanceof WC_Product ) ? $cart_item['data'] : null;
+	if ( ! $product || ! $product->exists() || 'trash' === $product->get_status() ) {
+		return array(
+			'type'      => 'out_of_stock',
+			'available' => 0,
+			'message'   => '⚠️ Phân loại này vừa hết hàng — Vui lòng bấm 🗑️ xóa hoặc chọn size khác để thanh toán',
+		);
+	}
+
+	if ( ! $product->is_in_stock() ) {
+		return array(
+			'type'      => 'out_of_stock',
+			'available' => 0,
+			'message'   => '⚠️ Phân loại này vừa hết hàng — Vui lòng bấm 🗑️ xóa hoặc chọn size khác để thanh toán',
+		);
+	}
+
+	$cart_obj       = ( $cart instanceof WC_Cart ) ? $cart : ( function_exists( 'WC' ) && WC()->cart ? WC()->cart : null );
+	$qty_in_cart_mp = $cart_obj ? $cart_obj->get_cart_item_quantities() : array();
+	$managed_id     = $product->get_stock_managed_by_id();
+	$total_item_qty = isset( $qty_in_cart_mp[ $managed_id ] )
+		? (int) $qty_in_cart_mp[ $managed_id ]
+		: max( 1, (int) ( $cart_item['quantity'] ?? 1 ) );
+
+	if ( $product->managing_stock() && ! $product->backorders_allowed() ) {
+		$raw_stock  = (int) $product->get_stock_quantity();
+		$held_stock = 0;
+		if ( function_exists( 'wc_get_held_stock_quantity' ) && function_exists( 'WC' ) && WC()->session ) {
+			$order_awaiting = absint( WC()->session->get( 'order_awaiting_payment' ) );
+			$session_oid    = $order_awaiting ? $order_awaiting : absint( WC()->session->get( 'store_api_draft_order', 0 ) );
+			$held_stock     = max( 0, (int) wc_get_held_stock_quantity( $product, $session_oid ) );
+		}
+		$avail = max( 0, $raw_stock - $held_stock );
+
+		if ( ! $product->has_enough_stock( $total_item_qty ) || $raw_stock < ( $held_stock + $total_item_qty ) ) {
+			if ( $avail <= 0 ) {
+				return array(
+					'type'      => 'out_of_stock',
+					'available' => 0,
+					'message'   => '⚠️ Phân loại này vừa hết hàng — Vui lòng bấm 🗑️ xóa hoặc chọn size khác để thanh toán',
+				);
+			}
+			return array(
+				'type'      => 'insufficient_stock',
+				'available' => $avail,
+				'message'   => sprintf( '⚠️ Kho chỉ còn %d sản phẩm — Vui lòng giảm số lượng', $avail ),
+			);
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Render inline red alert badge below variation chips for an out-of-stock / insufficient-stock cart row.
+ */
+function nexxi_kids_render_cart_item_stock_badge( $stock_issue ) {
+	if ( empty( $stock_issue ) || ! is_array( $stock_issue ) || empty( $stock_issue['message'] ) ) {
+		return '';
+	}
+	return '<div class="nexxi-cart-stock-alert" style="margin-top:4px;display:inline-flex;align-items:center;gap:6px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:10px;padding:5px 10px;font-size:12px;font-weight:700;line-height:1.4;">' . esc_html( $stock_issue['message'] ) . '</div>';
+}
+
+/**
  * Render an always-visible [-][qty][+] stepper control for Cart items.
  */
-function nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_val, $is_split = false ) {
+function nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_val, $is_split = false, $stock_issue = null ) {
 	$max_qty = $product ? (int) $product->get_max_purchase_quantity() : -1;
-	$max_attr = $max_qty > 0 ? (string) $max_qty : '';
-	$p_name  = $product ? $product->get_name() : '';
+	if ( is_array( $stock_issue ) && isset( $stock_issue['available'] ) ) {
+		$avail_cap = max( 0, (int) $stock_issue['available'] );
+		$max_qty   = ( $max_qty > 0 ) ? min( $max_qty, $avail_cap ) : $avail_cap;
+	}
+	$disable_plus = ( ! $product || ! $product->is_in_stock() || 0 === $max_qty );
+	$max_attr     = $max_qty > 0 ? (string) $max_qty : ( 0 === $max_qty ? '0' : '' );
+	$p_name       = $product ? $product->get_name() : '';
+	$plus_style   = 'width:30px;height:30px;border-radius:999px;border:none;background:#fd6a49;color:#ffffff;font-weight:800;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(253,106,73,0.28);flex-shrink:0;user-select:none;transition:background .15s,color .15s;';
+	if ( $disable_plus ) {
+		$plus_style .= 'opacity:0.4;cursor:not-allowed;box-shadow:none;';
+	}
 	ob_start();
 	?>
 	<div class="nexxi-qty-stepper" style="display:inline-flex;align-items:center;background:#f3f1ed;border:1.5px solid #e4e2de;border-radius:999px;padding:2px;height:38px;box-sizing:border-box;">
@@ -35,9 +116,9 @@ function nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_val,
 			style="width:40px;min-height:30px;height:30px;border:none;background:transparent;text-align:center;font-weight:700;font-size:14px;color:#031444;padding:0;margin:0;outline:none;-moz-appearance:textfield;appearance:textfield;">
 		<button type="button"
 			class="nexxi-qty-step-btn"
-			onclick="window.nexxiStepCartQty && window.nexxiStepCartQty(this, 1)"
+			<?php if ( $disable_plus ) : ?>disabled aria-disabled="true"<?php else : ?>onclick="window.nexxiStepCartQty && window.nexxiStepCartQty(this, 1)"<?php endif; ?>
 			aria-label="Tăng số lượng <?php echo esc_attr( $p_name ); ?>"
-			style="width:30px;height:30px;border-radius:999px;border:none;background:#fd6a49;color:#ffffff;font-weight:800;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(253,106,73,0.28);flex-shrink:0;user-select:none;transition:background .15s,color .15s;">
+			style="<?php echo esc_attr( $plus_style ); ?>">
 			&#43;
 		</button>
 	</div>
@@ -49,6 +130,10 @@ function nexxi_kids_stitch_cart_content() {
 	if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return ''; }
 	ob_start();
 	$cart = WC()->cart;
+	$req_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : 'GET';
+	if ( 'GET' === $req_method && ! $cart->is_empty() ) {
+		do_action( 'woocommerce_check_cart_items' );
+	}
 	$count = $cart->get_cart_contents_count();
 	$subtotal = (float) $cart->get_displayed_subtotal();
 	$remaining = 0;
@@ -118,8 +203,10 @@ function nexxi_kids_stitch_cart_content() {
 										$title         = nexxi_kids_cart_item_title( $cart_item );
 										$has_item_sale = ! empty( $cline['reg_price'] ) && (float) $cline['reg_price'] > (float) $cline['unit_price'];
 										$item_sale_pct = (int) ( $cline['prod_fs_pct'] ?? 0 );
+										$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
+										$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 										?>
-										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
+										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
 											<div class="w-full md:col-span-6 flex items-center gap-space-md">
 												<a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>">
 													<?php echo wp_kses_post( $image ); ?>
@@ -138,6 +225,7 @@ function nexxi_kids_stitch_cart_content() {
 													</div>
 													<a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a>
 													<?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+													<?php echo nexxi_kids_render_cart_item_stock_badge( $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 												</div>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
@@ -146,7 +234,7 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng trong Combo:</span>
-												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_in_combo, true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_in_combo, true, $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm">
 												<div class="text-right">
@@ -186,9 +274,11 @@ function nexxi_kids_stitch_cart_content() {
 										$category      = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
 										$title         = nexxi_kids_cart_item_title( $cart_item );
 										$has_left_sale = ! empty( $litem['reg_price'] ) && (float) $litem['reg_price'] > (float) $litem['unit_price'];
+										$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
+										$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 										?>
-										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
-											<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?> · Sản phẩm lẻ</span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
+										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
+											<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?> · Sản phẩm lẻ</span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><?php echo nexxi_kids_render_cart_item_stock_badge( $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
 												<span class="md:hidden text-outline">Đơn giá:</span>
 												<div class="text-right md:text-center">
@@ -200,7 +290,7 @@ function nexxi_kids_stitch_cart_content() {
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 												<span class="md:hidden text-outline">Số lượng lẻ:</span>
-												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_left, true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_left, true, $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 											</div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 										</div>
@@ -221,9 +311,11 @@ function nexxi_kids_stitch_cart_content() {
 					$category = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'NEXXI Kids';
 					$title = nexxi_kids_cart_item_title( $cart_item );
 					$eff_row = function_exists( 'nexxi_kids_get_cart_item_effective_prices' ) ? nexxi_kids_get_cart_item_effective_prices( $cart_item ) : array( 'regular_price' => (float) $product->get_regular_price(), 'effective_price' => (float) $product->get_price(), 'on_sale' => false );
+					$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
+					$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 					?>
-					<div class="bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center">
-						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
+					<div class="bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
+						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><?php echo nexxi_kids_render_cart_item_stock_badge( $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
 							<span class="md:hidden text-outline">Đơn giá:</span>
 							<div class="text-right md:text-center">
@@ -235,7 +327,7 @@ function nexxi_kids_stitch_cart_content() {
 						</div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center">
 							<span class="md:hidden text-outline">Số lượng:</span>
-							<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $quantity, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $quantity, false, $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 						</div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] * (int) $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 					</div>
@@ -246,8 +338,8 @@ function nexxi_kids_stitch_cart_content() {
 				.nexxi-cart-qty::-webkit-outer-spin-button,
 				.nexxi-cart-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 				.nexxi-cart-qty[type=number] { -moz-appearance: textfield; appearance: textfield; }
-				.nexxi-qty-step-btn:hover { filter: brightness(0.95); transform: scale(1.04); }
-				.nexxi-qty-step-btn:active { transform: scale(0.96); }
+				.nexxi-qty-step-btn:not([disabled]):hover { filter: brightness(0.95); transform: scale(1.04); }
+				.nexxi-qty-step-btn:not([disabled]):active { transform: scale(0.96); }
 				#nexxi-stitch-cart-main.is-updating-cart .nexxi-stitch-cart-totals { opacity: 0.65; transition: opacity .15s ease; }
 				</style>
 				<script>
@@ -281,8 +373,13 @@ function nexxi_kids_stitch_cart_content() {
 					.then(function(res) { return res.text(); })
 					.then(function(html) {
 						var doc = new DOMParser().parseFromString(html, 'text/html');
-						// Strip "Giỏ hàng đã được cập nhật." notice from silent AJAX refresh so layout doesn't jump
-						doc.querySelectorAll('.woocommerce-message, .woocommerce-notices-wrapper').forEach(function(n) { n.remove(); });
+						// Strip only success ".woocommerce-message", preserve ".woocommerce-error" and ".woocommerce-info"
+						doc.querySelectorAll('.woocommerce-message').forEach(function(n) { n.remove(); });
+						doc.querySelectorAll('.woocommerce-notices-wrapper').forEach(function(w) {
+							if (!w.querySelector('.woocommerce-error, .woocommerce-info') && !w.textContent.trim()) {
+								w.remove();
+							}
+						});
 						var newMain = doc.getElementById('nexxi-stitch-cart-main') || doc.querySelector('main');
 						if (newMain && mainEl) {
 							mainEl.innerHTML = newMain.innerHTML;
@@ -301,6 +398,7 @@ function nexxi_kids_stitch_cart_content() {
 					});
 				};
 				window.nexxiStepCartQty = function(btn, delta) {
+					if (btn && btn.disabled) return;
 					var wrap = btn && btn.closest ? btn.closest('.nexxi-qty-stepper') : null;
 					var input = wrap ? wrap.querySelector('.nexxi-cart-qty') : null;
 					if (!input) return;
@@ -308,9 +406,10 @@ function nexxi_kids_stitch_cart_content() {
 					if (isNaN(cur)) cur = 0;
 					var minAttr = input.getAttribute('min');
 					var maxAttr = input.getAttribute('max');
+					if (delta > 0 && maxAttr === '0') return;
 					var min = (minAttr !== null && minAttr !== '') ? parseInt(minAttr, 10) : 0;
 					var max = (maxAttr !== null && maxAttr !== '' && parseInt(maxAttr, 10) > 0) ? parseInt(maxAttr, 10) : 9999;
-					var next = Math.max(min, Math.min(max, cur + delta));
+					var next = (delta < 0 && maxAttr === '0') ? Math.max(min, cur + delta) : Math.max(min, Math.min(max, cur + delta));
 					if (next === cur) return;
 					input.value = next;
 					var key = input.getAttribute('data-cart-key');
@@ -421,3 +520,99 @@ function nexxi_kids_order_item_name( $item, $cart_item_key, $values ) {
 	}
 }
 add_action( 'woocommerce_checkout_create_order_line_item', 'nexxi_kids_order_item_name', 20, 3 );
+
+/**
+ * Format "(Màu: ..., Size: ...)" suffix for a product variation so WooCommerce stock/cart error notices
+ * clearly identify which classification is out of stock when woocommerce_product_variation_title_include_attributes is false.
+ */
+function nexxi_kids_variation_label_suffix( $product ) {
+	if ( ! ( $product instanceof WC_Product ) || ! $product->is_type( 'variation' ) ) {
+		return '';
+	}
+	$attrs = $product->get_variation_attributes();
+	if ( empty( $attrs ) || ! is_array( $attrs ) ) {
+		return '';
+	}
+	$parts = array();
+	foreach ( $attrs as $key => $value ) {
+		if ( '' === (string) $value ) {
+			continue;
+		}
+		$name = 0 === strpos( $key, 'attribute_' ) ? substr( $key, 10 ) : $key;
+		if ( taxonomy_exists( $name ) ) {
+			$term  = get_term_by( 'slug', $value, $name );
+			$value = ( $term && ! is_wp_error( $term ) ) ? $term->name : $value;
+		}
+		$label = wc_attribute_label( $name, $product );
+		if ( function_exists( 'nexxi_kids_attr_label' ) ) {
+			$label = nexxi_kids_attr_label( $label );
+		}
+		$parts[] = $label . ': ' . $value;
+	}
+	return ! empty( $parts ) ? ' (' . implode( ', ', $parts ) . ')' : '';
+}
+
+/**
+ * Full product title with variation classification suffix "(Màu: ..., Size: ...)" for error messages.
+ */
+function nexxi_kids_product_name_with_variation( $product ) {
+	if ( ! ( $product instanceof WC_Product ) ) {
+		return '';
+	}
+	if ( ! $product->is_type( 'variation' ) ) {
+		return $product->get_name();
+	}
+	$parent = wc_get_product( $product->get_parent_id() );
+	$base   = $parent ? $parent->get_name() : $product->get_name();
+	$suffix = nexxi_kids_variation_label_suffix( $product );
+	if ( '' !== $suffix && false === strpos( $base, $suffix ) ) {
+		return $base . $suffix;
+	}
+	return $base;
+}
+
+add_action(
+	'woocommerce_check_cart_items',
+	static function () {
+		$GLOBALS['nexxi_in_check_cart_items'] = true;
+	},
+	1
+);
+
+add_action(
+	'woocommerce_check_cart_items',
+	static function () {
+		$GLOBALS['nexxi_in_check_cart_items'] = false;
+	},
+	999
+);
+
+add_filter(
+	'woocommerce_product_variation_get_name',
+	static function ( $name, $product ) {
+		if ( ! empty( $GLOBALS['nexxi_in_check_cart_items'] ) && $product instanceof WC_Product ) {
+			return nexxi_kids_product_name_with_variation( $product );
+		}
+		return $name;
+	},
+	20,
+	2
+);
+
+/**
+ * Inject variation classification "(Màu: ..., Size: ...)" into add-to-cart out-of-stock / insufficient-stock messages.
+ */
+function nexxi_kids_enrich_variation_stock_error_msg( $message, $product_data ) {
+	if ( ! ( $product_data instanceof WC_Product ) || ! $product_data->is_type( 'variation' ) ) {
+		return $message;
+	}
+	$plain_name = $product_data->get_name();
+	$full_name  = nexxi_kids_product_name_with_variation( $product_data );
+	if ( '' !== $plain_name && $full_name !== $plain_name && false === strpos( (string) $message, $full_name ) ) {
+		$message = str_replace( $plain_name, $full_name, (string) $message );
+	}
+	return $message;
+}
+add_filter( 'woocommerce_cart_product_out_of_stock_message', 'nexxi_kids_enrich_variation_stock_error_msg', 20, 2 );
+add_filter( 'woocommerce_cart_product_not_enough_stock_message', 'nexxi_kids_enrich_variation_stock_error_msg', 20, 2 );
+add_filter( 'woocommerce_cart_product_cannot_add_another_message', 'nexxi_kids_enrich_variation_stock_error_msg', 20, 2 );

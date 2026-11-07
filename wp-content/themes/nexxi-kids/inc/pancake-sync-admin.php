@@ -19,13 +19,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
 	return;
 }
-define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.5' );
+define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.6' );
 
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V7', false ) ) :
 
 final class Nexxi_Pancake_Sync_Manager_V7 {
 
-	const VERSION              = '1.5.5';
+	const VERSION              = '1.5.6';
 	const MENU_SLUG            = 'nexxi-pancake-sync';
 	const CACHE_OPTION         = 'nexxi_pancake_catalog_cache_v4';
 	const CACHE_TIME_OPT       = 'nexxi_pancake_catalog_cache_time';
@@ -4691,6 +4691,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			if ( class_exists( 'WC_Product_Variable' ) ) {
 				WC_Product_Variable::sync( $wc_id );
 			}
+			do_action( 'litespeed_purge_post', (int) $wc_id );
 			// Preserve & propagate active Giảm Giá SP / Flash Sale onto newly synced Pancake variations
 			if ( '1' === (string) get_post_meta( $wc_id, '_nexxi_has_prod_sale', true ) || '1' === (string) get_post_meta( $wc_id, '_nexxi_is_flash_sale', true ) ) {
 				if ( function_exists( 'nexxi_kids_resync_product_sale_prices' ) ) {
