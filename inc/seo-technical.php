@@ -917,6 +917,9 @@ function nexxi_seo_resolve_legacy_garment_category_url( $raw_slug ) {
 		$clean
 	);
 
+	if ( preg_match( '/(?:^|-)(?:quan-chip|do-lot|quan-lot)(?:-|$)/', $clean ) ) {
+		return nexxi_seo_first_valid_product_cat_url( array( 'quan-sot', 'quan-lung', 'quan-dai' ) );
+	}
 	if ( preg_match( '/(?:^|-)ao-dai(?:-|$)/', $clean ) ) {
 		return nexxi_seo_first_valid_product_cat_url( array( 'ao-dai' ) );
 	}
@@ -1033,8 +1036,8 @@ add_action(
 		$trimmed_raw = trim( $req_path, '/' );
 		$norm_path   = '/' . strtolower( $trimmed_raw );
 
-		// 1. Trả 410 Gone cho trang mẫu mặc định WordPress, danh mục ngừng kinh doanh /collections/quan-chip và URL gõ nhầm /Cho.
-		if ( in_array( $norm_path, array( '/hello-world', '/sample-page', '/collections/quan-chip' ), true ) ) {
+		// 1. Trả 410 Gone cho trang mẫu mặc định WordPress (/hello-world, /sample-page) và URL gõ nhầm /Cho.
+		if ( in_array( $norm_path, array( '/hello-world', '/sample-page' ), true ) ) {
 			nexxi_seo_send_410_gone();
 		}
 		if ( is_404() && '/cho' === $norm_path ) {
@@ -1135,6 +1138,7 @@ add_action(
 			'/collections/chan-vay'                    => '/danh-muc-san-pham/chan-vay/',
 			'/collections/dam-vay'                     => '/danh-muc-san-pham/dam/',
 			'/collections/set-bo'                      => '/danh-muc-san-pham/bo/',
+			'/collections/quan-chip'                   => '/danh-muc-san-pham/quan-sot/',
 			'/collections/all'                         => '/cua-hang/',
 			'/collections/san-pham-moi'                => '/cua-hang/',
 			'/collections/be-gai'                      => '/cua-hang/',
@@ -1171,9 +1175,10 @@ add_action(
 		if ( is_404() && preg_match( '#^/collections/([^/]+)$#i', $norm_path, $col_m ) ) {
 			$col_slug = sanitize_title( $col_m[1] );
 			if ( preg_match( '/(?:^|-)(?:quan-chip|do-lot|quan-lot)(?:-|$)/', $col_slug ) ) {
-				nexxi_seo_send_410_gone();
+				$col_dest = nexxi_seo_first_valid_product_cat_url( array( 'quan-sot', 'quan-lung', 'quan-dai' ) );
+			} else {
+				$col_dest = nexxi_seo_first_valid_product_cat_url( array( $col_slug ) );
 			}
-			$col_dest = nexxi_seo_first_valid_product_cat_url( array( $col_slug ) );
 			wp_safe_redirect( $col_dest, 301 );
 			exit;
 		}
@@ -1194,12 +1199,7 @@ add_action(
 				exit;
 			}
 
-			// Bước B: Trả 410 Gone cho nhóm đồ lót / quần chip đã ngừng kinh doanh vĩnh viễn.
-			if ( preg_match( '/(?:^|-)(?:quan-chip|do-lot|quan-lot)(?:-|$)/i', $legacy_product_slug ) ) {
-				nexxi_seo_send_410_gone();
-			}
-
-			// Bước C: Map ngữ nghĩa từ khóa trang phục về đúng danh mục con đang tồn tại (0 chuỗi redirect, 0 404).
+			// Bước B: Map ngữ nghĩa từ khóa trang phục (bao gồm quan-chip -> quan-sot) về đúng danh mục con đang tồn tại (0 chuỗi redirect, 0 404).
 			$cat_dest_url = nexxi_seo_resolve_legacy_garment_category_url( $legacy_product_slug );
 			wp_safe_redirect( $cat_dest_url, 301 );
 			exit;
