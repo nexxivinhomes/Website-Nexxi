@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NEXXI Kids Commerce
  * Description: Size recommendations, Pancake POS SKU & Variation Image Manager, Yoast SEO REST Bridge, and NEXXI Kids service details for WooCommerce.
- * Version: 1.5.6
+ * Version: 1.5.7
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -11,7 +11,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class Nexxi_Kids_Commerce {
-	const VERSION = '1.0.0';
+	const VERSION = '1.5.7';
 
 	public function __construct() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'assets' ) );
