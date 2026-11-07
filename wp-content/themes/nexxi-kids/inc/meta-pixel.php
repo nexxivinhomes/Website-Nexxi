@@ -201,52 +201,173 @@ function nexxi_meta_capi_normalize_fbc( $fbc ) {
 	return str_replace( '__DOT__', '.', $clean );
 }
 
+/** Kiểm tra xem URL hiện tại có mang tham số chiến dịch trả phí (utm_source / utm_campaign / utm_id) hay không. */
+function nexxi_meta_capi_has_paid_query() {
+	foreach ( array( 'utm_source', 'utm_campaign', 'utm_id' ) as $k ) {
+		if ( ! empty( $_GET[ $k ] ) && '' !== trim( sanitize_text_field( wp_unslash( (string) $_GET[ $k ] ) ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Kiểm tra xem trình duyệt đang giữ cookie _fbc trả phí còn hiệu lực trong vòng 7 ngày gần nhất hay không. */
+function nexxi_meta_capi_has_recent_paid_fbc() {
+	$paid_flag = isset( $_COOKIE['_nexxi_fbc_paid'] ) ? sanitize_text_field( wp_unslash( (string) $_COOKIE['_nexxi_fbc_paid'] ) ) : '';
+	if ( '1' !== $paid_flag && ! empty( $_SERVER['HTTP_COOKIE'] ) ) {
+		if ( preg_match( '/(?:^|;\s*)_nexxi_fbc_paid=1(?:;|$)/', wp_unslash( (string) $_SERVER['HTTP_COOKIE'] ) ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$paid_flag = '1';
+		}
+	}
+	if ( '1' !== $paid_flag ) {
+		return false;
+	}
+	$existing_fbc = nexxi_meta_capi_pick_latest_fb_cookie( '_fbc' );
+	if ( '' === $existing_fbc || 0 !== strpos( $existing_fbc, 'fb.' ) ) {
+		return false;
+	}
+	$parts  = explode( '.', $existing_fbc );
+	$ts_ms  = ( isset( $parts[2] ) && is_numeric( $parts[2] ) ) ? (int) $parts[2] : 0;
+	$now_ms = (int) round( microtime( true ) * 1000 );
+	return ( $ts_ms > 0 && ( $now_ms - $ts_ms ) <= ( 7 * DAY_IN_SECONDS * 1000 ) );
+}
+
 /**
- * Khởi tạo giá trị first-party _fbc (từ ?fbclid=...) và _fbp trong RAM cho luồng CAPI PHP,
- * đồng thời CHỈ phát header Set-Cookie từ PHP trên các request động (POST / wc-ajax) để bảo vệ
- * tuyệt đối LiteSpeed Full-Page Cache trên các trang GET công khai (trên GET đã có inline JS ở <head> ghi cookie riêng từng trình duyệt).
+ * Chuẩn hóa event_source_url tuyệt đối cho Meta CAPI:
+ * - Chặn triệt để các endpoint nội bộ (wc-ajax=, admin-ajax.php, wp-json, rest_route=) và đường dẫn tương đối thiếu domain.
+ * - Với đơn hàng WC_Order hợp lệ, ưu tiên trả về URL trang Cảm ơn ($order->get_checkout_order_received_url()) khớp 100% với Browser Pixel.
+ */
+function nexxi_meta_capi_normalize_source_url( $url, $order = null, $fallback = '' ) {
+	$clean  = trim( (string) $url );
+	$is_bad = ( '' === $clean )
+		|| ( false !== stripos( $clean, 'wc-ajax=' ) )
+		|| ( false !== stripos( $clean, 'admin-ajax.php' ) )
+		|| ( false !== stripos( $clean, '/wp-json' ) )
+		|| ( false !== stripos( $clean, 'rest_route=' ) )
+		|| ( false !== stripos( $clean, 'order-received/0' ) );
+
+	if ( $order instanceof WC_Order && $order->get_id() > 0 ) {
+		$ty_url = trim( (string) $order->get_checkout_order_received_url() );
+		if ( '' !== $ty_url && ( $is_bad || false === stripos( $clean, 'order-received' ) ) ) {
+			$clean  = $ty_url;
+			$is_bad = false;
+		}
+	}
+
+	if ( $is_bad ) {
+		if ( '' !== $fallback ) {
+			$clean = trim( (string) $fallback );
+		} elseif ( $order instanceof WC_Order ) {
+			$clean = function_exists( 'wc_get_checkout_url' ) ? (string) wc_get_checkout_url() : home_url( '/thanh-toan/' );
+		} else {
+			$clean = home_url( '/' );
+		}
+	}
+
+	if ( '' !== $clean && 0 === strpos( $clean, '/' ) && 0 !== strpos( $clean, '//' ) ) {
+		$clean = home_url( $clean );
+	}
+
+	$valid = esc_url_raw( $clean );
+	if ( '' === $valid || ! preg_match( '#^https?://#i', $valid ) ) {
+		return esc_url_raw( home_url( '/' ) );
+	}
+	return $valid;
+}
+
+/**
+ * Khởi tạo giá trị first-party _fbc (từ ?fbclid=...), _nexxi_utm (cứu hộ UTM 7 ngày) và _fbp trong RAM cho luồng CAPI PHP.
+ * Phát Set-Cookie từ PHP trên các request động hoặc các lượt truy cập mang tham số quảng cáo (?utm_source / ?utm_id / ?fbclid),
+ * giữ nguyên 100% khả năng Full-Page Cache của LiteSpeed cho các URL tĩnh không có query string quảng cáo.
  */
 function nexxi_meta_capi_bootstrap_first_party_cookies() {
 	if ( is_admin() || wp_doing_ajax() || defined( 'REST_REQUEST' ) || defined( 'DOING_CRON' ) ) {
 		return;
 	}
 	$now_ms         = (int) round( microtime( true ) * 1000 );
-	$expires        = time() + ( 90 * DAY_IN_SECONDS );
+	$expires_90d    = time() + ( 90 * DAY_IN_SECONDS );
+	$expires_7d     = time() + ( 7 * DAY_IN_SECONDS );
 	$secure         = is_ssl();
 	$cookie_domain  = nexxi_meta_capi_cookie_domain();
+	$has_paid_query = nexxi_meta_capi_has_paid_query();
+	$has_utm_rescue = ! empty( $_GET['utm_source'] ) || ! empty( $_GET['utm_id'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$has_fbclid     = ! empty( $_GET['fbclid'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$is_dynamic_req = ( 'POST' === strtoupper( isset( $_SERVER['REQUEST_METHOD'] ) ? (string) $_SERVER['REQUEST_METHOD'] : '' ) ) || ! empty( $_GET['wc-ajax'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$allow_setck    = ( $is_dynamic_req || $has_utm_rescue || $has_fbclid ) && ! headers_sent();
 
-	// 1. Thu nhận fbclid từ URL quảng cáo Meta -> _fbc
-	if ( ! empty( $_GET['fbclid'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$fbclid = preg_replace( '/[^A-Za-z0-9._\-]/', '', sanitize_text_field( wp_unslash( (string) $_GET['fbclid'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( '' !== $fbclid && strlen( $fbclid ) <= 255 ) {
-			$fbc                          = 'fb.1.' . $now_ms . '.' . $fbclid;
-			$packed_fbc                   = 'fb.1.' . $now_ms . '.' . str_replace( '.', '__DOT__', $fbclid );
-			$GLOBALS['nexxi_runtime_fbc'] = $fbc;
-			if ( $is_dynamic_req && ! headers_sent() ) {
-				$ck_opts = array(
-					'expires'  => $expires,
-					'path'     => '/',
-					'secure'   => $secure,
-					'httponly' => false,
-					'samesite' => 'Lax',
-				);
-				if ( '' !== $cookie_domain ) {
-					$ck_opts['domain'] = $cookie_domain;
+	// 0. Lưu giữ cookie first-party _nexxi_utm (hạn 7 ngày) khi URL có utm_source hoặc utm_id
+	if ( $has_utm_rescue ) {
+		$utm_payload = array();
+		foreach ( array( 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id' ) as $uk ) {
+			if ( ! empty( $_GET[ $uk ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$uv = trim( sanitize_text_field( wp_unslash( (string) $_GET[ $uk ] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				if ( '' !== $uv ) {
+					$utm_payload[ $uk ] = function_exists( 'mb_substr' ) ? mb_substr( $uv, 0, 150, 'UTF-8' ) : substr( $uv, 0, 150 );
 				}
-				setcookie( '_fbc', $packed_fbc, $ck_opts );
+			}
+		}
+		if ( ! empty( $utm_payload ) ) {
+			$utm_payload['entry']         = substr( nexxi_meta_capi_current_url(), 0, 300 );
+			$utm_payload['ts']            = time();
+			$GLOBALS['nexxi_runtime_utm'] = $utm_payload;
+			if ( $allow_setck ) {
+				$utm_json = wp_json_encode( $utm_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+				if ( is_string( $utm_json ) && '' !== $utm_json ) {
+					$ck_utm = array(
+						'expires'  => $expires_7d,
+						'path'     => '/',
+						'secure'   => $secure,
+						'httponly' => false,
+						'samesite' => 'Lax',
+					);
+					if ( '' !== $cookie_domain ) {
+						$ck_utm['domain'] = $cookie_domain;
+					}
+					setrawcookie( '_nexxi_utm', rawurlencode( $utm_json ), $ck_utm );
+				}
 			}
 		}
 	}
 
-	// 2. Đảm bảo luôn có _fbp first-party trong RAM (và ghi cookie nếu là request động chưa có _fbp)
+	// 1. Thu nhận fbclid từ URL quảng cáo Meta -> _fbc (có lá chắn bảo vệ _fbc trả phí trong 7 ngày trước click tự nhiên từ Fanpage)
+	if ( $has_fbclid ) {
+		$fbclid = preg_replace( '/[^A-Za-z0-9._\-]/', '', sanitize_text_field( wp_unslash( (string) $_GET['fbclid'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( '' !== $fbclid && strlen( $fbclid ) <= 255 ) {
+			$protect_existing_paid = ( ! $has_paid_query ) && nexxi_meta_capi_has_recent_paid_fbc();
+			if ( ! $protect_existing_paid ) {
+				$fbc                          = 'fb.1.' . $now_ms . '.' . $fbclid;
+				$packed_fbc                   = 'fb.1.' . $now_ms . '.' . str_replace( '.', '__DOT__', $fbclid );
+				$GLOBALS['nexxi_runtime_fbc'] = $fbc;
+				if ( $allow_setck ) {
+					$ck_opts = array(
+						'expires'  => $expires_90d,
+						'path'     => '/',
+						'secure'   => $secure,
+						'httponly' => false,
+						'samesite' => 'Lax',
+					);
+					if ( '' !== $cookie_domain ) {
+						$ck_opts['domain'] = $cookie_domain;
+					}
+					setcookie( '_fbc', $packed_fbc, $ck_opts );
+					if ( $has_paid_query ) {
+						$ck_paid            = $ck_opts;
+						$ck_paid['expires'] = $expires_7d;
+						setcookie( '_nexxi_fbc_paid', '1', $ck_paid );
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Đảm bảo luôn có _fbp first-party trong RAM (và ghi cookie nếu chưa có _fbp)
 	$existing_fbp = nexxi_meta_capi_pick_latest_fb_cookie( '_fbp' );
 	if ( '' === $existing_fbp || 0 !== strpos( $existing_fbp, 'fb.' ) ) {
 		$fbp                          = 'fb.1.' . $now_ms . '.' . wp_rand( 1000000000, 9999999999 );
 		$GLOBALS['nexxi_runtime_fbp'] = $fbp;
-		if ( $is_dynamic_req && ! headers_sent() ) {
+		if ( $allow_setck ) {
 			$ck_opts = array(
-				'expires'  => $expires,
+				'expires'  => $expires_90d,
 				'path'     => '/',
 				'secure'   => $secure,
 				'httponly' => false,
@@ -260,6 +381,41 @@ function nexxi_meta_capi_bootstrap_first_party_cookies() {
 	}
 }
 add_action( 'init', 'nexxi_meta_capi_bootstrap_first_party_cookies', 1 );
+
+/** Đọc dữ liệu UTM cứu hộ từ RAM hoặc cookie first-party _nexxi_utm (hạn 7 ngày). */
+function nexxi_meta_capi_get_rescued_utm() {
+	if ( ! empty( $GLOBALS['nexxi_runtime_utm'] ) && is_array( $GLOBALS['nexxi_runtime_utm'] ) ) {
+		return $GLOBALS['nexxi_runtime_utm'];
+	}
+	$raw_candidates = array();
+	if ( ! empty( $_COOKIE['_nexxi_utm'] ) ) {
+		$raw_candidates[] = wp_unslash( (string) $_COOKIE['_nexxi_utm'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+	}
+	if ( ! empty( $_SERVER['HTTP_COOKIE'] ) && is_string( $_SERVER['HTTP_COOKIE'] ) ) {
+		if ( preg_match_all( '/(?:^|;\s*)_nexxi_utm=([^;]+)/', wp_unslash( (string) $_SERVER['HTTP_COOKIE'] ), $m ) && ! empty( $m[1] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			foreach ( array_reverse( $m[1] ) as $c ) {
+				$raw_candidates[] = trim( (string) $c );
+			}
+		}
+	}
+	foreach ( $raw_candidates as $raw ) {
+		foreach ( array( $raw, rawurldecode( $raw ), urldecode( $raw ) ) as $attempt ) {
+			$decoded = json_decode( $attempt, true );
+			if ( is_array( $decoded ) && ( ! empty( $decoded['utm_source'] ) || ! empty( $decoded['utm_id'] ) ) ) {
+				$clean = array();
+				foreach ( array( 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id', 'entry' ) as $k ) {
+					if ( ! empty( $decoded[ $k ] ) && is_string( $decoded[ $k ] ) ) {
+						$clean[ $k ] = sanitize_text_field( $decoded[ $k ] );
+					}
+				}
+				if ( ! empty( $clean['utm_source'] ) || ! empty( $clean['utm_id'] ) ) {
+					return $clean;
+				}
+			}
+		}
+	}
+	return array();
+}
 
 /** Đọc giá trị _fbp hiện có của phiên khách hàng (ưu tiên bản mới nhất nếu trùng cookie chuyển tiếp). */
 function nexxi_meta_capi_get_fbp() {
@@ -355,17 +511,33 @@ function nexxi_meta_capi_normalize_phone( $phone ) {
 	return strlen( $digits ) >= 9 ? $digits : '';
 }
 
-/** Chuẩn hóa chuỗi địa danh (thành phố/tỉnh) theo chuẩn Meta CAPI: chữ thường, không dấu, không khoảng trắng. */
+/**
+ * Chuẩn hóa chuỗi địa danh (thành phố/tỉnh) theo chuẩn Meta CAPI:
+ * chữ thường, không dấu, cắt bỏ tiền tố hành chính Việt Nam (thành phố, tp., tỉnh), không khoảng trắng.
+ */
 function nexxi_meta_capi_normalize_geo( $text ) {
 	$clean = trim( (string) $text );
 	if ( '' === $clean ) {
 		return '';
 	}
+	$clean = str_replace( array( 'đ', 'Đ' ), array( 'd', 'd' ), $clean );
 	if ( function_exists( 'remove_accents' ) ) {
 		$clean = remove_accents( $clean );
 	}
 	$clean = function_exists( 'mb_strtolower' ) ? mb_strtolower( $clean, 'UTF-8' ) : strtolower( $clean );
+	$clean = trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', $clean ) );
+	$clean = (string) preg_replace( '/^(?:thanh\s+pho|tp|tinh)\s+/', '', $clean );
 	return preg_replace( '/[^a-z0-9]/', '', $clean );
+}
+
+/** Chuẩn hóa chuỗi họ tên sang chữ thường không dấu (phục vụ đa biến thể SHA-256 trên Meta CAPI). */
+function nexxi_meta_capi_unaccent_lower( $text ) {
+	$clean = str_replace( array( 'đ', 'Đ' ), array( 'd', 'd' ), trim( (string) $text ) );
+	if ( function_exists( 'remove_accents' ) ) {
+		$clean = remove_accents( $clean );
+	}
+	$clean = function_exists( 'mb_strtolower' ) ? mb_strtolower( $clean, 'UTF-8' ) : strtolower( $clean );
+	return trim( (string) preg_replace( '/\s+/u', ' ', $clean ) );
 }
 
 /**
@@ -467,9 +639,11 @@ function nexxi_meta_capi_build_user_data( $order = null, $overrides = array() ) 
 		}
 	}
 
-	// Tách Họ (ln) & Tên (fn) thông minh nếu khách nhập gộp cả họ tên vào 1 ô tiếng Việt
-	$fn_clean = trim( preg_replace( '/\s+/u', ' ', $first_name ) );
-	$ln_clean = trim( preg_replace( '/\s+/u', ' ', $last_name ) );
+	// Tách Họ (ln) & Tên (fn) thông minh (gửi mảng đa biến thể SHA-256 có dấu + không dấu + tên gọi cuối cho CAPI)
+	$fn_clean = trim( (string) preg_replace( '/[^\p{L}\s]+/u', ' ', $first_name ) );
+	$ln_clean = trim( (string) preg_replace( '/[^\p{L}\s]+/u', ' ', $last_name ) );
+	$fn_clean = trim( (string) preg_replace( '/\s+/u', ' ', $fn_clean ) );
+	$ln_clean = trim( (string) preg_replace( '/\s+/u', ' ', $ln_clean ) );
 	if ( '' !== $fn_clean && '' === $ln_clean && false !== strpos( $fn_clean, ' ' ) ) {
 		$parts    = explode( ' ', $fn_clean );
 		$ln_clean = (string) array_shift( $parts );
@@ -480,20 +654,52 @@ function nexxi_meta_capi_build_user_data( $order = null, $overrides = array() ) 
 		$fn_clean = implode( ' ', $parts );
 	}
 	if ( '' !== $fn_clean ) {
-		$fn_low          = function_exists( 'mb_strtolower' ) ? mb_strtolower( $fn_clean, 'UTF-8' ) : strtolower( $fn_clean );
-		$user_data['fn'] = array( hash( 'sha256', $fn_low ) );
+		$fn_variants = array();
+		$fn_tokens   = explode( ' ', $fn_clean );
+		$given_last  = (string) end( $fn_tokens );
+		if ( '' !== $given_last ) {
+			$fn_variants[] = nexxi_meta_capi_unaccent_lower( $given_last );
+			$fn_variants[] = function_exists( 'mb_strtolower' ) ? mb_strtolower( $given_last, 'UTF-8' ) : strtolower( $given_last );
+		}
+		$fn_variants[]   = nexxi_meta_capi_unaccent_lower( $fn_clean );
+		$fn_variants[]   = function_exists( 'mb_strtolower' ) ? mb_strtolower( $fn_clean, 'UTF-8' ) : strtolower( $fn_clean );
+		$fn_hashes       = array();
+		foreach ( $fn_variants as $fv ) {
+			$fv = trim( (string) $fv );
+			if ( '' !== $fv ) {
+				$fn_hashes[] = hash( 'sha256', $fv );
+			}
+		}
+		if ( ! empty( $fn_hashes ) ) {
+			$user_data['fn'] = array_values( array_unique( $fn_hashes ) );
+		}
 	}
 	if ( '' !== $ln_clean ) {
-		$ln_low          = function_exists( 'mb_strtolower' ) ? mb_strtolower( $ln_clean, 'UTF-8' ) : strtolower( $ln_clean );
-		$user_data['ln'] = array( hash( 'sha256', $ln_low ) );
+		$ln_variants = array(
+			nexxi_meta_capi_unaccent_lower( $ln_clean ),
+			function_exists( 'mb_strtolower' ) ? mb_strtolower( $ln_clean, 'UTF-8' ) : strtolower( $ln_clean ),
+		);
+		$ln_hashes = array();
+		foreach ( $ln_variants as $lv ) {
+			$lv = trim( (string) $lv );
+			if ( '' !== $lv ) {
+				$ln_hashes[] = hash( 'sha256', $lv );
+			}
+		}
+		if ( ! empty( $ln_hashes ) ) {
+			$user_data['ln'] = array_values( array_unique( $ln_hashes ) );
+		}
 	}
 
-	// Thành phố (ct) & Tỉnh/Thành (st)
+	// Thành phố (ct) & Tỉnh/Thành (st — tự điền bù từ ct khi form thanh toán rút gọn ẩn billing_state)
 	$norm_ct = nexxi_meta_capi_normalize_geo( $city );
 	if ( '' !== $norm_ct ) {
 		$user_data['ct'] = array( hash( 'sha256', $norm_ct ) );
 	}
 	$norm_st = nexxi_meta_capi_normalize_geo( $state );
+	if ( '' === $norm_st && '' !== $norm_ct ) {
+		$norm_st = $norm_ct;
+	}
 	if ( '' !== $norm_st ) {
 		$user_data['st'] = array( hash( 'sha256', $norm_st ) );
 	}
@@ -573,7 +779,7 @@ function nexxi_meta_capi_send_event( $event_name, $event_id, $custom_data = arra
 		'event_time'       => $ts,
 		'event_id'         => (string) $event_id,
 		'action_source'    => 'website',
-		'event_source_url' => '' !== $event_source_url ? esc_url_raw( $event_source_url ) : home_url( '/' ),
+		'event_source_url' => nexxi_meta_capi_normalize_source_url( $event_source_url ),
 		'user_data'        => $user_data,
 	);
 	if ( ! empty( $custom_data ) ) {
@@ -737,12 +943,9 @@ function nexxi_meta_capi_send_order_purchase( $order_or_id, $force = false ) {
 	$event_id    = 'nexxi_order_' . $order->get_id();
 	$custom_data = nexxi_meta_pixel_build_order_custom_data( $order );
 	$user_data   = nexxi_meta_capi_build_user_data( $order );
-	$source_url  = (string) $order->get_meta( '_nexxi_event_source_url', true );
-	if ( '' === $source_url ) {
-		$source_url = $order->get_checkout_order_received_url();
-	}
-	$created_dt = $order->get_date_created();
-	$order_ts   = $created_dt ? (int) $created_dt->getTimestamp() : time();
+	$source_url  = nexxi_meta_capi_normalize_source_url( (string) $order->get_meta( '_nexxi_event_source_url', true ), $order );
+	$created_dt  = $order->get_date_created();
+	$order_ts    = $created_dt ? (int) $created_dt->getTimestamp() : time();
 
 	$res = nexxi_meta_capi_send_event( 'Purchase', $event_id, $custom_data, $user_data, $source_url, $order_ts, 6 );
 
@@ -764,7 +967,82 @@ function nexxi_meta_capi_send_order_purchase( $order_or_id, $force = false ) {
 	return $res;
 }
 
-/** Ghi lại _fbp, _fbc, IP, User-Agent và URL đặt hàng vào Order Meta ngay lúc khởi tạo đơn hàng. */
+/**
+ * Cứu hộ Server-Side các trường _wc_order_attribution_* từ cookie _nexxi_utm (hạn 7 ngày)
+ * khi trình duyệt In-App / LiteSpeed làm trễ JS khiến đơn hàng bị trống hoặc ghi nhầm thành typein / (direct).
+ * Chạy ở priority 5 trên woocommerce_checkout_create_order (trước khi lưu đơn & đồng bộ POS Pancake)
+ * và chốt lại ở priority 25 trên woocommerce_checkout_order_created.
+ */
+function nexxi_meta_capi_rescue_order_utm( $order ) {
+	if ( is_numeric( $order ) ) {
+		$order = wc_get_order( absint( $order ) );
+	}
+	if ( ! $order instanceof WC_Order ) {
+		return;
+	}
+	$utm = nexxi_meta_capi_get_rescued_utm();
+	if ( empty( $utm ) ) {
+		return;
+	}
+
+	$rescued_src = ! empty( $utm['utm_source'] ) ? $utm['utm_source'] : 'facebook';
+
+	// Đồng bộ ngược vào $_POST của Checkout để OrderAttributionController của WooCommerce không ghi đè lại 'typein'
+	if ( isset( $_POST ) && is_array( $_POST ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$post_type = isset( $_POST['wc_order_attribution_source_type'] ) ? trim( sanitize_text_field( wp_unslash( (string) $_POST['wc_order_attribution_source_type'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$post_src  = isset( $_POST['wc_order_attribution_utm_source'] ) ? trim( sanitize_text_field( wp_unslash( (string) $_POST['wc_order_attribution_utm_source'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( '' === $post_src || '(direct)' === strtolower( $post_src ) || '' === $post_type || 'typein' === strtolower( $post_type ) ) {
+			$_POST['wc_order_attribution_source_type'] = 'utm';
+			$_POST['wc_order_attribution_utm_source']  = $rescued_src;
+			foreach ( array( 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id' ) as $uk ) {
+				if ( ! empty( $utm[ $uk ] ) && empty( $_POST[ 'wc_order_attribution_' . $uk ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+					$_POST[ 'wc_order_attribution_' . $uk ] = $utm[ $uk ];
+				}
+			}
+			if ( ! empty( $utm['entry'] ) ) {
+				$post_entry = isset( $_POST['wc_order_attribution_session_entry'] ) ? (string) wp_unslash( $_POST['wc_order_attribution_session_entry'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				if ( '' === $post_entry || false !== stripos( $post_entry, '/thanh-toan' ) || false !== stripos( $post_entry, '/gio-hang' ) ) {
+					$_POST['wc_order_attribution_session_entry'] = $utm['entry'];
+				}
+			}
+		}
+	}
+
+	$cur_type = trim( (string) $order->get_meta( '_wc_order_attribution_source_type', true ) );
+	$cur_src  = trim( (string) $order->get_meta( '_wc_order_attribution_utm_source', true ) );
+	$changed  = false;
+
+	if ( '' === $cur_src || '(direct)' === strtolower( $cur_src ) || '' === $cur_type || 'typein' === strtolower( $cur_type ) ) {
+		$order->update_meta_data( '_wc_order_attribution_source_type', 'utm' );
+		$order->update_meta_data( '_wc_order_attribution_utm_source', $rescued_src );
+		$changed = true;
+		foreach ( array( 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id' ) as $uk ) {
+			if ( ! empty( $utm[ $uk ] ) ) {
+				$existing_uk = trim( (string) $order->get_meta( '_wc_order_attribution_' . $uk, true ) );
+				if ( '' === $existing_uk || '(none)' === strtolower( $existing_uk ) ) {
+					$order->update_meta_data( '_wc_order_attribution_' . $uk, $utm[ $uk ] );
+				}
+			}
+		}
+	}
+
+	if ( ! empty( $utm['entry'] ) ) {
+		$cur_entry = trim( (string) $order->get_meta( '_wc_order_attribution_session_entry', true ) );
+		if ( '' === $cur_entry || false !== stripos( $cur_entry, '/thanh-toan' ) || false !== stripos( $cur_entry, '/gio-hang' ) ) {
+			$order->update_meta_data( '_wc_order_attribution_session_entry', esc_url_raw( $utm['entry'] ) );
+			$changed = true;
+		}
+	}
+
+	if ( $changed && $order->get_id() > 0 ) {
+		$order->save_meta_data();
+	}
+}
+add_action( 'woocommerce_checkout_create_order', 'nexxi_meta_capi_rescue_order_utm', 5, 1 );
+add_action( 'woocommerce_checkout_order_created', 'nexxi_meta_capi_rescue_order_utm', 25, 1 );
+add_action( 'woocommerce_store_api_checkout_update_order_meta', 'nexxi_meta_capi_rescue_order_utm', 5, 1 );
+
+/** Ghi lại _fbp, _fbc, IP, User-Agent và URL đặt hàng chuẩn tuyệt đối vào Order Meta ngay lúc khởi tạo đơn hàng. */
 function nexxi_meta_capi_attach_order_tracking_meta( $order ) {
 	if ( is_numeric( $order ) ) {
 		$order = wc_get_order( absint( $order ) );
@@ -793,10 +1071,10 @@ function nexxi_meta_capi_attach_order_tracking_meta( $order ) {
 		$order->update_meta_data( '_nexxi_client_ua', $ua );
 		$changed = true;
 	}
-	if ( '' === (string) $order->get_meta( '_nexxi_event_source_url', true ) ) {
-		$ref = wp_get_referer();
-		$url = $ref ? $ref : ( function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : home_url( '/thanh-toan/' ) );
-		$order->update_meta_data( '_nexxi_event_source_url', esc_url_raw( $url ) );
+	$cur_source_url = (string) $order->get_meta( '_nexxi_event_source_url', true );
+	$norm_url       = nexxi_meta_capi_normalize_source_url( '' !== $cur_source_url ? $cur_source_url : (string) wp_get_referer(), $order );
+	if ( $norm_url !== $cur_source_url ) {
+		$order->update_meta_data( '_nexxi_event_source_url', $norm_url );
 		$changed = true;
 	}
 	if ( $changed && $order->get_id() > 0 ) {
@@ -806,7 +1084,7 @@ function nexxi_meta_capi_attach_order_tracking_meta( $order ) {
 add_action( 'woocommerce_checkout_create_order', 'nexxi_meta_capi_attach_order_tracking_meta', 20, 1 );
 add_action( 'woocommerce_store_api_checkout_update_order_meta', 'nexxi_meta_capi_attach_order_tracking_meta', 20, 1 );
 
-/** Đặt lịch bắn CAPI Purchase không chặn (non-blocking shutdown) ngay khi đơn hàng vừa tạo thành công. */
+/** Đặt lịch bắn CAPI Purchase không chặn (non-blocking shutdown) ngay khi đơn hàng vừa tạo thành công hoặc chuyển trạng thái. */
 function nexxi_meta_capi_trigger_order_processed( $order_or_id ) {
 	if ( nexxi_meta_pixel_external_plugin_active() || '' === nexxi_meta_capi_get_token() ) {
 		return;
@@ -822,7 +1100,66 @@ function nexxi_meta_capi_trigger_order_processed( $order_or_id ) {
 }
 add_action( 'woocommerce_checkout_order_processed', 'nexxi_meta_capi_trigger_order_processed', 25, 1 );
 add_action( 'woocommerce_store_api_checkout_order_processed', 'nexxi_meta_capi_trigger_order_processed', 25, 1 );
+add_action( 'woocommerce_order_status_processing', 'nexxi_meta_capi_trigger_order_processed', 25, 1 );
+add_action( 'woocommerce_order_status_completed', 'nexxi_meta_capi_trigger_order_processed', 25, 1 );
 add_action( 'woocommerce_thankyou', 'nexxi_meta_capi_trigger_order_processed', 20, 1 );
+
+/** Đăng ký lịch WP-Cron 15 phút/lần tự động gửi bù CAPI cho các đơn processing/completed 48h qua chưa gửi thành công. */
+add_filter(
+	'cron_schedules',
+	static function ( $schedules ) {
+		if ( ! isset( $schedules['nexxi_capi_every_15m'] ) ) {
+			$schedules['nexxi_capi_every_15m'] = array(
+				'interval' => 15 * MINUTE_IN_SECONDS,
+				'display'  => 'Mỗi 15 phút (NEXXI Meta CAPI Auto-Retry)',
+			);
+		}
+		return $schedules;
+	}
+);
+
+add_action(
+	'init',
+	static function () {
+		if ( ! wp_next_scheduled( 'nexxi_meta_capi_auto_retry_cron' ) ) {
+			wp_schedule_event( time() + 180, 'nexxi_capi_every_15m', 'nexxi_meta_capi_auto_retry_cron' );
+		}
+	},
+	30
+);
+
+function nexxi_meta_capi_run_auto_retry() {
+	if ( nexxi_meta_pixel_external_plugin_active() || '' === nexxi_meta_capi_get_token() || ! function_exists( 'wc_get_orders' ) ) {
+		return;
+	}
+	if ( get_transient( 'nexxi_capi_auto_retry_lock' ) ) {
+		return;
+	}
+	set_transient( 'nexxi_capi_auto_retry_lock', '1', 120 );
+
+	$orders = wc_get_orders(
+		array(
+			'limit'        => 25,
+			'type'         => 'shop_order',
+			'status'       => array( 'wc-processing', 'wc-completed' ),
+			'date_created' => '>' . ( time() - 48 * HOUR_IN_SECONDS ),
+			'orderby'      => 'date',
+			'order'        => 'ASC',
+		)
+	);
+	foreach ( $orders as $ord ) {
+		if ( ! $ord instanceof WC_Order ) {
+			continue;
+		}
+		if ( '1' === (string) $ord->get_meta( '_nexxi_capi_purchase_sent', true ) ) {
+			continue;
+		}
+		nexxi_meta_capi_send_order_purchase( $ord, false );
+	}
+
+	delete_transient( 'nexxi_capi_auto_retry_lock' );
+}
+add_action( 'nexxi_meta_capi_auto_retry_cron', 'nexxi_meta_capi_run_auto_retry' );
 
 /* ==========================================================================
  * 5. MÃ CƠ SỞ BROWSER PIXEL Ở <HEAD> & SỰ KIỆN TMĐT Ở <FOOTER>
@@ -873,8 +1210,11 @@ function nexxi_meta_pixel_get_browser_adv_matching( $order = null ) {
 	$capi_ud = nexxi_meta_capi_build_user_data( $order instanceof WC_Order ? $order : null );
 	$am      = array();
 	foreach ( array( 'em', 'ph', 'fn', 'ln', 'ct', 'st', 'external_id' ) as $k ) {
-		if ( ! empty( $capi_ud[ $k ][0] ) && is_string( $capi_ud[ $k ][0] ) ) {
-			$am[ $k ] = $capi_ud[ $k ][0];
+		if ( ! empty( $capi_ud[ $k ] ) && is_array( $capi_ud[ $k ] ) ) {
+			$first_hash = reset( $capi_ud[ $k ] );
+			if ( is_string( $first_hash ) && '' !== $first_hash ) {
+				$am[ $k ] = $first_hash;
+			}
 		}
 	}
 	if ( ! empty( $am ) && ! empty( $capi_ud['country'][0] ) && is_string( $capi_ud['country'][0] ) ) {
@@ -885,7 +1225,7 @@ function nexxi_meta_pixel_get_browser_adv_matching( $order = null ) {
 
 /**
  * Xuất mã cơ sở Meta Pixel ở đầu <head> (priority 2):
- * - Khởi tạo cookie first-party _fbc / _fbp ngay trên domain .nexxi.vn (khớp chuẩn __DOT__ của fbevents.js).
+ * - Khởi tạo cookie first-party _fbc (bảo vệ _fbc trả phí 7 ngày), _nexxi_utm (cứu hộ UTM 7 ngày) và _fbp trên domain .nexxi.vn.
  * - Tích hợp Advanced Matching SHA-256 + external_id đồng bộ với CAPI trên trang order-received / tài khoản đăng nhập.
  * - Tích hợp bộ lọc thông minh ngay trong hàm fbq để:
  *   (a) Chặn gọi trùng fbq('init', pixelId) và fbq('track', 'PageView') từ snippet cũ trong WPCode.
@@ -919,28 +1259,63 @@ function nexxi_meta_pixel_print_head() {
 <!-- Meta Pixel & First-Party Attribution Code -->
 <script data-no-optimize="1" data-no-defer="1">
 !function(f,b,e,v,n,t,s){
+	var keepPaidFbc = '';
 	try {
-		var m = (f.location.search || '').match(/[?&]fbclid=([^&#]+)/);
-		var fbclid = m ? decodeURIComponent(m[1]).replace(/[^A-Za-z0-9._\-]/g, '') : '';
-		var exp = new Date(Date.now() + 7776e6).toUTCString();
+		var qs = f.location.search || '';
+		var sp = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(qs) : null;
+		var gp = function(k) {
+			if (sp) return (sp.get(k) || '').trim();
+			var rx = new RegExp('[?&]' + k + '=([^&#]+)');
+			var mt = qs.match(rx);
+			return mt ? decodeURIComponent(mt[1].replace(/\+/g, ' ')).trim() : '';
+		};
+		var rawFbclid = gp('fbclid');
+		var fbclid = rawFbclid ? rawFbclid.replace(/[^A-Za-z0-9._\-]/g, '') : '';
+		var utmSource = gp('utm_source'), utmId = gp('utm_id'), utmCamp = gp('utm_campaign');
+		var hasPaid = !!(utmSource || utmId || utmCamp);
 		var sec = f.location.protocol === 'https:' ? '; Secure' : '';
 		var host = (f.location.hostname || '').replace(/^www\./i, '');
 		var isLocal = !host || host === 'localhost' || /^\d+(\.\d+){3}$/.test(host) || host.indexOf(':') !== -1 || /\.(local|localhost|test|invalid)$/i.test(host);
 		var dom = (!isLocal && host.indexOf('.') > 0) ? '; domain=.' + host : '';
-		var setCk = function(k, val) {
+		var setCk = function(k, val, ttlMs) {
+			var exp = new Date(Date.now() + (ttlMs || 7776e6)).toUTCString();
 			var base = k + '=' + val + '; expires=' + exp + '; path=/; SameSite=Lax' + sec;
 			if (dom) {
 				b.cookie = base + dom;
-				if ((b.cookie || '').indexOf(k + '=' + val) === -1) b.cookie = base;
+				if ((b.cookie || '').indexOf(k + '=') === -1) b.cookie = base;
 			} else {
 				b.cookie = base;
 			}
 		};
-		if (fbclid) {
-			setCk('_fbc', 'fb.1.' + Date.now() + '.' + fbclid.replace(/\./g, '__DOT__'));
+		var ckStr = b.cookie || '';
+		if (utmSource || utmId) {
+			var uObj = {};
+			['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id'].forEach(function(uk){
+				var uv = gp(uk);
+				if (uv) uObj[uk] = uv.slice(0, 150);
+			});
+			uObj.entry = (f.location.href || '').slice(0, 300);
+			uObj.ts = Math.floor(Date.now() / 1000);
+			setCk('_nexxi_utm', encodeURIComponent(JSON.stringify(uObj)), 6048e5);
 		}
-		if (!/(?:^|;\s*)_fbp=fb\./.test(b.cookie || '')) {
-			setCk('_fbp', 'fb.1.' + Date.now() + '.' + Math.floor(1e9 + Math.random() * 9e9));
+		if (fbclid) {
+			var newFbc = 'fb.1.' + Date.now() + '.' + fbclid.replace(/\./g, '__DOT__');
+			if (hasPaid) {
+				setCk('_fbc', newFbc, 7776e6);
+				setCk('_nexxi_fbc_paid', '1', 6048e5);
+			} else {
+				var isPaidFlag = /(?:^|;\s*)_nexxi_fbc_paid=1(?:;|$)/.test(ckStr);
+				var oldM = ckStr.match(/(?:^|;\s*)_fbc=(fb\.1\.(\d+)\.[^;]+)/);
+				var oldTs = oldM ? parseInt(oldM[2], 10) : 0;
+				if (isPaidFlag && oldM && oldTs > 0 && (Date.now() - oldTs) <= 6048e5) {
+					keepPaidFbc = oldM[1];
+				} else {
+					setCk('_fbc', newFbc, 7776e6);
+				}
+			}
+		}
+		if (!/(?:^|;\s*)_fbp=fb\./.test(ckStr)) {
+			setCk('_fbp', 'fb.1.' + Date.now() + '.' + Math.floor(1e9 + Math.random() * 9e9), 7776e6);
 		}
 	} catch (err) {}
 	if (f.fbq) return;
@@ -969,6 +1344,17 @@ function nexxi_meta_pixel_print_head() {
 	if (!f._fbq) f._fbq = n;
 	n.push = n; n.loaded = !0; n.version = '2.0'; n.queue = [];
 	t = b.createElement(e); t.async = !0; t.src = v;
+	if (keepPaidFbc) {
+		t.onload = function() {
+			try {
+				var expP = new Date(Date.now() + 7776e6).toUTCString();
+				var secP = f.location.protocol === 'https:' ? '; Secure' : '';
+				var hostP = (f.location.hostname || '').replace(/^www\./i, '');
+				var domP = (hostP && hostP !== 'localhost' && hostP.indexOf('.') > 0 && !/^\d+(\.\d+){3}$/.test(hostP)) ? '; domain=.' + hostP : '';
+				b.cookie = '_fbc=' + keepPaidFbc + '; expires=' + expP + '; path=/; SameSite=Lax' + secP + domP;
+			} catch (e2) {}
+		};
+	}
 	s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s);
 }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
 <?php echo $init_call . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -1036,7 +1422,7 @@ function nexxi_meta_pixel_capture_add_to_cart( $cart_item_key, $product_id, $qua
 	// Gửi Server-Side CAPI AddToCart ở nền (shutdown) nếu đã cấu hình Access Token.
 	if ( '' !== nexxi_meta_capi_get_token() ) {
 		$user_data  = nexxi_meta_capi_build_user_data();
-		$source_url = wp_get_referer() ? wp_get_referer() : $product->get_permalink();
+		$source_url = nexxi_meta_capi_normalize_source_url( (string) wp_get_referer(), null, (string) $product->get_permalink() );
 		$now_ts     = time();
 		nexxi_meta_capi_queue_job( static function () use ( $event_id, $custom_data, $user_data, $source_url, $now_ts ) {
 			nexxi_meta_capi_send_event( 'AddToCart', $event_id, $custom_data, $user_data, $source_url, $now_ts, 4 );
@@ -1045,11 +1431,16 @@ function nexxi_meta_pixel_capture_add_to_cart( $cart_item_key, $product_id, $qua
 }
 add_action( 'woocommerce_add_to_cart', 'nexxi_meta_pixel_capture_add_to_cart', 20, 4 );
 
-/** Đính kèm payload AddToCart vào phản hồi AJAX add_to_cart (và xóa khỏi hàng đợi session để không bắn lại lần 2). */
+/**
+ * Đính kèm payload AddToCart vào phản hồi AJAX add_to_cart.
+ * Nếu khách bấm "Mua Ngay" (buy_now === '1'), giữ nguyên nexxi_fbq_atc_queue trong WC()->session
+ * để trang /thanh-toan/ bắn bù sự kiện AddToCart trên trình duyệt (tránh bị abort request khi chuyển trang tức thì).
+ */
 function nexxi_meta_pixel_atc_fragment( $fragments ) {
 	if ( ! empty( $GLOBALS['nexxi_pending_fbq_atc'] ) ) {
+		$is_buy_now                 = ! empty( $_POST['buy_now'] ) && '1' === sanitize_text_field( wp_unslash( (string) $_POST['buy_now'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$fragments['nexxi-fbq-atc'] = $GLOBALS['nexxi_pending_fbq_atc'];
-		if ( function_exists( 'WC' ) && WC()->session ) {
+		if ( ! $is_buy_now && function_exists( 'WC' ) && WC()->session ) {
 			WC()->session->set( 'nexxi_fbq_atc_queue', array() );
 		}
 	}
@@ -1564,7 +1955,7 @@ function nexxi_meta_capi_render_admin_page() {
 
 /** Tự động làm mới LiteSpeed Cache 1 lần khi bản nâng cấp Meta CAPI v21.0 được kích hoạt. */
 add_action( 'init', static function () {
-	$ver = '20261106_meta_capi_v21_2';
+	$ver = '20261107_meta_capi_v21_3';
 	if ( get_option( 'nexxi_meta_capi_lscache_ver' ) !== $ver ) {
 		update_option( 'nexxi_meta_capi_lscache_ver', $ver, true );
 		do_action( 'litespeed_purge_all' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
