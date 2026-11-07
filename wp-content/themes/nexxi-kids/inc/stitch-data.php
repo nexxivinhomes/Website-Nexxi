@@ -1159,7 +1159,7 @@ function nexxi_kids_card_data( WC_Product $product, $context = 'regular' ) {
 		}
 		unset( $v_row );
 	}
-	$url        = 'flash' === $context ? add_query_arg( 'flash_sale', '1', $product->get_permalink() ) : $product->get_permalink();
+	$url        = $product->get_permalink();
 	$mat_terms  = get_the_terms( $product->get_id(), 'pa_chat-lieu' );
 	$material   = ( is_array( $mat_terms ) && ! empty( $mat_terms[0]->name ) ) ? $mat_terms[0]->name : '';
 	return array(

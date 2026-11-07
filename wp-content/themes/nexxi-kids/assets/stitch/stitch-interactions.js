@@ -248,7 +248,17 @@
     url.searchParams.delete('product-page');
     return url;
   };
-  $$('[data-nexxi-sort]').forEach(select => select.addEventListener('change', () => { if (select.value) location.href = select.value; }));
+  $$('[data-nexxi-sort]').forEach(select => select.addEventListener('change', () => {
+    const val = (select.value || '').trim();
+    if (!val) return;
+    if (/^https?:\/\//i.test(val) || val.startsWith('/')) {
+      location.href = val;
+      return;
+    }
+    const url = listingUrl();
+    url.searchParams.set('orderby', val);
+    location.href = url.toString();
+  }));
   $$('[data-nexxi-filter]').forEach(input => input.addEventListener('change', () => {
     const slug = input.dataset.nexxiFilter;
     const values = $$(`[data-nexxi-filter="${slug}"]:checked`).map(box => box.value);
@@ -328,6 +338,7 @@
         const url = new URL(config.shop || '/', location.origin);
         url.searchParams.set('filter_size', 'size-' + row[0]);
         link.href = url.toString();
+        link.setAttribute('rel', 'nofollow');
       }
       $$('[data-size-row]').forEach(tr => {
         const on = Number(tr.dataset.sizeRow) === row[0];

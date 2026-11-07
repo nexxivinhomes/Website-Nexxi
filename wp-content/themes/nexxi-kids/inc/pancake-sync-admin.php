@@ -3997,9 +3997,11 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				}
 			);
 
-			$keeper_id  = $component[0];
-			$keeper_row = $scored[ $keeper_id ];
-			$duplicates = array_slice( $component, 1 );
+			$keeper_id          = $component[0];
+			$keeper_row         = $scored[ $keeper_id ];
+			$duplicates         = array_slice( $component, 1 );
+			$keeper_slug        = trim( (string) get_post_field( 'post_name', (int) $keeper_id ) );
+			$existing_old_slugs = array_map( 'strval', (array) get_post_meta( (int) $keeper_id, '_wp_old_slug', false ) );
 
 			// Transfer SKU / Pancake metadata / Thumbnail from duplicates to keeper if keeper was missing any
 			$best_sku        = $keeper_row['sku'];
@@ -4020,6 +4022,20 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				}
 				if ( $best_thumb <= 0 && (int) $drow['thumb_id'] > 0 ) {
 					$best_thumb = (int) $drow['thumb_id'];
+				}
+
+				// Bảo toàn slug cũ của bản trùng sang $keeper_id trước khi xóa để WordPress tự động 301 Redirect không bị gãy link SEO.
+				$dup_slug = trim( (string) get_post_field( 'post_name', (int) $dup_id ) );
+				$dup_old  = array_map( 'strval', (array) get_post_meta( (int) $dup_id, '_wp_old_slug', false ) );
+				foreach ( array_merge( array( $dup_slug ), $dup_old ) as $cand_slug ) {
+					$cand_slug = sanitize_title( trim( $cand_slug ) );
+					if ( '' === $cand_slug || $cand_slug === $keeper_slug || false !== strpos( $cand_slug, '__trashed' ) ) {
+						continue;
+					}
+					if ( ! in_array( $cand_slug, $existing_old_slugs, true ) ) {
+						add_post_meta( (int) $keeper_id, '_wp_old_slug', $cand_slug );
+						$existing_old_slugs[] = $cand_slug;
+					}
 				}
 
 				// Delete all child variations of the duplicate product

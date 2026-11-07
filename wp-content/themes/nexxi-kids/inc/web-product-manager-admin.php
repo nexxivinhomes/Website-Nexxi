@@ -1956,73 +1956,77 @@ final class Nexxi_Web_Product_Manager {
 		}
 		echo '<meta name="twitter:card" content="summary_large_image">' . "\n";
 
-		// Schema.org Product + BreadcrumbList JSON-LD giúp Google hiển thị Rich Snippets (giá, tình trạng kho, đánh giá sao, thương hiệu NEXXI Kids)
-		$images = array();
-		if ( $og_img ) {
-			$images[] = $og_img;
-		}
-		foreach ( $product->get_gallery_image_ids() as $gid ) {
-			$gu = self::image_url( $gid );
-			if ( $gu && ! in_array( $gu, $images, true ) && count( $images ) < 6 ) {
-				$images[] = $gu;
+		// Schema.org Product + BreadcrumbList JSON-LD dự phòng (chỉ sinh Product khi mô-đun seo-schema.php không hoạt động để chống trùng lặp)
+		if ( ! function_exists( 'nexxi_kids_output_product_schema' ) ) {
+			$images = array();
+			if ( $og_img ) {
+				$images[] = $og_img;
 			}
-		}
-		$eff_price = $price;
-		if ( function_exists( 'nexxi_kids_get_program_sale' ) ) {
-			$prog = nexxi_kids_get_program_sale( $product, 'combined' );
-			if ( ! empty( $prog['sale'] ) && (float) $prog['sale'] > 0 ) {
-				$eff_price = (float) $prog['sale'];
+			foreach ( $product->get_gallery_image_ids() as $gid ) {
+				$gu = self::image_url( $gid );
+				if ( $gu && ! in_array( $gu, $images, true ) && count( $images ) < 6 ) {
+					$images[] = $gu;
+				}
 			}
-		}
-		$sku_val = $product->get_sku();
-		if ( '' === $sku_val ) {
-			$sku_val = (string) get_post_meta( $id, '_nexxi_pancake_sku', true );
-		}
-		$schema_product = array(
-			'@context'    => 'https://schema.org',
-			'@type'       => 'Product',
-			'name'        => $product->get_name(),
-			'description' => $desc,
-			'url'         => $canonical,
-			'brand'       => array(
-				'@type' => 'Brand',
-				'name'  => 'NEXXI Kids',
-			),
-		);
-		if ( '' !== $sku_val ) {
-			$schema_product['sku'] = $sku_val;
-			$schema_product['mpn'] = $sku_val;
-		}
-		if ( ! empty( $images ) ) {
-			$schema_product['image'] = $images;
-		}
-		if ( '' !== (string) $eff_price && (float) $eff_price > 0 ) {
-			$schema_product['offers'] = array(
-				'@type'           => 'Offer',
-				'url'             => $canonical,
-				'priceCurrency'   => $curr,
-				'price'           => (string) round( (float) $eff_price ),
-				'priceValidUntil' => gmdate( 'Y-12-31', strtotime( '+1 year' ) ),
-				'itemCondition'   => 'https://schema.org/NewCondition',
-				'availability'    => $product->is_in_stock() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-				'seller'          => array(
-					'@type' => 'Organization',
-					'name'  => get_bloginfo( 'name' ),
+			$eff_price = $price;
+			if ( function_exists( 'nexxi_kids_get_program_sale' ) ) {
+				$prog = nexxi_kids_get_program_sale( $product, 'combined' );
+				if ( ! empty( $prog['sale'] ) && (float) $prog['sale'] > 0 ) {
+					$eff_price = (float) $prog['sale'];
+				}
+			}
+			$sku_val = $product->get_sku();
+			if ( '' === $sku_val ) {
+				$sku_val = (string) get_post_meta( $id, '_nexxi_pancake_sku', true );
+			}
+			$schema_product = array(
+				'@context'    => 'https://schema.org',
+				'@type'       => 'Product',
+				'name'        => $product->get_name(),
+				'description' => $desc,
+				'url'         => $canonical,
+				'brand'       => array(
+					'@type' => 'Brand',
+					'name'  => 'NEXXI Kids Fashion',
 				),
 			);
+			if ( '' !== $sku_val ) {
+				$schema_product['sku'] = $sku_val;
+				$schema_product['mpn'] = $sku_val;
+			}
+			if ( ! empty( $images ) ) {
+				$schema_product['image'] = $images;
+			}
+			if ( '' !== (string) $eff_price && (float) $eff_price > 0 ) {
+				$schema_product['offers'] = array(
+					'@type'           => 'Offer',
+					'url'             => $canonical,
+					'priceCurrency'   => $curr,
+					'price'           => (string) round( (float) $eff_price ),
+					'priceValidUntil' => gmdate( 'Y-12-31', strtotime( '+1 year' ) ),
+					'itemCondition'   => 'https://schema.org/NewCondition',
+					'availability'    => $product->is_in_stock() ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+					'seller'          => array(
+						'@type' => 'Organization',
+						'name'  => 'NEXXI Kids Fashion',
+					),
+				);
+			}
+			$rev_count = (int) $product->get_review_count();
+			$avg_rate  = (float) $product->get_average_rating();
+			if ( $rev_count > 0 && $avg_rate > 0 ) {
+				$schema_product['aggregateRating'] = array(
+					'@type'       => 'AggregateRating',
+					'ratingValue' => number_format( $avg_rate, 1, '.', '' ),
+					'reviewCount' => $rev_count,
+					'bestRating'  => '5',
+					'worstRating' => '1',
+				);
+			}
+			if ( ! empty( $schema_product['image'] ) ) {
+				echo '<script type="application/ld+json">' . wp_json_encode( $schema_product, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . '</script>' . "\n";
+			}
 		}
-		$rev_count = (int) $product->get_review_count();
-		$avg_rate  = (float) $product->get_average_rating();
-		if ( $rev_count > 0 && $avg_rate > 0 ) {
-			$schema_product['aggregateRating'] = array(
-				'@type'       => 'AggregateRating',
-				'ratingValue' => number_format( $avg_rate, 1, '.', '' ),
-				'reviewCount' => $rev_count,
-				'bestRating'  => '5',
-				'worstRating' => '1',
-			);
-		}
-		echo '<script type="application/ld+json">' . wp_json_encode( $schema_product, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . '</script>' . "\n";
 
 		$crumb_items = array(
 			array(

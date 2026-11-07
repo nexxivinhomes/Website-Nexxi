@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261106_footer_custom_links_v47';
+	$purge_ver = '20261107_seo_gsc_router_v48';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
@@ -498,7 +498,12 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 			$open = $m[0];
 			$path = $m[1];
 			$open = preg_replace( '~\saria-current="[^"]*"~', '', $open );
-			if ( isset( $routes[ $path ] ) && false === strpos( $open, 'data-href-fixed' ) ) { $open = nexxi_dom_tag_with_attr( $open, 'href', $routes[ $path ] ); }
+			if ( isset( $routes[ $path ] ) && false === strpos( $open, 'data-href-fixed' ) ) {
+				$open = nexxi_dom_tag_with_attr( $open, 'href', $routes[ $path ] );
+				if ( false !== strpos( (string) $routes[ $path ], '?' ) ) {
+					$open = nexxi_dom_tag_with_attr( $open, 'rel', 'nofollow' );
+				}
+			}
 			if ( preg_match( '~\sclass="([^"]*)"~', $open, $c ) ) {
 				$classes = array_diff( preg_split( '~\s+~', trim( $c[1] ) ), $active, $idle, array( 'font-label-lg', 'text-label-lg' ) );
 				$classes = array_merge( $classes, array( 'font-label-lg', 'text-label-lg' ), $path === $active_path ? $active : $idle );
@@ -516,7 +521,7 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 		$header = nexxi_dom_each( $header, 'data-path="' . $path . '"', static function ( $outer ) use ( $routes, $path, $badge ) {
 			$outer = preg_replace_callback( '~^<a\b[^>]*>~', static function ( $m ) use ( $routes, $path ) {
 				$label = 'gio-hang' === $path ? 'Giỏ hàng' : 'Danh sách yêu thích';
-				return nexxi_dom_tag_with_attr( nexxi_dom_tag_with_attr( $m[0], 'href', $routes[ $path ] ), 'aria-label', $label );
+				return nexxi_dom_tag_with_attr( nexxi_dom_tag_with_attr( nexxi_dom_tag_with_attr( $m[0], 'href', $routes[ $path ] ), 'aria-label', $label ), 'rel', 'nofollow' );
 			}, $outer, 1 );
 			return preg_replace( '~(<span\b[^>]*class="[^"]*rounded-full[^"]*")([^>]*>)\s*\d*\s*(</span>)~', '${1} ' . $badge[0] . '${2}' . (int) $badge[1] . '${3}', $outer, 1 );
 		} );
@@ -526,7 +531,7 @@ function nexxi_kids_stitch_header( $html, $screen ) {
 	$avatar = nexxi_dom_locate( $header, '<div class="w-8 h-8 rounded-full bg-primary' );
 	if ( $avatar ) {
 		$open = substr( $header, $avatar['start'], $avatar['open_end'] - $avatar['start'] );
-		$open = preg_replace( '~^<div\b~', '<a', substr( $open, 0, -1 ) ) . ' href="' . esc_url( nexxi_kids_stitch_url( 'account.html' ) ) . '" aria-label="' . esc_attr( is_user_logged_in() ? 'Tài khoản của mẹ' : 'Đăng nhập / Đăng ký' ) . '">';
+		$open = preg_replace( '~^<div\b~', '<a', substr( $open, 0, -1 ) ) . ' href="' . esc_url( nexxi_kids_stitch_url( 'account.html' ) ) . '" rel="nofollow" aria-label="' . esc_attr( is_user_logged_in() ? 'Tài khoản của mẹ' : 'Đăng nhập / Đăng ký' ) . '">';
 		$inner = substr( $header, $avatar['inner_start'], $avatar['inner_end'] - $avatar['inner_start'] );
 		$header = substr( $header, 0, $avatar['start'] ) . $open . $inner . '</a>' . substr( $header, $avatar['end'] );
 	}
@@ -624,7 +629,7 @@ function nexxi_kids_mobile_shell_ui( $screen ) {
 					<span>Sản Phẩm Bé Yêu</span>
 					<span class="nexxi-mobile-drawer__badge bg-tertiary-fixed text-on-tertiary-fixed">Mới</span>
 				</a>
-				<a href="<?php echo esc_url( $flash_url ); ?>" class="nexxi-mobile-drawer__link <?php echo 'flash-sale' === $active_path ? 'is-active' : ''; ?>">
+				<a href="<?php echo esc_url( $flash_url ); ?>" rel="nofollow" class="nexxi-mobile-drawer__link <?php echo 'flash-sale' === $active_path ? 'is-active' : ''; ?>">
 					<span class="material-symbols-outlined text-secondary">bolt</span>
 					<span>Flash Sale Giờ Vàng</span>
 					<span class="nexxi-mobile-drawer__badge bg-secondary text-on-secondary">⚡ Hot</span>
@@ -642,17 +647,17 @@ function nexxi_kids_mobile_shell_ui( $screen ) {
 					<span>Liên Hệ &amp; Hỗ Trợ</span>
 				</a>
 				<div class="nexxi-mobile-drawer__divider"></div>
-				<a href="<?php echo esc_url( $wish_url ); ?>" class="nexxi-mobile-drawer__link">
+				<a href="<?php echo esc_url( $wish_url ); ?>" rel="nofollow" class="nexxi-mobile-drawer__link">
 					<span class="material-symbols-outlined">favorite</span>
 					<span>Danh Sách Yêu Thích</span>
 					<span class="nexxi-mobile-drawer__badge bg-secondary-fixed text-on-secondary-fixed" data-nexxi-wishlist-count><?php echo (int) $wish_cnt; ?></span>
 				</a>
-				<a href="<?php echo esc_url( $cart_url ); ?>" class="nexxi-mobile-drawer__link">
+				<a href="<?php echo esc_url( $cart_url ); ?>" rel="nofollow" class="nexxi-mobile-drawer__link">
 					<span class="material-symbols-outlined">shopping_bag</span>
 					<span>Giỏ Hàng Của Mẹ</span>
 					<span class="nexxi-mobile-drawer__badge bg-primary text-on-primary" data-nexxi-cart-count><?php echo (int) $cart_cnt; ?></span>
 				</a>
-				<a href="<?php echo esc_url( $acct_url ); ?>" class="nexxi-mobile-drawer__link">
+				<a href="<?php echo esc_url( $acct_url ); ?>" rel="nofollow" class="nexxi-mobile-drawer__link">
 					<span class="material-symbols-outlined">person</span>
 					<span><?php echo esc_html( is_user_logged_in() ? 'Tài Khoản Của Mẹ' : 'Đăng Nhập / Đăng Ký' ); ?></span>
 				</a>
@@ -720,7 +725,7 @@ function nexxi_kids_stitch_footer( $html ) {
 			return $open . 'Nhắn tin Zalo: ' . esc_html( $hotline ) . $m[3];
 		}
 		foreach ( $rules as $rule ) {
-			if ( false !== strpos( $label, $rule[0] ) ) { return nexxi_dom_tag_with_attr( $m[1], 'href', $rule[1] ) . $m[2] . $m[3]; }
+			if ( false !== strpos( $label, $rule[0] ) ) { $open = nexxi_dom_tag_with_attr( $m[1], 'href', $rule[1] ); if ( false !== strpos( (string) $rule[1], '?' ) || 'tra cứu' === $rule[0] ) { $open = nexxi_dom_tag_with_attr( $open, 'rel', 'nofollow' ); } return $open . $m[2] . $m[3]; }
 		}
 		return $m[0];
 	}, $footer );
@@ -1077,7 +1082,7 @@ function nexxi_kids_render_stitch( $screen ) {
 	echo nexxi_kids_mobile_shell_ui( $screen ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	wp_footer();
 	$js = get_template_directory() . '/assets/stitch/stitch-interactions.js';
-	echo '<script data-no-optimize="1" data-no-defer="1">window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . ( is_readable( $js ) ? filemtime( $js ) : NEXXI_KIDS_VERSION ) ) . '"></script>';
+	echo '<script data-no-optimize="1" data-no-defer="1">window.NexxiStitch=' . wp_json_encode( nexxi_kids_stitch_config( $screen ) ) . ';</script><script data-no-optimize="1" data-no-defer="1" src="' . esc_url( $asset_url . '/stitch-interactions.js?ver=' . NEXXI_KIDS_VERSION . ( is_readable( $js ) ? '.' . filemtime( $js ) : '' ) ) . '"></script>';
 	echo substr( $html, $body_end ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	ob_end_flush();
 }
