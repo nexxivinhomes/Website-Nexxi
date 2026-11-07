@@ -101,8 +101,8 @@ function nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_val,
 			&minus;
 		</button>
 		<input class="qty nexxi-cart-qty<?php echo $is_split ? ' nexxi-split-qty' : ''; ?> bg-transparent text-center font-label-md text-label-md text-primary"
+			data-cart-key="<?php echo esc_attr( $cart_item_key ); ?>"
 			<?php if ( $is_split ) : ?>
-				data-cart-key="<?php echo esc_attr( $cart_item_key ); ?>"
 				oninput="window.nexxiSyncSplitCartQty && window.nexxiSyncSplitCartQty('<?php echo esc_js( $cart_item_key ); ?>')"
 			<?php else : ?>
 				name="cart[<?php echo esc_attr( $cart_item_key ); ?>][qty]"
@@ -158,7 +158,7 @@ function nexxi_kids_stitch_cart_content() {
 				<?php if ( ! empty( $combo_res['enabled'] ) && ! empty( $combo_res['tiers'] ) ) : ?>
 					<?php echo nexxi_kids_render_combo_bill_notice_html( 'cart_top' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				<?php endif; ?>
-				<div class="hidden md:grid grid-cols-12 gap-space-sm pb-space-sm mb-space-md font-label-md text-label-md text-outline border-b border-surface-container-high"><div class="col-span-6">Tất cả sản phẩm (<?php echo esc_html( $count ); ?>)</div><div class="col-span-2 text-center">Đơn Giá</div><div class="col-span-2 text-center">Số Lượng</div><div class="col-span-2 text-right">Thành Tiền</div></div>
+				<div class="hidden md:grid grid-cols-12 gap-space-sm pb-space-sm mb-space-md font-label-md text-label-md text-outline border-b border-surface-container-high"><div class="col-span-6" data-nexxi-cart-all-count>Tất cả sản phẩm (<?php echo esc_html( $count ); ?>)</div><div class="col-span-2 text-center">Đơn Giá</div><div class="col-span-2 text-center">Số Lượng</div><div class="col-span-2 text-right">Thành Tiền</div></div>
 
 				<?php if ( $has_combos ) : ?>
 					<!-- Hidden master quantity inputs synced automatically when split across Combo frames -->
@@ -206,7 +206,7 @@ function nexxi_kids_stitch_cart_content() {
 										$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
 										$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 										?>
-										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
+										<div class="nexxi-cart-item-row bg-surface-container-lowest p-space-md rounded-DEFAULT border border-secondary-fixed/60 transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center" data-cart-item-key="<?php echo esc_attr( $cart_item_key ); ?>"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
 											<div class="w-full md:col-span-6 flex items-center gap-space-md">
 												<a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>">
 													<?php echo wp_kses_post( $image ); ?>
@@ -240,7 +240,7 @@ function nexxi_kids_stitch_cart_content() {
 												<div class="text-right">
 													<span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $cline['line_after_combo'] ) ); ?></span>
 												</div>
-												<a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a>
+												<a class="nexxi-cart-remove-btn w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center transition-colors" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" data-nexxi-remove-key="<?php echo esc_attr( $cart_item_key ); ?>" data-nexxi-remove-qty="<?php echo (int) $qty_in_combo; ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a>
 											</div>
 										</div>
 									<?php endforeach; ?>
@@ -250,7 +250,7 @@ function nexxi_kids_stitch_cart_content() {
 
 						<?php if ( ! empty( $combo_res['leftover_items'] ) ) : ?>
 							<!-- SẢN PHẨM LẺ NGOÀI COMBO -->
-							<div style="border:1.5px dashed #cbd5e1;border-radius:16px;background:#f8fafc;padding:16px;">
+							<div class="nexxi-leftover-frame" style="border:1.5px dashed #cbd5e1;border-radius:16px;background:#f8fafc;padding:16px;">
 								<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-bottom:10px;margin-bottom:12px;border-bottom:1px dashed #cbd5e1;">
 									<strong style="font-size:14.5px;color:#031444;">
 										🛍️ Sản phẩm lẻ (<?php echo (int) $combo_res['leftover_count']; ?> sản phẩm — Chưa đủ số lượng ghép thêm Combo)
@@ -277,7 +277,7 @@ function nexxi_kids_stitch_cart_content() {
 										$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
 										$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 										?>
-										<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
+										<div class="nexxi-cart-item-row bg-surface-container-lowest p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center" data-cart-item-key="<?php echo esc_attr( $cart_item_key ); ?>"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
 											<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?> · Sản phẩm lẻ</span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><?php echo nexxi_kids_render_cart_item_stock_badge( $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
 											<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
 												<span class="md:hidden text-outline">Đơn giá:</span>
@@ -292,7 +292,7 @@ function nexxi_kids_stitch_cart_content() {
 												<span class="md:hidden text-outline">Số lượng lẻ:</span>
 												<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $qty_left, true, $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 											</div>
-											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
+											<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $litem['line_subtotal'] ) ); ?></span><a class="nexxi-cart-remove-btn w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center transition-colors" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" data-nexxi-remove-key="<?php echo esc_attr( $cart_item_key ); ?>" data-nexxi-remove-qty="<?php echo (int) $qty_left; ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 										</div>
 									<?php endforeach; ?>
 								</div>
@@ -314,7 +314,7 @@ function nexxi_kids_stitch_cart_content() {
 					$stock_issue   = nexxi_kids_get_cart_item_stock_issue( $cart_item, $cart );
 					$row_alert_css = $stock_issue ? 'border:1.5px solid #ef4444;background:#fff5f5;' : '';
 					?>
-					<div class="bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
+					<div class="nexxi-cart-item-row bg-surface-container-low/40 hover:bg-surface-container-low p-space-md rounded-DEFAULT transition-all flex flex-col md:grid md:grid-cols-12 gap-space-md items-center" data-cart-item-key="<?php echo esc_attr( $cart_item_key ); ?>"<?php echo $row_alert_css ? ' style="' . esc_attr( $row_alert_css ) . '"' : ''; ?>>
 						<div class="w-full md:col-span-6 flex items-center gap-space-md"><a class="w-20 h-24 rounded-DEFAULT bg-secondary-fixed/30 overflow-hidden shrink-0" href="<?php echo esc_url( $permalink ); ?>"><?php echo wp_kses_post( $image ); ?></a><div class="flex flex-col gap-1 min-w-0"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider"><?php echo esc_html( $category ); ?></span><a class="font-headline-sm text-title-md text-primary hover:text-secondary" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a><?php echo nexxi_kids_cart_item_chips( $cart_item ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?><?php echo nexxi_kids_render_cart_item_stock_badge( $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div></div>
 						<div class="w-full md:col-span-2 flex justify-between md:justify-center items-center font-label-md text-label-md text-on-surface">
 							<span class="md:hidden text-outline">Đơn giá:</span>
@@ -329,7 +329,7 @@ function nexxi_kids_stitch_cart_content() {
 							<span class="md:hidden text-outline">Số lượng:</span>
 							<?php echo nexxi_kids_render_cart_qty_stepper( $cart_item_key, $product, $quantity, false, $stock_issue ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 						</div>
-						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] * (int) $quantity ) ); ?></span><a class="w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
+						<div class="w-full md:col-span-2 flex justify-between md:justify-end items-center gap-space-sm"><span class="font-title-md text-title-md text-secondary font-bold"><?php echo esc_html( nexxi_kids_money( $eff_row['effective_price'] * (int) $quantity ) ); ?></span><a class="nexxi-cart-remove-btn w-8 h-8 rounded-full hover:bg-error-container text-outline hover:text-error flex items-center justify-center transition-colors" href="<?php echo esc_url( wc_get_cart_remove_url( $cart_item_key ) ); ?>" data-nexxi-remove-key="<?php echo esc_attr( $cart_item_key ); ?>" data-nexxi-remove-qty="<?php echo (int) $quantity; ?>" aria-label="Xóa <?php echo esc_attr( $product->get_name() ); ?> khỏi giỏ"><span class="material-symbols-outlined text-[18px]">delete_outline</span></a></div>
 					</div>
 				<?php endforeach; ?>
 				</div>
@@ -343,36 +343,166 @@ function nexxi_kids_stitch_cart_content() {
 				#nexxi-stitch-cart-main.is-updating-cart .nexxi-stitch-cart-totals { opacity: 0.65; transition: opacity .15s ease; }
 				</style>
 				<script>
+				window._nexxiPendingCartQty = window._nexxiPendingCartQty || {};
+				window._nexxiCartInFlight = Boolean(window._nexxiCartInFlight);
+				window._nexxiCartDirty = Boolean(window._nexxiCartDirty);
+
 				window.nexxiSyncSplitCartQty = function(cartKey) {
 					var inputs = document.querySelectorAll('.nexxi-split-qty[data-cart-key="' + cartKey + '"]');
 					var sum = 0;
 					inputs.forEach(function(inp) { sum += Math.max(0, parseInt(inp.value || '0', 10) || 0); });
 					var master = document.getElementById('nx-master-qty-' + cartKey);
 					if (master) master.value = sum;
+					return sum;
 				};
+
+				window.nexxiSetPendingCartQty = function(cartKey, masterQty) {
+					if (!cartKey) return;
+					window._nexxiPendingCartQty = window._nexxiPendingCartQty || {};
+					window._nexxiPendingCartQty[cartKey] = Math.max(0, parseInt(masterQty, 10) || 0);
+					if (window._nexxiCartInFlight) {
+						window._nexxiCartDirty = true;
+					}
+				};
+
+				window.nexxiComputeLiveCartCount = function() {
+					var masters = document.querySelectorAll('#nexxi-cart-master-qtys input[type="hidden"]');
+					var total = 0;
+					if (masters && masters.length > 0) {
+						masters.forEach(function(m) {
+							var id = m.getAttribute('id') || '';
+							var k = id.indexOf('nx-master-qty-') === 0 ? id.slice(14) : '';
+							if (k && window._nexxiPendingCartQty && Object.prototype.hasOwnProperty.call(window._nexxiPendingCartQty, k)) {
+								total += Math.max(0, parseInt(window._nexxiPendingCartQty[k], 10) || 0);
+							} else {
+								total += Math.max(0, parseInt(m.value || '0', 10) || 0);
+							}
+						});
+						return total;
+					}
+					var inputs = document.querySelectorAll('.woocommerce-cart-form .nexxi-cart-qty');
+					inputs.forEach(function(inp) {
+						var k = inp.getAttribute('data-cart-key') || '';
+						if (k && !inp.classList.contains('nexxi-split-qty') && window._nexxiPendingCartQty && Object.prototype.hasOwnProperty.call(window._nexxiPendingCartQty, k)) {
+							total += Math.max(0, parseInt(window._nexxiPendingCartQty[k], 10) || 0);
+						} else {
+							total += Math.max(0, parseInt(inp.value || '0', 10) || 0);
+						}
+					});
+					return total;
+				};
+
+				window.nexxiUpdateLiveCartCounts = function(explicitCount) {
+					var cnt = (typeof explicitCount === 'number') ? Math.max(0, explicitCount) : window.nexxiComputeLiveCartCount();
+					document.querySelectorAll('[data-nexxi-cart-page-count]').forEach(function(el) {
+						el.textContent = cnt + ' món tuyển chọn';
+					});
+					document.querySelectorAll('[data-nexxi-cart-all-count]').forEach(function(el) {
+						el.textContent = 'Tất cả sản phẩm (' + cnt + ')';
+					});
+					document.querySelectorAll('[data-nexxi-cart-count]').forEach(function(el) {
+						el.textContent = String(cnt);
+					});
+				};
+
+				window.nexxiCollapseCartEl = function(el) {
+					if (!el || el.classList.contains('is-removing')) return;
+					el.classList.add('is-removing');
+					var h = el.offsetHeight;
+					el.style.pointerEvents = 'none';
+					el.style.maxHeight = h + 'px';
+					el.style.overflow = 'hidden';
+					void el.offsetHeight;
+					el.style.transition = 'opacity 160ms ease, transform 160ms ease, max-height 180ms ease, padding 180ms ease, margin 180ms ease, border-width 180ms ease';
+					el.style.opacity = '0';
+					el.style.transform = 'translateX(12px)';
+					el.style.maxHeight = '0px';
+					el.style.paddingTop = '0px';
+					el.style.paddingBottom = '0px';
+					el.style.marginTop = '0px';
+					el.style.marginBottom = '0px';
+					el.style.borderWidth = '0px';
+					setTimeout(function() {
+						if (el && el.parentNode) { el.style.display = 'none'; }
+					}, 190);
+				};
+
+				window.nexxiCollapseCartRowAndEmptyFrame = function(rowEl) {
+					if (!rowEl) return;
+					window.nexxiCollapseCartEl(rowEl);
+					var frame = rowEl.closest ? rowEl.closest('.nexxi-combo-frame, .nexxi-leftover-frame') : null;
+					if (frame && !frame.classList.contains('is-removing')) {
+						var aliveRows = frame.querySelectorAll('.nexxi-cart-item-row:not(.is-removing)');
+						if (!aliveRows || aliveRows.length === 0) {
+							window.nexxiCollapseCartEl(frame);
+						}
+					}
+				};
+
+				window.nexxiQueueCartSync = function(delayMs) {
+					var mainEl = document.getElementById('nexxi-stitch-cart-main');
+					if (mainEl) mainEl.classList.add('is-updating-cart');
+					clearTimeout(window._nexxiCartAutoUpdateTimer);
+					window._nexxiCartAutoUpdateTimer = setTimeout(function() {
+						window._nexxiCartAutoUpdateTimer = null;
+						if (window.nexxiAjaxUpdateCart) window.nexxiAjaxUpdateCart();
+					}, typeof delayMs === 'number' ? delayMs : 250);
+				};
+
 				window.nexxiAjaxUpdateCart = function() {
 					var form = document.querySelector('.woocommerce-cart-form');
 					var mainEl = document.getElementById('nexxi-stitch-cart-main');
-					if (!form || !mainEl) return;
-					if (window._nexxiCartAbortCtrl) {
-						try { window._nexxiCartAbortCtrl.abort(); } catch (e) {}
+					if (!form || !mainEl) {
+						window._nexxiCartInFlight = false;
+						window._nexxiCartDirty = false;
+						return;
 					}
-					var ctrl = new AbortController();
-					window._nexxiCartAbortCtrl = ctrl;
+					if (window._nexxiCartInFlight) {
+						window._nexxiCartDirty = true;
+						return;
+					}
+					window._nexxiCartInFlight = true;
+					window._nexxiCartDirty = false;
 					mainEl.classList.add('is-updating-cart');
 
 					var fd = new FormData(form);
+					if (window._nexxiPendingCartQty) {
+						Object.keys(window._nexxiPendingCartQty).forEach(function(k) {
+							fd.set('cart[' + k + '][qty]', String(window._nexxiPendingCartQty[k]));
+						});
+					}
+					if (window._nexxiLatestCartNonce) {
+						fd.set('woocommerce-cart-nonce', window._nexxiLatestCartNonce);
+					}
 					fd.set('update_cart', 'Cập nhật giỏ hàng');
 
 					fetch(form.getAttribute('action') || window.location.href, {
 						method: 'POST',
 						credentials: 'same-origin',
-						body: fd,
-						signal: ctrl.signal
+						body: fd
 					})
-					.then(function(res) { return res.text(); })
+					.then(function(res) {
+						if (!res.ok) throw new Error('HTTP ' + res.status);
+						return res.text();
+					})
 					.then(function(html) {
 						var doc = new DOMParser().parseFromString(html, 'text/html');
+						var freshNonce = doc.querySelector('input[name="woocommerce-cart-nonce"]');
+						if (freshNonce && freshNonce.value) {
+							window._nexxiLatestCartNonce = freshNonce.value;
+							var curNonce = document.querySelector('.woocommerce-cart-form input[name="woocommerce-cart-nonce"]');
+							if (curNonce) curNonce.value = freshNonce.value;
+						}
+
+						if (window._nexxiCartDirty) {
+							window._nexxiCartInFlight = false;
+							window.nexxiQueueCartSync(60);
+							return;
+						}
+
+						window._nexxiPendingCartQty = {};
+						window._nexxiCartInFlight = false;
+
 						// Strip only success ".woocommerce-message", preserve ".woocommerce-error" and ".woocommerce-info"
 						doc.querySelectorAll('.woocommerce-message').forEach(function(n) { n.remove(); });
 						doc.querySelectorAll('.woocommerce-notices-wrapper').forEach(function(w) {
@@ -384,19 +514,68 @@ function nexxi_kids_stitch_cart_content() {
 						if (newMain && mainEl) {
 							mainEl.innerHTML = newMain.innerHTML;
 						}
-						// Also sync header cart count badge if present
+						// Sync header & mobile drawer cart count badge (including empty-cart 0 state)
 						var newBadge = doc.querySelector('[data-nexxi-cart-count]');
-						if (newBadge) {
-							var cnt = newBadge.textContent.trim();
-							document.querySelectorAll('[data-nexxi-cart-count]').forEach(function(b) { b.textContent = cnt; });
+						var finalCnt = newBadge ? newBadge.textContent.trim() : (doc.querySelector('.woocommerce-cart-form') ? null : '0');
+						if (finalCnt !== null) {
+							document.querySelectorAll('[data-nexxi-cart-count]').forEach(function(b) { b.textContent = finalCnt; });
 						}
 						mainEl.classList.remove('is-updating-cart');
+						if (window.jQuery) {
+							window.jQuery(document.body).trigger('updated_wc_div');
+						}
 					})
-					.catch(function(err) {
-						if (err && err.name === 'AbortError') return;
-						mainEl.classList.remove('is-updating-cart');
+					.catch(function() {
+						window._nexxiCartInFlight = false;
+						window._nexxiCartDirty = false;
+						if (mainEl) mainEl.classList.remove('is-updating-cart');
 					});
 				};
+
+				window.nexxiRemoveCartRow = function(btn) {
+					var key = btn ? btn.getAttribute('data-nexxi-remove-key') : '';
+					if (!key) return false;
+					var rowEl = btn.closest ? btn.closest('.nexxi-cart-item-row') : null;
+					if (rowEl && rowEl.classList.contains('is-removing')) return true;
+
+					var attrQty = Math.max(1, parseInt(btn.getAttribute('data-nexxi-remove-qty') || '1', 10) || 1);
+					var rowInput = rowEl ? rowEl.querySelector('.nexxi-cart-qty') : null;
+					var removeQty = rowInput ? Math.max(0, parseInt(rowInput.value || '0', 10) || attrQty) : attrQty;
+
+					var master = document.getElementById('nx-master-qty-' + key);
+					var nextMaster = 0;
+					if (master) {
+						if (rowInput) {
+							rowInput.value = '0';
+							nextMaster = window.nexxiSyncSplitCartQty ? window.nexxiSyncSplitCartQty(key) : 0;
+						} else {
+							var curM = (window._nexxiPendingCartQty && Object.prototype.hasOwnProperty.call(window._nexxiPendingCartQty, key))
+								? window._nexxiPendingCartQty[key]
+								: (parseInt(master.value || '0', 10) || 0);
+							nextMaster = Math.max(0, curM - removeQty);
+							master.value = String(nextMaster);
+						}
+						if (nextMaster === 0) {
+							document.querySelectorAll('.nexxi-cart-qty[data-cart-key="' + key + '"]').forEach(function(inp) { inp.value = '0'; });
+						}
+					} else {
+						var directInp = rowInput || document.querySelector('.woocommerce-cart-form input[name="cart[' + key + '][qty]"]');
+						var curSingle = (window._nexxiPendingCartQty && Object.prototype.hasOwnProperty.call(window._nexxiPendingCartQty, key))
+							? window._nexxiPendingCartQty[key]
+							: (directInp ? (parseInt(directInp.value || '0', 10) || 0) : removeQty);
+						nextMaster = rowInput ? 0 : Math.max(0, curSingle - removeQty);
+						if (directInp) directInp.value = String(nextMaster);
+					}
+
+					window.nexxiSetPendingCartQty(key, nextMaster);
+					if (rowEl) {
+						window.nexxiCollapseCartRowAndEmptyFrame(rowEl);
+					}
+					window.nexxiUpdateLiveCartCounts();
+					window.nexxiQueueCartSync(180);
+					return true;
+				};
+
 				window.nexxiStepCartQty = function(btn, delta) {
 					if (btn && btn.disabled) return;
 					var wrap = btn && btn.closest ? btn.closest('.nexxi-qty-stepper') : null;
@@ -412,28 +591,62 @@ function nexxi_kids_stitch_cart_content() {
 					var next = (delta < 0 && maxAttr === '0') ? Math.max(min, cur + delta) : Math.max(min, Math.min(max, cur + delta));
 					if (next === cur) return;
 					input.value = next;
-					var key = input.getAttribute('data-cart-key');
-					if (key && window.nexxiSyncSplitCartQty) {
-						window.nexxiSyncSplitCartQty(key);
+
+					var key = input.getAttribute('data-cart-key') || '';
+					var masterQty = next;
+					if (key && input.classList.contains('nexxi-split-qty') && window.nexxiSyncSplitCartQty) {
+						masterQty = window.nexxiSyncSplitCartQty(key);
+					}
+					if (key) {
+						window.nexxiSetPendingCartQty(key, masterQty);
+					}
+					if (next === 0) {
+						var rowEl = input.closest ? input.closest('.nexxi-cart-item-row') : null;
+						if (rowEl) window.nexxiCollapseCartRowAndEmptyFrame(rowEl);
 					}
 					input.dispatchEvent(new Event('input', { bubbles: true }));
 					input.dispatchEvent(new Event('change', { bubbles: true }));
 					var updateBtn = document.querySelector('.woocommerce-cart-form button[name="update_cart"]');
 					if (updateBtn) updateBtn.disabled = false;
-					clearTimeout(window._nexxiCartAutoUpdateTimer);
-					window._nexxiCartAutoUpdateTimer = setTimeout(function() {
-						if (window.nexxiAjaxUpdateCart) window.nexxiAjaxUpdateCart();
-					}, 380);
+					window.nexxiUpdateLiveCartCounts();
+					window.nexxiQueueCartSync(320);
 				};
+
 				if (!window._nexxiCartFormSubmitBound) {
 					window._nexxiCartFormSubmitBound = true;
 					document.addEventListener('click', function(e) {
+						var rmBtn = e.target && e.target.closest ? e.target.closest('[data-nexxi-remove-key]') : null;
+						if (rmBtn && document.getElementById('nexxi-stitch-cart-main')) {
+							e.preventDefault();
+							if (window.nexxiRemoveCartRow) window.nexxiRemoveCartRow(rmBtn);
+							return;
+						}
 						var updBtn = e.target && e.target.closest ? e.target.closest('.woocommerce-cart-form button[name="update_cart"]') : null;
 						if (updBtn) {
 							e.preventDefault();
 							clearTimeout(window._nexxiCartAutoUpdateTimer);
+							window._nexxiCartAutoUpdateTimer = null;
 							if (window.nexxiAjaxUpdateCart) window.nexxiAjaxUpdateCart();
 						}
+					});
+					document.addEventListener('change', function(e) {
+						if (!e.isTrusted) return;
+						var qtyInp = e.target && e.target.closest ? e.target.closest('.woocommerce-cart-form .nexxi-cart-qty') : null;
+						if (!qtyInp) return;
+						var val = Math.max(0, parseInt(qtyInp.value || '0', 10) || 0);
+						qtyInp.value = val;
+						var key = qtyInp.getAttribute('data-cart-key') || '';
+						var masterQty = val;
+						if (key && qtyInp.classList.contains('nexxi-split-qty') && window.nexxiSyncSplitCartQty) {
+							masterQty = window.nexxiSyncSplitCartQty(key);
+						}
+						if (key) window.nexxiSetPendingCartQty(key, masterQty);
+						if (val === 0) {
+							var rowEl = qtyInp.closest ? qtyInp.closest('.nexxi-cart-item-row') : null;
+							if (rowEl) window.nexxiCollapseCartRowAndEmptyFrame(rowEl);
+						}
+						window.nexxiUpdateLiveCartCounts();
+						window.nexxiQueueCartSync(320);
 					});
 				}
 				</script>
