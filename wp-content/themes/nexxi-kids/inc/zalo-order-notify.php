@@ -214,8 +214,92 @@ function nexxi_kids_zalo_add_chat_id( $chat_id, $display_name = '' ) {
 }
 
 /**
+ * Split a long Zalo text message into safe chunks strictly under Zalo Bot API's 2,000-character limit.
+ * Splits preferentially on double-newline (`\n\n`), then single-newline (`\n`), then whitespace.
+ *
+ * @param string $text      Full message text.
+ * @param int    $max_chars Maximum characters per chunk (default 1850, Zalo hard limit is 2000).
+ * @return string[]
+ */
+function nexxi_kids_zalo_split_message_chunks( $text, $max_chars = 1850 ) {
+	$text      = trim( (string) $text );
+	$max_chars = max( 300, min( 1950, (int) $max_chars ) );
+	if ( '' === $text ) {
+		return array();
+	}
+	$len_fn = function_exists( 'mb_strlen' )
+		? static function ( $s ) { return (int) mb_strlen( (string) $s, 'UTF-8' ); }
+		: static function ( $s ) { return (int) strlen( (string) $s ); };
+	$sub_fn = function_exists( 'mb_substr' )
+		? static function ( $s, $start, $len = null ) {
+			return null === $len
+				? (string) mb_substr( (string) $s, (int) $start, null, 'UTF-8' )
+				: (string) mb_substr( (string) $s, (int) $start, (int) $len, 'UTF-8' );
+		}
+		: static function ( $s, $start, $len = null ) {
+			return null === $len
+				? (string) substr( (string) $s, (int) $start )
+				: (string) substr( (string) $s, (int) $start, (int) $len );
+		};
+
+	if ( $len_fn( $text ) <= $max_chars ) {
+		return array( $text );
+	}
+
+	$chunks    = array();
+	$remaining = $text;
+
+	while ( '' !== $remaining ) {
+		if ( $len_fn( $remaining ) <= $max_chars ) {
+			$chunks[] = $remaining;
+			break;
+		}
+
+		$slice    = $sub_fn( $remaining, 0, $max_chars );
+		$cut_pos  = -1;
+		$dbl_pos  = strrpos( $slice, "\n\n" );
+		if ( false !== $dbl_pos && $dbl_pos >= 200 ) {
+			$cut_char = $len_fn( substr( $slice, 0, $dbl_pos ) );
+			if ( $cut_char > 0 ) {
+				$cut_pos = $cut_char;
+			}
+		}
+		if ( $cut_pos <= 0 ) {
+			$nl_pos = strrpos( $slice, "\n" );
+			if ( false !== $nl_pos && $nl_pos >= 120 ) {
+				$cut_char = $len_fn( substr( $slice, 0, $nl_pos ) );
+				if ( $cut_char > 0 ) {
+					$cut_pos = $cut_char;
+				}
+			}
+		}
+		if ( $cut_pos <= 0 ) {
+			$sp_pos = strrpos( $slice, ' ' );
+			if ( false !== $sp_pos && $sp_pos >= 120 ) {
+				$cut_char = $len_fn( substr( $slice, 0, $sp_pos ) );
+				if ( $cut_char > 0 ) {
+					$cut_pos = $cut_char;
+				}
+			}
+		}
+		if ( $cut_pos <= 0 ) {
+			$cut_pos = $max_chars;
+		}
+
+		$part = trim( $sub_fn( $remaining, 0, $cut_pos ) );
+		if ( '' !== $part ) {
+			$chunks[] = $part;
+		}
+		$remaining = ltrim( $sub_fn( $remaining, $cut_pos ) );
+	}
+
+	return ! empty( $chunks ) ? $chunks : array( $sub_fn( $text, 0, $max_chars ) );
+}
+
+/**
  * Call a Zalo Bot API method (`getMe`, `sendMessage`, `sendPhoto`, `getUpdates`, `setWebhook`, `deleteWebhook`).
  * Automatically tries `bot-api.zapps.me` and falls back to `bot-api.zaloplatforms.com`.
+ * Automatically splits `sendMessage` payloads exceeding 1,850 characters so Zalo's 2,000-char limit is never exceeded.
  *
  * @param string $method    API method name.
  * @param array  $payload   JSON body parameters.
@@ -237,6 +321,30 @@ function nexxi_kids_zalo_bot_request( $method, array $payload = array(), $bot_to
 		return new WP_Error( 'missing_token', 'Chưa nhập Zalo Bot Token.' );
 	}
 
+	$clean_method = ltrim( (string) $method, '/' );
+	if ( 'sendmessage' === strtolower( $clean_method ) && ! empty( $payload['text'] ) ) {
+		$chunks = nexxi_kids_zalo_split_message_chunks( (string) $payload['text'], 1850 );
+		if ( count( $chunks ) > 1 ) {
+			$last_ok_res = array( 'ok' => true );
+			foreach ( $chunks as $idx => $chunk_text ) {
+				if ( $idx > 0 ) {
+					usleep( 200000 );
+				}
+				$chunk_payload         = $payload;
+				$chunk_payload['text'] = $chunk_text;
+				$chunk_res             = nexxi_kids_zalo_bot_request( $clean_method, $chunk_payload, $bot_token, $timeout );
+				if ( is_wp_error( $chunk_res ) ) {
+					return $chunk_res;
+				}
+				if ( isset( $chunk_res['ok'] ) && false === $chunk_res['ok'] ) {
+					return $chunk_res;
+				}
+				$last_ok_res = $chunk_res;
+			}
+			return $last_ok_res;
+		}
+	}
+
 	$hosts = array(
 		'https://bot-api.zapps.me',
 		'https://bot-api.zaloplatforms.com',
@@ -244,7 +352,7 @@ function nexxi_kids_zalo_bot_request( $method, array $payload = array(), $bot_to
 
 	$last_err = null;
 	foreach ( $hosts as $host ) {
-		$url = $host . '/bot' . $bot_token . '/' . ltrim( $method, '/' );
+		$url = $host . '/bot' . $bot_token . '/' . $clean_method;
 		$res = wp_remote_post(
 			$url,
 			array(
@@ -329,19 +437,67 @@ function nexxi_kids_zalo_extract_chat_from_update( array $update ) {
 
 /**
  * Register REST API Webhook endpoint (`/wp-json/nexxi/v1/zalo-bot-webhook`)
+ * and Scanner trigger endpoint (`/wp-json/nexxi/v1/zalo-bot-scan`)
  * so when anyone messages the Zalo Bot (e.g. `/id`, `/start`, `kho`), the website
- * automatically captures their `chat_id` and replies on Zalo!
+ * automatically captures their `chat_id` and replies on Zalo, and external cron/monitors
+ * can trigger due scans even when frontend pages are served from LiteSpeed Cache.
  */
 add_action(
 	'rest_api_init',
 	static function () {
+		$scan_callback = static function ( WP_REST_Request $request ) {
+			$force = false;
+			$sec   = trim( (string) $request->get_param( 'secret' ) );
+			$cfg   = nexxi_kids_zalo_notify_settings();
+			if ( '' !== $sec && '' !== $cfg['secret_token'] && hash_equals( $cfg['secret_token'], $sec ) ) {
+				$force = true;
+			}
+			$res       = nexxi_kids_run_zalo_order_scan( $force );
+			$last_ts   = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
+			$next_ts   = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+			$last_err  = (string) get_option( 'nexxi_zalo_last_scan_error', '' );
+			$rem_count = count( nexxi_kids_get_pending_zalo_orders( 100 ) );
+
+			return new WP_REST_Response(
+				array(
+					'ok'            => empty( $res['errors'] ),
+					'processed'     => (int) ( $res['processed'] ?? 0 ),
+					'sent_orders'   => (int) ( $res['sent_orders'] ?? 0 ),
+					'pending_count' => $rem_count,
+					'skipped_hours' => ! empty( $res['skipped_hours'] ),
+					'window_str'    => (string) ( $res['window_str'] ?? '' ),
+					'last_scan_ts'  => $last_ts,
+					'last_scan'     => (string) get_option( 'nexxi_zalo_last_scan_time', '' ),
+					'next_scan_ts'  => $next_ts,
+					'next_scan'     => $next_ts > 0 ? wp_date( 'H:i - d/m/Y', $next_ts ) : '',
+					'errors_count'  => is_array( $res['errors'] ?? null ) ? count( $res['errors'] ) : 0,
+					'last_error'    => $last_err,
+				),
+				200
+			);
+		};
+
+		register_rest_route(
+			'nexxi/v1',
+			'/zalo-bot-scan',
+			array(
+				'methods'             => array( 'POST', 'GET' ),
+				'permission_callback' => '__return_true',
+				'callback'            => $scan_callback,
+			)
+		);
+
 		register_rest_route(
 			'nexxi/v1',
 			'/zalo-bot-webhook',
 			array(
 				'methods'             => array( 'POST', 'GET' ),
 				'permission_callback' => '__return_true',
-				'callback'            => static function ( WP_REST_Request $request ) {
+				'callback'            => static function ( WP_REST_Request $request ) use ( $scan_callback ) {
+					if ( 'trigger_scan' === sanitize_key( (string) $request->get_param( 'action' ) ) ) {
+						return call_user_func( $scan_callback, $request );
+					}
+
 					$body = $request->get_json_params();
 					if ( ! is_array( $body ) || empty( $body ) ) {
 						$raw  = $request->get_body();
@@ -725,17 +881,31 @@ function nexxi_kids_get_pending_zalo_orders( $limit = 100, $since_ts = null, $un
 }
 
 /**
- * Format a batch of newly generated orders within a scan window (`$from_ts` -> `$to_ts`)
- * into a single consolidated Zalo group notification message.
+ * Build one or more consolidated Zalo notification messages for a batch of orders,
+ * automatically splitting into numbered parts (`Phần 1/N`, `Phần 2/N`...) so every
+ * message stays strictly <= 1,750 characters (well below Zalo Bot API's 2,000-character limit)
+ * and 100% of orders in the batch are shown in full without truncation.
  *
  * @param WC_Order[] $orders       Orders in this scan batch.
  * @param int        $from_ts      Window start Unix timestamp.
  * @param int        $to_ts        Window end Unix timestamp.
- * @param bool       $is_overnight True when summarizing off-hours/overnight orders at active start time (e.g. 08:00 AM).
- * @return array{text:string,payload:array}
+ * @param bool       $is_overnight True when summarizing off-hours/overnight orders at active start time.
+ * @param int        $max_chars    Max characters per Zalo message part (default 1750).
+ * @return array<int,array{orders:WC_Order[],text:string,payload:array,part_num:int,total_parts:int}>
  */
-function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $to_ts, $is_overnight = false ) {
-	$order_count = count( $orders );
+function nexxi_kids_build_zalo_batch_order_chunks( array $orders, $from_ts, $to_ts, $is_overnight = false, $max_chars = 1750 ) {
+	$valid_orders = array();
+	foreach ( $orders as $ord ) {
+		if ( $ord instanceof WC_Order ) {
+			$valid_orders[] = $ord;
+		}
+	}
+	$order_count = count( $valid_orders );
+	if ( $order_count <= 0 ) {
+		return array();
+	}
+
+	$max_chars       = max( 800, min( 1850, (int) $max_chars ) );
 	$display_from_ts = ( ! $is_overnight && ( $to_ts - $from_ts ) >= 120 && ( (int) wp_date( 'i', $from_ts ) % 5 === 0 ) )
 		? ( $from_ts + 60 )
 		: $from_ts;
@@ -747,17 +917,16 @@ function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $
 		$window_str = wp_date( 'H:i d/m', $from_ts ) . ' ➔ ' . wp_date( 'H:i d/m/Y', $to_ts );
 	}
 
+	$len_fn = function_exists( 'mb_strlen' )
+		? static function ( $s ) { return (int) mb_strlen( (string) $s, 'UTF-8' ); }
+		: static function ( $s ) { return (int) strlen( (string) $s ); };
+
 	$total_items   = 0;
 	$total_revenue = 0.0;
-	$order_blocks  = array();
-	$orders_data   = array();
-	$max_detailed  = 20;
+	$prepared      = array();
 	$idx           = 1;
 
-	foreach ( $orders as $order ) {
-		if ( ! $order instanceof WC_Order ) {
-			continue;
-		}
+	foreach ( $valid_orders as $order ) {
 		$order_number  = $order->get_order_number();
 		$created       = $order->get_date_created();
 		$order_time    = $created ? $created->setTimezone( wp_timezone() )->format( $same_day ? 'H:i' : 'H:i d/m' ) : wp_date( 'H:i' );
@@ -770,9 +939,9 @@ function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $
 		}
 		$phone = trim( (string) $order->get_billing_phone() );
 
-		$addr1 = trim( (string) $order->get_billing_address_1() );
-		$ward  = trim( (string) $order->get_meta( '_billing_ward' ) );
-		$city  = trim( (string) $order->get_billing_city() );
+		$addr1      = trim( (string) $order->get_billing_address_1() );
+		$ward       = trim( (string) $order->get_meta( '_billing_ward' ) );
+		$city       = trim( (string) $order->get_billing_city() );
 		$addr_parts = array_filter( array( $addr1, $ward, $city ) );
 		if ( '' !== $ward && false !== stripos( $addr1, $ward ) ) {
 			$addr_parts = array_filter( array( $addr1, $city ) );
@@ -803,155 +972,250 @@ function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $
 			$item_brief[] = $sku_prefix . $item->get_name() . $var_txt . ' x' . $q;
 		}
 
-		if ( $idx <= $max_detailed ) {
-			$line_block = $idx . '. Đơn #' . $order_number . ' (' . $order_time . ') — ' . ( '' !== $recipient ? $recipient : 'Khách lẻ' ) . ( '' !== $phone ? ' - ' . $phone : '' );
-			if ( '' !== $full_addr ) {
-				$line_block .= "\n   • Đ/c: " . $full_addr;
-			}
-			$line_block .= "\n   • Tổng: " . number_format( $order_total, 0, ',', '.' ) . 'đ (' . ( $order->get_payment_method_title() ?: 'COD' ) . ')';
-			$order_blocks[] = $line_block;
+		$line_block = $idx . '. Đơn #' . $order_number . ' (' . $order_time . ') — ' . ( '' !== $recipient ? $recipient : 'Khách lẻ' ) . ( '' !== $phone ? ' - ' . $phone : '' );
+		if ( '' !== $full_addr ) {
+			$line_block .= "\n   • Đ/c: " . $full_addr;
 		}
+		$line_block .= "\n   • Tổng: " . number_format( $order_total, 0, ',', '.' ) . 'đ (' . ( $order->get_payment_method_title() ?: 'COD' ) . ')';
 
-		$orders_data[] = array(
-			'order_id'     => $order->get_id(),
-			'order_number' => $order_number,
-			'time'         => $order_time,
-			'customer'     => $recipient,
-			'phone'        => $phone,
-			'address'      => $full_addr,
-			'items_count'  => $ord_qty,
-			'items_text'   => implode( '; ', $item_brief ),
-			'total'        => $order_total,
+		$prepared[] = array(
+			'order'      => $order,
+			'line_block' => $line_block,
+			'order_data' => array(
+				'order_id'     => $order->get_id(),
+				'order_number' => $order_number,
+				'time'         => $order_time,
+				'customer'     => $recipient,
+				'phone'        => $phone,
+				'address'      => $full_addr,
+				'items_count'  => $ord_qty,
+				'items_text'   => implode( '; ', $item_brief ),
+				'total'        => $order_total,
+			),
 		);
 		++$idx;
 	}
 
-	if ( $order_count > $max_detailed ) {
-		$order_blocks[] = sprintf( '... và %d đơn hàng khác trong cùng khung giờ.', $order_count - $max_detailed );
+	// Reserve ~360 characters for header + footer envelope so body + envelope <= $max_chars.
+	$body_budget = max( 450, $max_chars - 360 );
+	$raw_groups  = array();
+	$cur_group   = array();
+	$cur_len     = 0;
+
+	foreach ( $prepared as $entry ) {
+		$b_len = $len_fn( $entry['line_block'] );
+		$add   = empty( $cur_group ) ? $b_len : ( $b_len + 2 );
+		if ( ! empty( $cur_group ) && ( $cur_len + $add ) > $body_budget ) {
+			$raw_groups[] = $cur_group;
+			$cur_group    = array( $entry );
+			$cur_len      = $b_len;
+		} else {
+			$cur_group[] = $entry;
+			$cur_len    += $add;
+		}
+	}
+	if ( ! empty( $cur_group ) ) {
+		$raw_groups[] = $cur_group;
 	}
 
-	$lines = array();
-	if ( $is_overnight ) {
-		$lines[] = '🌅 TỔNG HỢP ĐƠN HÀNG NGOÀI GIỜ HOẠT ĐỘNG';
-		$lines[] = '⏰ Khung giờ: ' . $window_str;
-		$lines[] = '📦 Phát sinh ngoài giờ: ' . $order_count . ' ĐƠN HÀNG MỚI';
-	} else {
-		$lines[] = '🔔 BÁO CÁO ĐƠN HÀNG MỚI ĐỢT QUÉT';
-		$lines[] = '⏰ Khung giờ quét: ' . $window_str;
-		$lines[] = '📦 Phát sinh mới: ' . $order_count . ' ĐƠN HÀNG';
+	$total_parts = count( $raw_groups );
+	$admin_link  = admin_url( 'edit.php?post_type=shop_order' );
+	$out_chunks  = array();
+
+	foreach ( $raw_groups as $g_idx => $group ) {
+		$part_num    = $g_idx + 1;
+		$part_suffix = $total_parts > 1 ? sprintf( ' (Phần %d/%d)', $part_num, $total_parts ) : '';
+		$part_orders = array();
+		$part_blocks = array();
+		$part_data   = array();
+
+		foreach ( $group as $entry ) {
+			$part_orders[] = $entry['order'];
+			$part_blocks[] = $entry['line_block'];
+			$part_data[]   = $entry['order_data'];
+		}
+
+		$lines = array();
+		if ( $is_overnight ) {
+			$lines[] = '🌅 TỔNG HỢP ĐƠN HÀNG NGOÀI GIỜ HOẠT ĐỘNG' . $part_suffix;
+			$lines[] = '⏰ Khung giờ: ' . $window_str;
+			$lines[] = '📦 Phát sinh ngoài giờ: ' . $order_count . ' ĐƠN HÀNG MỚI' . ( $total_parts > 1 ? sprintf( ' (Phần %d/%d: %d đơn)', $part_num, $total_parts, count( $part_orders ) ) : '' );
+		} else {
+			$lines[] = '🔔 BÁO CÁO ĐƠN HÀNG MỚI ĐỢT QUÉT' . $part_suffix;
+			$lines[] = '⏰ Khung giờ quét: ' . $window_str;
+			$lines[] = '📦 Phát sinh mới: ' . $order_count . ' ĐƠN HÀNG' . ( $total_parts > 1 ? sprintf( ' (Phần %d/%d: %d đơn)', $part_num, $total_parts, count( $part_orders ) ) : '' );
+		}
+		$lines[] = '🛍️ Tổng SL cần nhặt: ' . $total_items . ' sản phẩm  |  💰 Tổng: ' . number_format( $total_revenue, 0, ',', '.' ) . 'đ';
+		$lines[] = '────────────────────';
+		$lines[] = implode( "\n\n", $part_blocks );
+		$lines[] = '────────────────────';
+		$lines[] = '👉 Kho vui lòng kiểm tra và xử lý đóng hàng cho ' . ( $total_parts > 1 ? sprintf( '%d/%d đơn trên!', count( $part_orders ), $order_count ) : ( $order_count . ' đơn trên!' ) );
+		$lines[] = '🔗 Quản lý đơn Web: ' . $admin_link;
+
+		$text = implode( "\n", $lines );
+
+		$out_chunks[] = array(
+			'orders'      => $part_orders,
+			'text'        => $text,
+			'part_num'    => $part_num,
+			'total_parts' => $total_parts,
+			'payload'     => array(
+				'event'         => $is_overnight ? 'overnight_orders_summary' : 'batch_orders_scan',
+				'part_num'      => $part_num,
+				'total_parts'   => $total_parts,
+				'window_from'   => wp_date( 'Y-m-d H:i:s', $from_ts ),
+				'window_to'     => wp_date( 'Y-m-d H:i:s', $to_ts ),
+				'orders_count'  => count( $part_orders ),
+				'batch_orders'  => $order_count,
+				'items_count'   => $total_items,
+				'total_revenue' => $total_revenue,
+				'orders'        => $part_data,
+				'message_text'  => $text,
+			),
+		);
 	}
-	$lines[] = '🛍️ Tổng SL cần nhặt: ' . $total_items . ' sản phẩm  |  💰 Tổng: ' . number_format( $total_revenue, 0, ',', '.' ) . 'đ';
-	$lines[] = '────────────────────';
-	$lines[] = implode( "\n\n", $order_blocks );
-	$lines[] = '────────────────────';
-	$lines[] = '👉 Kho vui lòng kiểm tra và xử lý đóng hàng cho ' . $order_count . ' đơn trên!';
-	$lines[] = '🔗 Quản lý đơn Web: ' . admin_url( 'edit.php?post_type=shop_order' );
 
-	$text = implode( "\n", $lines );
+	return $out_chunks;
+}
 
+/**
+ * Format a batch of newly generated orders within a scan window (`$from_ts` -> `$to_ts`)
+ * into a consolidated Zalo group notification message.
+ *
+ * @param WC_Order[] $orders       Orders in this scan batch.
+ * @param int        $from_ts      Window start Unix timestamp.
+ * @param int        $to_ts        Window end Unix timestamp.
+ * @param bool       $is_overnight True when summarizing off-hours/overnight orders at active start time (e.g. 08:00 AM).
+ * @return array{text:string,payload:array,chunks:array}
+ */
+function nexxi_kids_format_zalo_batch_orders_message( array $orders, $from_ts, $to_ts, $is_overnight = false ) {
+	$chunks = nexxi_kids_build_zalo_batch_order_chunks( $orders, $from_ts, $to_ts, $is_overnight, 1750 );
+	if ( empty( $chunks ) ) {
+		return array(
+			'text'    => '',
+			'payload' => array(),
+			'chunks'  => array(),
+		);
+	}
 	return array(
-		'text'    => $text,
-		'payload' => array(
-			'event'         => $is_overnight ? 'overnight_orders_summary' : 'batch_orders_scan',
-			'window_from'   => wp_date( 'Y-m-d H:i:s', $from_ts ),
-			'window_to'     => wp_date( 'Y-m-d H:i:s', $to_ts ),
-			'orders_count'  => $order_count,
-			'items_count'   => $total_items,
-			'total_revenue' => $total_revenue,
-			'orders'        => $orders_data,
-			'message_text'  => $text,
-		),
+		'text'    => $chunks[0]['text'],
+		'payload' => $chunks[0]['payload'],
+		'chunks'  => $chunks,
 	);
 }
 
 /**
- * Send a single consolidated Zalo notification for a batch of orders scanned in `[$from_ts, $to_ts]`.
+ * Send consolidated Zalo notifications for a batch of orders scanned in `[$from_ts, $to_ts]`.
+ * Automatically splits large batches into sequential parts (each <= 1,750 chars, strictly below
+ * Zalo's 2,000-character limit) and marks each part's orders as notified immediately upon success.
  *
  * @param WC_Order[] $orders       Orders in the batch.
  * @param int        $from_ts      Start timestamp.
  * @param int        $to_ts        End timestamp.
  * @param bool       $is_overnight True if overnight summary scan.
- * @return array{sent_channels:int,notified_orders:int,errors:string[]}
+ * @return array{sent_channels:int,notified_orders:int,last_order_ts:int,errors:string[]}
  */
 function nexxi_kids_send_zalo_batch_orders_notification( array $orders, $from_ts, $to_ts, $is_overnight = false ) {
-	if ( empty( $orders ) ) {
+	$chunks = nexxi_kids_build_zalo_batch_order_chunks( $orders, $from_ts, $to_ts, $is_overnight, 1750 );
+	if ( empty( $chunks ) ) {
 		return array(
 			'sent_channels'   => 0,
 			'notified_orders' => 0,
+			'last_order_ts'   => 0,
 			'errors'          => array(),
 		);
 	}
 
-	$cfg       = nexxi_kids_zalo_notify_settings();
-	$formatted = nexxi_kids_format_zalo_batch_orders_message( $orders, $from_ts, $to_ts, $is_overnight );
-	$chat_ids  = nexxi_kids_zalo_parse_chat_ids( $cfg['chat_ids'] );
-	$sent      = 0;
-	$errors    = array();
-
-	if ( '' !== $cfg['bot_token'] && ! empty( $chat_ids ) ) {
-		foreach ( $chat_ids as $chat_id ) {
-			$res = nexxi_kids_zalo_bot_request(
-				'sendMessage',
-				array(
-					'chat_id' => $chat_id,
-					'text'    => $formatted['text'],
-				),
-				$cfg['bot_token']
-			);
-
-			if ( is_wp_error( $res ) ) {
-				$errors[] = 'Chat ID ' . $chat_id . ': ' . $res->get_error_message();
-				continue;
-			}
-			if ( isset( $res['ok'] ) && false === $res['ok'] ) {
-				$errors[] = 'Chat ID ' . $chat_id . ': ' . ( $res['description'] ?? 'Lỗi gửi tin nhắn.' );
-				continue;
-			}
-			++$sent;
-		}
-	}
-
-	if ( '' !== $cfg['webhook_url'] && 0 === strpos( $cfg['webhook_url'], 'http' ) ) {
-		$wh_res = wp_remote_post(
-			$cfg['webhook_url'],
-			array(
-				'timeout' => 10,
-				'headers' => array( 'Content-Type' => 'application/json; charset=utf-8' ),
-				'body'    => wp_json_encode( $formatted['payload'] ),
-			)
-		);
-		if ( ! is_wp_error( $wh_res ) && wp_remote_retrieve_response_code( $wh_res ) < 400 ) {
-			++$sent;
-		} elseif ( is_wp_error( $wh_res ) ) {
-			$errors[] = 'Webhook: ' . $wh_res->get_error_message();
-		}
-	}
-
+	$cfg             = nexxi_kids_zalo_notify_settings();
+	$chat_ids        = nexxi_kids_zalo_parse_chat_ids( $cfg['chat_ids'] );
+	$total_sent_ch   = 0;
 	$notified_orders = 0;
-	if ( $sent > 0 ) {
-		$now_mysql = current_time( 'mysql' );
-		foreach ( $orders as $ord ) {
-			if ( ! $ord instanceof WC_Order ) {
-				continue;
+	$last_order_ts   = 0;
+	$errors          = array();
+	$total_batch_cnt = count( $orders );
+
+	foreach ( $chunks as $c_idx => $chunk ) {
+		if ( $c_idx > 0 ) {
+			usleep( 250000 );
+		}
+
+		$chunk_sent = 0;
+		$part_label = $chunk['total_parts'] > 1 ? sprintf( ' [Phần %d/%d]', $chunk['part_num'], $chunk['total_parts'] ) : '';
+
+		if ( '' !== $cfg['bot_token'] && ! empty( $chat_ids ) ) {
+			foreach ( $chat_ids as $chat_id ) {
+				$res = nexxi_kids_zalo_bot_request(
+					'sendMessage',
+					array(
+						'chat_id' => $chat_id,
+						'text'    => $chunk['text'],
+					),
+					$cfg['bot_token']
+				);
+
+				if ( is_wp_error( $res ) ) {
+					$errors[] = 'Chat ID ' . $chat_id . $part_label . ': ' . $res->get_error_message();
+					continue;
+				}
+				if ( isset( $res['ok'] ) && false === $res['ok'] ) {
+					$errors[] = 'Chat ID ' . $chat_id . $part_label . ': ' . ( $res['description'] ?? 'Lỗi gửi tin nhắn.' );
+					continue;
+				}
+				++$chunk_sent;
 			}
-			$ord->update_meta_data( '_nexxi_zalo_warehouse_notified', 'yes' );
-			$ord->update_meta_data( '_nexxi_zalo_warehouse_pending', 'no' );
-			$ord->update_meta_data( '_nexxi_zalo_warehouse_notified_at', $now_mysql );
-			$ord->save_meta_data();
-			$ord->add_order_note(
-				sprintf(
-					'NEXXI Kho Zalo: Đã gửi thông báo tổng hợp đợt quét (%d đơn) tới %d kênh Zalo/Webhook.',
-					count( $orders ),
-					$sent
+		}
+
+		if ( '' !== $cfg['webhook_url'] && 0 === strpos( $cfg['webhook_url'], 'http' ) ) {
+			$wh_res = wp_remote_post(
+				$cfg['webhook_url'],
+				array(
+					'timeout' => 10,
+					'headers' => array( 'Content-Type' => 'application/json; charset=utf-8' ),
+					'body'    => wp_json_encode( $chunk['payload'] ),
 				)
 			);
-			++$notified_orders;
+			if ( ! is_wp_error( $wh_res ) && wp_remote_retrieve_response_code( $wh_res ) < 400 ) {
+				++$chunk_sent;
+			} elseif ( is_wp_error( $wh_res ) ) {
+				$errors[] = 'Webhook' . $part_label . ': ' . $wh_res->get_error_message();
+			}
+		}
+
+		if ( $chunk_sent > 0 ) {
+			$total_sent_ch = max( $total_sent_ch, $chunk_sent );
+			$now_mysql     = current_time( 'mysql' );
+			foreach ( $chunk['orders'] as $ord ) {
+				if ( ! $ord instanceof WC_Order ) {
+					continue;
+				}
+				$ord->update_meta_data( '_nexxi_zalo_warehouse_notified', 'yes' );
+				$ord->update_meta_data( '_nexxi_zalo_warehouse_pending', 'no' );
+				$ord->update_meta_data( '_nexxi_zalo_warehouse_notified_at', $now_mysql );
+				$ord->save_meta_data();
+				$ord->add_order_note(
+					sprintf(
+						'NEXXI Kho Zalo: Đã gửi thông báo tổng hợp đợt quét (%d đơn%s) tới %d kênh Zalo/Webhook.',
+						$total_batch_cnt,
+						$part_label,
+						$chunk_sent
+					)
+				);
+				$ord_dt = $ord->get_date_created();
+				if ( $ord_dt && $ord_dt->getTimestamp() > $last_order_ts ) {
+					$last_order_ts = (int) $ord_dt->getTimestamp();
+				}
+				++$notified_orders;
+			}
+		} else {
+			// Stop sending subsequent parts in this cycle if the current part failed across all channels.
+			break;
 		}
 	}
 
 	return array(
-		'sent_channels'   => $sent,
+		'sent_channels'   => $total_sent_ch,
 		'notified_orders' => $notified_orders,
+		'last_order_ts'   => $last_order_ts,
 		'errors'          => $errors,
 	);
 }
@@ -959,10 +1223,10 @@ function nexxi_kids_send_zalo_batch_orders_notification( array $orders, $from_ts
 /**
  * Scan and send a consolidated Zalo notification for all new orders generated since the previous scan checkpoint.
  *
- * - Example 1: Scan batch 09:01 -> 09:30 has 10 orders => sends 1 consolidated message reporting 10 orders.
+ * - Example 1: Scan batch 09:01 -> 09:30 has 10 orders => sends consolidated message(s) reporting 10 orders.
  * - Example 2: Scan batch 09:31 -> 10:00 has 2 orders  => sends 1 consolidated message reporting 2 orders.
- * - Example 3: Outside active hours (e.g. after 17:00 until 08:00 next morning) => holds all off-hours orders
- *   and sends 1 consolidated summary message at 08:00 AM the next day.
+ * - Example 3: Outside active hours (e.g. after 16:20/17:30 until 08:00 next morning) => holds all off-hours orders
+ *   and sends consolidated summary message(s) at 08:00 AM the next day.
  *
  * @param bool $force_manual True when triggered manually by Admin button.
  * @return array{processed:int,sent_orders:int,skipped_hours:bool,window_str:string,errors:string[]}
@@ -989,6 +1253,19 @@ function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
 		);
 	}
 
+	$lock_key  = 'nexxi_zalo_scan_running_lock';
+	$locked_ts = (int) get_transient( $lock_key );
+	if ( ! $force_manual && $locked_ts > 0 && ( time() - $locked_ts ) < 90 ) {
+		return array(
+			'processed'     => 0,
+			'sent_orders'   => 0,
+			'skipped_hours' => false,
+			'window_str'    => '',
+			'errors'        => array(),
+		);
+	}
+	set_transient( $lock_key, (string) time(), 90 );
+
 	$now_ts  = time();
 	$from_ts = (int) get_option( 'nexxi_zalo_last_scan_ts', 0 );
 	if ( $from_ts <= 0 ) {
@@ -1008,27 +1285,47 @@ function nexxi_kids_run_zalo_order_scan( $force_manual = false ) {
 		}
 	}
 
-	$pending     = nexxi_kids_get_pending_zalo_orders( 100, $from_ts, $now_ts );
-	$window_str  = wp_date( 'H:i', $from_ts ) . ' ➔ ' . wp_date( 'H:i - d/m/Y', $now_ts );
-	$sent_orders = 0;
-	$errors      = array();
+	$pending       = nexxi_kids_get_pending_zalo_orders( 200, $from_ts, $now_ts );
+	$pending_count = count( $pending );
+	$window_str    = wp_date( 'H:i', $from_ts ) . ' ➔ ' . wp_date( 'H:i - d/m/Y', $now_ts );
+	$sent_orders   = 0;
+	$last_ord_ts   = 0;
+	$errors        = array();
 
-	if ( ! empty( $pending ) ) {
+	if ( $pending_count > 0 ) {
 		$batch_res   = nexxi_kids_send_zalo_batch_orders_notification( $pending, $from_ts, $now_ts, $is_overnight );
 		$sent_orders = (int) $batch_res['notified_orders'];
+		$last_ord_ts = (int) ( $batch_res['last_order_ts'] ?? 0 );
 		$errors      = $batch_res['errors'];
 	}
 
-	// Advance checkpoint to $now_ts if there were no orders or if the batch was sent successfully.
-	if ( empty( $pending ) || $sent_orders > 0 ) {
+	// Advance checkpoint to $now_ts when there were no pending orders or all pending orders in the window were notified.
+	if ( 0 === $pending_count || $sent_orders >= $pending_count ) {
 		update_option( 'nexxi_zalo_last_scan_ts', $now_ts, false );
 		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y', $now_ts ), false );
 		$next_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
 		update_option( 'nexxi_zalo_next_scan_ts', $next_ts, false );
+		update_option( 'nexxi_zalo_last_scan_error', '', false );
+	} else {
+		if ( $sent_orders > 0 && $last_ord_ts > $from_ts ) {
+			update_option( 'nexxi_zalo_last_scan_ts', $last_ord_ts, false );
+			update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y', $now_ts ), false );
+		}
+		// Schedule a fast retry in 2 minutes so remaining orders are delivered promptly.
+		update_option( 'nexxi_zalo_next_scan_ts', $now_ts + 120, false );
+		if ( ! empty( $errors ) ) {
+			update_option(
+				'nexxi_zalo_last_scan_error',
+				wp_date( 'H:i:s d/m/Y', $now_ts ) . ' — ' . implode( '; ', $errors ),
+				false
+			);
+		}
 	}
 
+	delete_transient( $lock_key );
+
 	return array(
-		'processed'     => count( $pending ),
+		'processed'     => $pending_count,
 		'sent_orders'   => $sent_orders,
 		'skipped_hours' => false,
 		'window_str'    => $window_str,
@@ -1169,6 +1466,9 @@ add_action(
 		if ( wp_doing_ajax() || wp_doing_cron() ) {
 			return;
 		}
+		if ( get_transient( 'nexxi_zalo_scan_running_lock' ) ) {
+			return;
+		}
 		$cfg = nexxi_kids_zalo_notify_settings();
 		if ( '1' !== $cfg['enabled'] || ! nexxi_kids_zalo_is_within_active_hours( $cfg ) ) {
 			return;
@@ -1181,14 +1481,20 @@ add_action(
 			return;
 		}
 		if ( $now_ts >= $next_ts ) {
-			// Immediately advance nexxi_zalo_next_scan_ts so concurrent page loads never stampede
-			$next_aligned = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, $now_ts );
-			update_option( 'nexxi_zalo_next_scan_ts', $next_aligned, false );
+			// Set a short 90-second guard so concurrent page loads don't stampede while shutdown runs;
+			// nexxi_kids_run_zalo_order_scan() will set the final aligned timestamp once completed.
+			update_option( 'nexxi_zalo_next_scan_ts', $now_ts + 90, false );
 
 			// Run the Zalo scan in shutdown AFTER flushing the HTTP response to the browser (zero page load delay)
 			add_action(
 				'shutdown',
 				static function () {
+					if ( function_exists( 'ignore_user_abort' ) ) {
+						@ignore_user_abort( true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					}
+					if ( function_exists( 'set_time_limit' ) ) {
+						@set_time_limit( 60 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					}
 					if ( function_exists( 'litespeed_finish_request' ) ) {
 						@litespeed_finish_request(); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 					} elseif ( function_exists( 'fastcgi_finish_request' ) ) {
@@ -1457,7 +1763,7 @@ add_action(
 		// 4. Manually scan & send all pending un-notified orders right now.
 		if ( 'scan_pending_orders' === $sub_action ) {
 			$scan_res  = nexxi_kids_run_zalo_order_scan( true );
-			$rem_count = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
+			$rem_count = count( nexxi_kids_get_pending_zalo_orders( 200 ) );
 			$last_time = (string) get_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ) );
 			$next_ts   = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
 			$next_time = $next_ts > 0 ? wp_date( 'H:i - d/m/Y', $next_ts ) : '';
@@ -1474,9 +1780,13 @@ add_action(
 			}
 
 			if ( $scan_res['sent_orders'] > 0 ) {
+				$msg = sprintf( '🚀 Đã tổng hợp và gửi thành công báo cáo %d đơn hàng mới phát sinh (%s) vào Group Zalo Kho!', $scan_res['sent_orders'], $scan_res['window_str'] ?? '' );
+				if ( ! empty( $scan_res['errors'] ) ) {
+					$msg .= ' (Còn ' . $rem_count . ' đơn chờ gửi tiếp: ' . implode( '; ', $scan_res['errors'] ) . ')';
+				}
 				wp_send_json_success(
 					array(
-						'message'       => sprintf( '🚀 Đã tổng hợp và gửi 1 bản tin báo cáo %d đơn hàng mới phát sinh (%s) vào Group Zalo Kho!', $scan_res['sent_orders'], $scan_res['window_str'] ?? '' ),
+						'message'       => $msg,
 						'pending_count' => $rem_count,
 						'last_scan'     => $last_time,
 						'next_scan'     => $next_time,
@@ -1529,17 +1839,19 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 		// Reset scan checkpoint to current time when saving so only orders generated from now onwards are scanned.
 		update_option( 'nexxi_zalo_last_scan_ts', time(), false );
 		update_option( 'nexxi_zalo_last_scan_time', wp_date( 'H:i:s - d/m/Y' ), false );
+		update_option( 'nexxi_zalo_last_scan_error', '', false );
 
 		nexxi_kids_sync_zalo_scan_cron( true );
 		$saved = true;
 	}
 
-	$cfg           = nexxi_kids_zalo_notify_settings( $saved );
-	$known_chats   = get_option( 'nexxi_zalo_known_chats', array() );
-	$known_chats   = is_array( $known_chats ) ? $known_chats : array();
-	$pending_cnt   = count( nexxi_kids_get_pending_zalo_orders( 50 ) );
-	$last_scan_str = (string) get_option( 'nexxi_zalo_last_scan_time', 'Chưa quét lần nào' );
-	$next_scan_ts  = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
+	$cfg             = nexxi_kids_zalo_notify_settings( $saved );
+	$known_chats     = get_option( 'nexxi_zalo_known_chats', array() );
+	$known_chats     = is_array( $known_chats ) ? $known_chats : array();
+	$pending_cnt     = count( nexxi_kids_get_pending_zalo_orders( 200 ) );
+	$last_scan_str   = (string) get_option( 'nexxi_zalo_last_scan_time', 'Chưa quét lần nào' );
+	$last_scan_error = (string) get_option( 'nexxi_zalo_last_scan_error', '' );
+	$next_scan_ts    = (int) get_option( 'nexxi_zalo_next_scan_ts', 0 );
 	if ( $next_scan_ts <= 0 ) {
 		$next_scan_ts = nexxi_kids_get_next_aligned_scan_timestamp( $cfg, time() );
 	}
@@ -1561,6 +1873,10 @@ function nexxi_kids_render_zalo_warehouse_admin_page() {
 
 		<?php if ( $saved ) : ?>
 			<div class="notice notice-success is-dismissible"><p><strong>✅ Đã lưu cài đặt Thông báo Zalo Kho thành công!</strong></p></div>
+		<?php endif; ?>
+
+		<?php if ( '' !== $last_scan_error ) : ?>
+			<div class="notice notice-warning is-dismissible"><p><strong>⚠️ Lần quét Zalo gần nhất ghi nhận cảnh báo:</strong> <?php echo esc_html( $last_scan_error ); ?> — Bạn có thể bấm nút <strong>"🔄 Quét &amp; Gửi Ngay Các Đơn Đang Chờ"</strong> bên dưới để đẩy ngay các đơn đang chờ.</p></div>
 		<?php endif; ?>
 
 		<!-- 3-STEP QUICK GUIDE -->
