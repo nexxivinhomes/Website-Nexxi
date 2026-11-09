@@ -42,9 +42,11 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261107_pancake_shopee_content_v52';
+	$purge_ver = '20261109_zalo_batch_chunk_v53';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
+		delete_transient( 'nexxi_zalo_scan_running_lock' );
+		update_option( 'nexxi_zalo_next_scan_ts', time() - 5, false );
 		// Remove legacy multi-MB var_export PHP catalog file that caused PHP memory exhaustion during batch AJAX scans
 		$up_dir = wp_upload_dir();
 		if ( ! empty( $up_dir['basedir'] ) ) {
