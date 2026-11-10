@@ -190,9 +190,22 @@ function nexxi_kids_legacy_sort( $query ) {
 	if ( '' !== $sort_param && '' === $orderby_param ) {
 		$map = array( 'price_asc' => 'price', 'price_desc' => 'price-desc', 'popular' => 'popularity' );
 		if ( isset( $map[ $sort_param ] ) ) {
-			$ordering = WC()->query->get_catalog_ordering_args( $map[ $sort_param ] );
+			$orderby_param = $map[ $sort_param ];
+			$ordering      = WC()->query->get_catalog_ordering_args( $orderby_param );
 			$query->set( 'orderby', $ordering['orderby'] );
 			$query->set( 'order', $ordering['order'] );
+		}
+	}
+
+	if ( 'popularity' === $orderby_param && function_exists( 'nexxi_kids_get_popular_product_ids' ) ) {
+		$existing_in = array_values( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) );
+		$popular_ids = nexxi_kids_get_popular_product_ids( 0, $existing_in );
+		if ( ! empty( $popular_ids ) ) {
+			if ( function_exists( 'WC' ) && WC()->query ) {
+				remove_filter( 'posts_clauses', array( WC()->query, 'order_by_popularity_post_clauses' ) );
+			}
+			$query->set( 'post__in', $popular_ids );
+			$query->set( 'orderby', 'post__in' );
 			return;
 		}
 	}

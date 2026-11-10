@@ -1194,10 +1194,103 @@ function nexxi_kids_card_attrs( array $card ) {
 	return 'data-nexxi-card="' . esc_attr( wp_json_encode( $payload ) ) . '" data-category="' . esc_attr( $card['categorySlug'] ) . '"';
 }
 
-/** Products for a home/flash rail. */
+/**
+ * Query published parent product IDs ordered by real popularity:
+ * 1) In-stock products first (`stock_status = 'instock'`)
+ * 2) Highest actual sales (`total_sales` from wc_product_meta_lookup & postmeta)
+ * 3) Highest average rating, then newest post_date, then highest ID.
+ *
+ * @param int   $limit       Max IDs to return (0 = all matching published products).
+ * @param int[] $include_ids Optional whitelist of product IDs.
+ * @param int[] $exclude_ids Optional blacklist of product IDs.
+ * @return int[] Ordered product IDs.
+ */
+function nexxi_kids_get_popular_product_ids( $limit = 0, array $include_ids = array(), array $exclude_ids = array() ) {
+	global $wpdb;
+
+	$include_ids = array_values( array_unique( array_filter( array_map( 'absint', $include_ids ) ) ) );
+	$exclude_ids = array_values( array_unique( array_filter( array_map( 'absint', $exclude_ids ) ) ) );
+
+	$where_clauses = array(
+		"p.post_type = 'product'",
+		"p.post_status = 'publish'",
+	);
+
+	if ( ! empty( $include_ids ) ) {
+		$where_clauses[] = 'p.ID IN (' . implode( ',', $include_ids ) . ')';
+	}
+	if ( ! empty( $exclude_ids ) ) {
+		$where_clauses[] = 'p.ID NOT IN (' . implode( ',', $exclude_ids ) . ')';
+	}
+
+	// Respect WooCommerce catalog visibility (exclude products marked 'exclude-from-catalog').
+	$exclude_term = get_term_by( 'slug', 'exclude-from-catalog', 'product_visibility' );
+	if ( $exclude_term instanceof WP_Term && ! is_wp_error( $exclude_term ) ) {
+		$tt_id           = (int) $exclude_term->term_taxonomy_id;
+		$where_clauses[] = $wpdb->prepare(
+			"NOT EXISTS (SELECT 1 FROM {$wpdb->term_relationships} tr WHERE tr.object_id = p.ID AND tr.term_taxonomy_id = %d)",
+			$tt_id
+		);
+	}
+
+	$where_sql = implode( ' AND ', $where_clauses );
+	$limit_sql = (int) $limit > 0 ? $wpdb->prepare( ' LIMIT %d', (int) $limit ) : '';
+
+	$sql = "SELECT p.ID
+		FROM {$wpdb->posts} p
+		LEFT JOIN {$wpdb->wc_product_meta_lookup} l ON p.ID = l.product_id
+		LEFT JOIN {$wpdb->postmeta} pm_sales ON p.ID = pm_sales.post_id AND pm_sales.meta_key = 'total_sales'
+		WHERE {$where_sql}
+		ORDER BY
+			(COALESCE(l.stock_status, 'instock') = 'instock') DESC,
+			GREATEST(COALESCE(l.total_sales, 0), COALESCE(CAST(pm_sales.meta_value AS UNSIGNED), 0)) DESC,
+			COALESCE(l.average_rating, 0) DESC,
+			p.post_date DESC,
+			p.ID DESC{$limit_sql}";
+
+	$ids = $wpdb->get_col( $sql ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
+	return array_values( array_unique( array_filter( array_map( 'absint', (array) $ids ) ) ) );
+}
+
+/** Products for a home/flash rail. Supports `'orderby' => 'popularity'` sorted by real `total_sales` DESC. */
 function nexxi_kids_query_products( $args ) {
 	if ( ! function_exists( 'wc_get_products' ) ) { return array(); }
-	$args     = wp_parse_args( $args, array( 'status' => 'publish', 'limit' => 4, 'visibility' => 'catalog' ) );
+	$args = wp_parse_args( $args, array( 'status' => 'publish', 'limit' => 4, 'visibility' => 'catalog' ) );
+
+	if ( isset( $args['orderby'] ) && 'popularity' === $args['orderby'] ) {
+		$req_limit   = isset( $args['limit'] ) ? (int) $args['limit'] : 4;
+		$include_ids = ! empty( $args['include'] ) ? (array) $args['include'] : array();
+		$exclude_ids = ! empty( $args['exclude'] ) ? (array) $args['exclude'] : array();
+		$fetch_limit = $req_limit > 0 ? max( $req_limit * 2, 24 ) : 0;
+		$popular_ids = nexxi_kids_get_popular_product_ids( $fetch_limit, $include_ids, $exclude_ids );
+		if ( empty( $popular_ids ) ) {
+			return array();
+		}
+		$query_args            = $args;
+		$query_args['include'] = $popular_ids;
+		$query_args['orderby'] = 'include';
+		$query_args['limit']   = $req_limit;
+		unset( $query_args['order'], $query_args['exclude'] );
+
+		$products = wc_get_products( $query_args );
+		if ( is_array( $products ) && ! empty( $products ) ) {
+			$rank_map = array_flip( $popular_ids );
+			usort(
+				$products,
+				static function ( $a, $b ) use ( $rank_map ) {
+					$ra = $a instanceof WC_Product && isset( $rank_map[ $a->get_id() ] ) ? $rank_map[ $a->get_id() ] : PHP_INT_MAX;
+					$rb = $b instanceof WC_Product && isset( $rank_map[ $b->get_id() ] ) ? $rank_map[ $b->get_id() ] : PHP_INT_MAX;
+					return $ra <=> $rb;
+				}
+			);
+			if ( $req_limit > 0 && count( $products ) > $req_limit ) {
+				$products = array_slice( $products, 0, $req_limit );
+			}
+			nexxi_kids_prime_products_cache( $products );
+		}
+		return is_array( $products ) ? $products : array();
+	}
+
 	$products = wc_get_products( $args );
 	if ( is_array( $products ) && ! empty( $products ) ) {
 		nexxi_kids_prime_products_cache( $products );
