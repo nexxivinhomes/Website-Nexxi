@@ -32,8 +32,14 @@ function nexxi_kids_card_sizes( array $card, $button_class, $limit = 4 ) {
  * Wishlist page, and Product Detail related products.
  */
 function nexxi_kids_card_unified( WC_Product $product, $context = 'regular' ) {
-	$c      = nexxi_kids_card_data( $product, $context );
-	$status = $c['soldPercent'] >= 80 ? 'Sắp Cháy Hàng' : ( $c['soldPercent'] >= 50 ? 'Bán Chạy' : 'Đang Mở Bán' );
+	$c          = nexxi_kids_card_data( $product, $context );
+	$sold_cnt   = (int) ( $c['sold'] ?? 0 );
+	$sold_pct   = (int) ( $c['soldPercent'] ?? 0 );
+	$status     = $sold_pct >= 80 ? 'Sắp Cháy Hàng' : ( ( $sold_pct >= 50 || $sold_cnt >= 5 ) ? 'Bán Chạy' : 'Đang Mở Bán' );
+	$sold_label = $sold_cnt > 0
+		? ( 'flash' === $context && $sold_pct > 0 ? 'Đã bán ' . nexxi_kids_compact_number( $sold_cnt ) . ' (' . $sold_pct . '%)' : 'Đã bán ' . nexxi_kids_compact_number( $sold_cnt ) )
+		: ( 'flash' === $context ? 'Đã bán ' . $sold_pct . '%' : 'Mới lên kệ' );
+	$bar_width  = $sold_cnt > 0 ? max( $sold_pct, min( 88, 12 + ( $sold_cnt * 4 ) ) ) : $sold_pct;
 	ob_start(); ?>
 <article <?php echo nexxi_kids_card_attrs( $c ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> class="product-card bg-surface-container-lowest rounded-lg p-space-sm flex flex-col justify-between shadow-sm hover:shadow-lg transition-all group">
 <div class="nexxi-shop-card-thumb relative w-full aspect-square rounded-DEFAULT overflow-hidden bg-surface-container-low mb-space-sm">
@@ -45,7 +51,7 @@ function nexxi_kids_card_unified( WC_Product $product, $context = 'regular' ) {
 <div class="space-y-space-xs flex-1 flex flex-col justify-between">
 <div>
 <div class="flex items-center justify-between gap-1 text-body-sm text-outline mb-1">
-<?php if ( $c['reviews'] ) : ?><span class="flex items-center gap-0.5 text-secondary font-bold shrink-0"><?php echo nexxi_kids_star_icon( 16 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> <?php echo esc_html( number_format( $c['rating'], 1 ) ); ?> <span class="text-on-surface-variant font-normal">(<?php echo (int) $c['reviews']; ?>)</span></span><?php else : ?><span class="text-on-surface-variant shrink-0">Mẫu mới</span><?php endif; ?>
+<?php if ( $c['reviews'] ) : ?><span class="flex items-center gap-0.5 text-secondary font-bold shrink-0"><?php echo nexxi_kids_star_icon( 16 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> <?php echo esc_html( number_format( $c['rating'], 1 ) ); ?> <span class="text-on-surface-variant font-normal">(<?php echo (int) $c['reviews']; ?>)</span></span><?php elseif ( $sold_cnt >= 5 ) : ?><span class="text-secondary font-bold shrink-0">🔥 Bán chạy</span><?php else : ?><span class="text-on-surface-variant shrink-0">Mẫu mới</span><?php endif; ?>
 <span class="font-label-sm text-label-sm text-on-surface-variant truncate text-right"><?php echo esc_html( $c['material'] ? $c['material'] : $c['category'] ); ?></span>
 </div>
 <h3 class="font-title-md text-title-md text-primary font-bold line-clamp-2 group-hover:text-secondary transition-colors"><a href="<?php echo esc_url( $c['url'] ); ?>"><?php echo esc_html( $c['name'] ); ?></a></h3>
@@ -53,7 +59,7 @@ function nexxi_kids_card_unified( WC_Product $product, $context = 'regular' ) {
 <div class="pt-space-xs space-y-space-xs">
 <div class="flex items-baseline gap-2 flex-wrap"><span class="font-headline-sm text-headline-sm text-secondary font-bold"><?php echo esc_html( $c['priceFrom'] ); ?></span><?php if ( $c['regular'] ) : ?><span class="font-body-sm text-body-sm text-outline line-through"><?php echo esc_html( $c['regular'] ); ?></span><?php endif; ?></div>
 <?php if ( $c['saving'] ) : ?><div class="font-label-sm text-label-sm text-on-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded-md inline-block">Tiết kiệm: <?php echo esc_html( $c['saving'] ); ?></div><?php endif; ?>
-<div class="space-y-1 pt-1"><div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant"><span>Đã bán <?php echo (int) $c['soldPercent']; ?>%</span><span class="text-secondary font-bold"><?php echo esc_html( $status ); ?></span></div><div class="w-full bg-surface-container h-2 rounded-full overflow-hidden"><div class="bg-secondary-container h-full rounded-full" style="width: <?php echo (int) $c['soldPercent']; ?>%"></div></div></div>
+<div class="space-y-1 pt-1"><div class="flex justify-between font-label-sm text-label-sm text-on-surface-variant"><span><?php echo esc_html( $sold_label ); ?></span><span class="text-secondary font-bold"><?php echo esc_html( $status ); ?></span></div><div class="w-full bg-surface-container h-2 rounded-full overflow-hidden"><div class="bg-secondary-container h-full rounded-full" style="width: <?php echo (int) $bar_width; ?>%"></div></div></div>
 <div class="pt-2 flex items-center justify-between gap-1">
 <div class="flex items-center gap-1 text-[11px] font-bold text-on-surface"><?php echo nexxi_kids_card_sizes( $c, 'w-7 h-7 rounded-full bg-surface-container hover:bg-primary hover:text-on-primary transition-colors flex items-center justify-center', 3 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
 <button class="bg-secondary-container hover:bg-secondary text-on-secondary px-space-sm py-1.5 rounded-full font-label-md text-label-md transition-all shadow-sm flex items-center gap-1 shrink-0" type="button" data-nexxi-add <?php disabled( ! $c['inStock'] ); ?>><span class="material-symbols-outlined text-[16px]">add_shopping_cart</span><span><?php echo esc_html( $c['inStock'] ? 'Mua' : 'Hết' ); ?></span></button>
