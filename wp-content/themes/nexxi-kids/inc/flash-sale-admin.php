@@ -385,20 +385,50 @@ function nexxi_kids_flush_sale_cache() {
 	);
 }
 
-/** When any variation or variable product is saved manually in WooCommerce, sync sale price across variations and clear caches. */
-function nexxi_kids_on_variation_saved( $variation_id ) {
+/**
+ * When any variation is saved (via WooCommerce REST API from Pancake POS, WP Admin, or sync scripts),
+ * recalculate sale prices across variations from each variation's current _regular_price and clear caches.
+ */
+function nexxi_kids_on_variation_saved( $variation_arg ) {
 	if ( ! empty( $GLOBALS['nexxi_bulk_syncing'] ) ) {
 		return;
 	}
+	$variation_id = ( $variation_arg instanceof WC_Product ) ? (int) $variation_arg->get_id() : absint( $variation_arg );
+	if ( ! $variation_id ) {
+		return;
+	}
 	$parent_id = wp_get_post_parent_id( $variation_id );
-	if ( ! $parent_id ) { return; }
-	$parent = function_exists( 'wc_get_product' ) ? wc_get_product( $parent_id ) : null;
-	if ( $parent && $parent->is_type( 'variable' ) ) {
-		nexxi_kids_normalize_variable_sale( $parent );
+	if ( ! $parent_id ) {
+		return;
+	}
+	$has_nexxi_sale = (
+		'1' === (string) get_post_meta( $parent_id, '_nexxi_has_prod_sale', true )
+		|| '1' === (string) get_post_meta( $parent_id, '_nexxi_is_flash_sale', true )
+	);
+	if ( $has_nexxi_sale ) {
+		nexxi_kids_resync_product_sale_prices( $parent_id );
+		clean_post_cache( $variation_id );
+		if ( class_exists( 'WC_Product_Variable' ) ) {
+			WC_Product_Variable::sync( $parent_id );
+		}
+		if ( function_exists( 'wc_delete_product_transients' ) ) {
+			wc_delete_product_transients( $parent_id );
+		}
+	} else {
+		$parent = function_exists( 'wc_get_product' ) ? wc_get_product( $parent_id ) : null;
+		if ( $parent && $parent->is_type( 'variable' ) ) {
+			$prev_bulk                     = ! empty( $GLOBALS['nexxi_bulk_syncing'] );
+			$GLOBALS['nexxi_bulk_syncing'] = true;
+			nexxi_kids_normalize_variable_sale( $parent );
+			$GLOBALS['nexxi_bulk_syncing'] = $prev_bulk;
+		}
 	}
 	nexxi_kids_flush_sale_cache();
 }
 add_action( 'woocommerce_save_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
+add_action( 'woocommerce_update_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
+add_action( 'woocommerce_new_product_variation', 'nexxi_kids_on_variation_saved', 99, 1 );
+add_action( 'woocommerce_rest_insert_product_variation_object', 'nexxi_kids_on_variation_saved', 99, 1 );
 add_action( 'woocommerce_update_product', 'nexxi_kids_flush_sale_cache_on_product_update', 99 );
 
 /**

@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261110_bestsellers_popularity_v54';
+	$purge_ver = '20261111_pancake_price_sync_v55';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		delete_transient( 'nexxi_zalo_scan_running_lock' );
@@ -109,12 +109,12 @@ add_action( 'init', static function () {
 			$m_src    = (string) @file_get_contents( $legacy_mgr_main ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
 			$m_ver    = preg_match( '/^\s*\*\s*Version:\s*([0-9.]+)/mi', $m_src, $mv ) ? trim( $mv[1] ) : '0.0.0';
 			$has_trap = ( false !== strpos( $m_src, "! file_exists( get_template_directory() . '/inc/pancake-sync-admin.php' )" ) );
-			if ( $has_trap || ( version_compare( '1.5.7', $m_ver, '>' ) && false === strpos( $m_src, 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) ) {
+			if ( $has_trap || ( version_compare( '1.5.8', $m_ver, '>' ) && false === strpos( $m_src, 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) ) {
 				$smart_loader = "<?php\n"
 					. "/**\n"
 					. " * Plugin Name: NEXXI Pancake SKU & Image Manager\n"
 					. " * Description: Quản lý sản phẩm đã đồng bộ với Pancake POS bằng mã SKU, tự động quét ảnh trên Pancake để đưa về Website và lấy ảnh theo phân loại (Màu sắc) trên Pancake để set ảnh phân loại trên Website.\n"
-					. " * Version: 1.5.7\n"
+					. " * Version: 1.5.8\n"
 					. " * Author: NEXXI Kids\n"
 					. " * Requires at least: 6.0\n"
 					. " * Requires PHP: 7.4\n"

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NEXXI Pancake SKU & Image Manager
  * Description: Quản lý sản phẩm đã đồng bộ với Pancake POS bằng mã SKU, tự động quét ảnh trên Pancake để đưa về Website và lấy ảnh theo phân loại (Màu sắc) trên Pancake để set ảnh phân loại trên Website.
- * Version: 1.5.7
+ * Version: 1.5.8
  * Author: NEXXI Kids
  * Requires at least: 6.0
  * Requires PHP: 7.4
