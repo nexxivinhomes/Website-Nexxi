@@ -19,13 +19,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
 	return;
 }
-define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.7' );
+define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.8' );
 
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V7', false ) ) :
 
 final class Nexxi_Pancake_Sync_Manager_V7 {
 
-	const VERSION                      = '1.5.7';
+	const VERSION                      = '1.5.8';
 	const MENU_SLUG                    = 'nexxi-pancake-sync';
 	const CACHE_OPTION                 = 'nexxi_pancake_catalog_cache_v4';
 	const CACHE_TIME_OPT               = 'nexxi_pancake_catalog_cache_time';
@@ -3085,6 +3085,275 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 	}
 
 	/**
+	 * Fast O(1) check whether a Website product (variable or simple) has any _regular_price / _price drift
+	 * against its matched Pancake POS item using preloaded postmeta rows (0 wc_get_product() calls when clean).
+	 */
+	private static function has_fast_price_drift( $pid, array $wrow, array $p_item, array $var_rows, $parent_price_row ) {
+		$p_var_prices = array();
+		if ( ! empty( $p_item['variations'] ) && is_array( $p_item['variations'] ) ) {
+			foreach ( $p_item['variations'] as $pv ) {
+				if ( is_array( $pv ) && ! empty( $pv['sku'] ) && (float) ( $pv['price'] ?? 0 ) > 0 ) {
+					$p_var_prices[ strtoupper( trim( (string) $pv['sku'] ) ) ] = (float) round( (float) $pv['price'] );
+				}
+			}
+		}
+
+		if ( ! empty( $var_rows ) ) {
+			$fallback_min = (float) ( $p_item['min_price'] ?? 0 );
+			foreach ( $var_rows as $vr ) {
+				$vsku = strtoupper( trim( (string) ( $vr->var_sku ?? '' ) ) );
+				$vreg = (float) ( $vr->reg_price ?? 0 );
+				$vpri = (float) ( $vr->act_price ?? 0 );
+				if ( '' !== $vsku && isset( $p_var_prices[ $vsku ] ) ) {
+					$target_p = $p_var_prices[ $vsku ];
+					if ( $vreg <= 0 || abs( $vreg - $target_p ) >= 1.0 || $vpri <= 0 ) {
+						return true;
+					}
+				} elseif ( '' === $vsku && ! empty( $p_item['variations'] ) ) {
+					// Variation without SKU needs attribute-based inspection via sync_wc_prices_from_pancake_item
+					return true;
+				} elseif ( ( $vreg <= 0 || $vpri <= 0 ) && $fallback_min > 0 ) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		if ( 0 === (int) ( $wrow['var_total'] ?? 0 ) && $parent_price_row ) {
+			$pos_price = 0.0;
+			if ( 1 === count( $p_var_prices ) ) {
+				$pos_price = (float) reset( $p_var_prices );
+			} elseif ( (float) ( $p_item['min_price'] ?? 0 ) > 0 ) {
+				$pos_price = (float) round( (float) $p_item['min_price'] );
+			}
+			if ( $pos_price > 0 ) {
+				$preg = (float) ( $parent_price_row->reg_price ?? 0 );
+				$ppri = (float) ( $parent_price_row->act_price ?? 0 );
+				if ( $preg <= 0 || abs( $preg - $pos_price ) >= 1.0 || $ppri <= 0 ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Synchronize _regular_price (from exact matched Pancake POS variation / product price) and recalculate
+	 * active NEXXI Giảm Giá SP / Flash Sale prices (_sale_price, _price, lookup tables & transients) without
+	 * performing any remote image downloads.
+	 *
+	 * Strictly NEVER overwrites a non-zero _regular_price of an unmatched variation with min_price/max_price.
+	 *
+	 * @param WC_Product $product
+	 * @param array      $pancake_item
+	 * @return int       Number of variations / simple products whose prices were updated
+	 */
+	public static function sync_wc_prices_from_pancake_item( WC_Product $product, array $pancake_item ) {
+		$pid = (int) $product->get_id();
+		if ( $pid <= 0 ) {
+			return 0;
+		}
+
+		$prev_bulk                     = ! empty( $GLOBALS['nexxi_bulk_syncing'] );
+		$GLOBALS['nexxi_bulk_syncing'] = true;
+
+		$has_nexxi_sale = (
+			'1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true )
+			|| '1' === (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true )
+		);
+
+		// Lock in inferred discount mode ('percent' / 'amount_off' / 'fixed') BEFORE changing variation _regular_price
+		if ( $has_nexxi_sale && function_exists( 'nexxi_kids_get_program_sale' ) ) {
+			if ( '1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true ) && '' === trim( (string) get_post_meta( $pid, '_nexxi_prod_sale_mode', true ) ) ) {
+				$pre_reg_adm = nexxi_kids_get_program_sale( $product, 'regular_admin' );
+				if ( ! empty( $pre_reg_adm['mode'] ) ) {
+					update_post_meta( $pid, '_nexxi_prod_sale_mode', $pre_reg_adm['mode'] );
+				}
+			}
+			if ( '1' === (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true ) && '' === trim( (string) get_post_meta( $pid, '_nexxi_fs_sale_mode', true ) ) ) {
+				$pre_fs_adm = nexxi_kids_get_program_sale( $product, 'flash_admin' );
+				if ( ! empty( $pre_fs_adm['mode'] ) ) {
+					update_post_meta( $pid, '_nexxi_fs_sale_mode', $pre_fs_adm['mode'] );
+				}
+			}
+		}
+
+		$p_var_by_sku        = array();
+		$p_var_by_color_size = array();
+		$p_var_by_raw_size   = array();
+		$p_var_by_size       = array();
+
+		if ( ! empty( $pancake_item['variations'] ) && is_array( $pancake_item['variations'] ) ) {
+			foreach ( $pancake_item['variations'] as $pv ) {
+				if ( ! is_array( $pv ) ) {
+					continue;
+				}
+				if ( ! empty( $pv['sku'] ) ) {
+					$p_var_by_sku[ strtoupper( trim( (string) $pv['sku'] ) ) ] = $pv;
+				}
+				$pv_size  = (string) ( $pv['size'] ?? '' );
+				$s_num    = preg_match( '/(\d+)/', $pv_size, $sm ) ? (int) $sm[1] : strtolower( trim( $pv_size ) );
+				$c_key    = (string) ( $pv['color_key'] ?? '' );
+				$raw_slug = sanitize_title( remove_accents( (string) ( $pv['color_raw'] ?? '' ) ) );
+
+				if ( '' !== $c_key && '' !== (string) $s_num ) {
+					$p_var_by_color_size[ $c_key . '__' . $s_num ] = $pv;
+				}
+				if ( '' !== $raw_slug && '' !== (string) $s_num ) {
+					$p_var_by_raw_size[ $raw_slug . '__' . $s_num ] = $pv;
+				}
+				if ( '' !== (string) $s_num && ! isset( $p_var_by_size[ $s_num ] ) ) {
+					$p_var_by_size[ $s_num ] = $pv;
+				}
+			}
+		}
+
+		$p_class_count  = isset( $pancake_item['class_images'] ) && is_array( $pancake_item['class_images'] ) ? count( $pancake_item['class_images'] ) : 0;
+		$prices_updated = 0;
+
+		if ( $product->is_type( 'variable' ) ) {
+			foreach ( $product->get_children() as $child_id ) {
+				$child_id = (int) $child_id;
+				$var_obj  = wc_get_product( $child_id );
+				if ( ! $var_obj || ! $var_obj instanceof WC_Product_Variation ) {
+					continue;
+				}
+
+				$v_sku    = strtoupper( trim( (string) $var_obj->get_sku() ) );
+				$wc_c_key = self::get_wc_variation_class_key( $var_obj );
+				$v_attrs  = $var_obj->get_attributes();
+				$wc_s_num = '';
+				$wc_c_raw = '';
+
+				foreach ( $v_attrs as $ak => $av ) {
+					if ( ! is_scalar( $av ) ) {
+						continue;
+					}
+					$clean_ak = strtolower( remove_accents( urldecode( (string) $ak ) ) );
+					if ( false !== strpos( $clean_ak, 'size' ) || false !== strpos( $clean_ak, 'kich-co' ) || 'co' === $clean_ak ) {
+						$wc_s_num = preg_match( '/(\d+)/', (string) $av, $m ) ? (int) $m[1] : strtolower( trim( (string) $av ) );
+					} elseif ( false !== strpos( $clean_ak, 'mau' ) || false !== strpos( $clean_ak, 'color' ) || false !== strpos( $clean_ak, 'loai' ) ) {
+						$wc_c_raw = sanitize_title( remove_accents( (string) $av ) );
+					}
+				}
+
+				$matched_pv = null;
+				if ( '' !== $v_sku && isset( $p_var_by_sku[ $v_sku ] ) ) {
+					$matched_pv = $p_var_by_sku[ $v_sku ];
+				} elseif ( '' !== $wc_c_raw && '' !== (string) $wc_s_num && isset( $p_var_by_raw_size[ $wc_c_raw . '__' . $wc_s_num ] ) ) {
+					$matched_pv = $p_var_by_raw_size[ $wc_c_raw . '__' . $wc_s_num ];
+				} elseif ( '' !== $wc_c_key && '' !== (string) $wc_s_num && isset( $p_var_by_color_size[ $wc_c_key . '__' . $wc_s_num ] ) ) {
+					$matched_pv = $p_var_by_color_size[ $wc_c_key . '__' . $wc_s_num ];
+				} elseif ( '' === $wc_c_key && 1 === $p_class_count && '' !== (string) $wc_s_num && isset( $p_var_by_size[ $wc_s_num ] ) ) {
+					$matched_pv = $p_var_by_size[ $wc_s_num ];
+				}
+
+				$cur_v_reg = (float) get_post_meta( $child_id, '_regular_price', true );
+				$cur_v_pri = (float) get_post_meta( $child_id, '_price', true );
+				$pv_price  = 0.0;
+
+				if ( $matched_pv && (float) ( $matched_pv['price'] ?? 0 ) > 0 ) {
+					$pv_price = (float) round( (float) $matched_pv['price'] );
+				} elseif ( $cur_v_reg <= 0 && (float) ( $pancake_item['min_price'] ?? 0 ) > 0 ) {
+					// Fallback min_price ONLY when variation currently has empty/zero _regular_price
+					$pv_price = (float) round( (float) $pancake_item['min_price'] );
+				}
+
+				if ( $pv_price > 0 && ( $cur_v_reg <= 0 || abs( $cur_v_reg - $pv_price ) >= 1.0 || $cur_v_pri <= 0 ) ) {
+					$p_str = (string) round( $pv_price );
+					update_post_meta( $child_id, '_regular_price', $p_str );
+					if ( ! $has_nexxi_sale ) {
+						$cur_sale_str = trim( (string) get_post_meta( $child_id, '_sale_price', true ) );
+						$cur_sale_num = '' !== $cur_sale_str ? (float) $cur_sale_str : 0.0;
+						if ( $cur_sale_num > 0 && $cur_sale_num < $pv_price ) {
+							update_post_meta( $child_id, '_price', (string) round( $cur_sale_num ) );
+						} else {
+							if ( '' !== $cur_sale_str ) {
+								update_post_meta( $child_id, '_sale_price', '' );
+							}
+							update_post_meta( $child_id, '_price', $p_str );
+						}
+					}
+					clean_post_cache( $child_id );
+					$prices_updated++;
+				}
+			}
+
+			$sale_resynced = false;
+			if ( $has_nexxi_sale && function_exists( 'nexxi_kids_resync_product_sale_prices' ) ) {
+				$sale_resynced = nexxi_kids_resync_product_sale_prices( $pid );
+				if ( $sale_resynced && 0 === $prices_updated ) {
+					$prices_updated = 1;
+				}
+			}
+
+			if ( $prices_updated > 0 || $sale_resynced ) {
+				if ( class_exists( 'WC_Product_Variable' ) ) {
+					WC_Product_Variable::sync( $pid );
+				}
+				if ( function_exists( 'wc_delete_product_transients' ) ) {
+					wc_delete_product_transients( $pid );
+				}
+				clean_post_cache( $pid );
+			}
+		} else {
+			$p_sku     = strtoupper( trim( (string) $product->get_sku() ) );
+			$pos_price = 0.0;
+			if ( '' !== $p_sku && isset( $p_var_by_sku[ $p_sku ] ) && (float) ( $p_var_by_sku[ $p_sku ]['price'] ?? 0 ) > 0 ) {
+				$pos_price = (float) round( (float) $p_var_by_sku[ $p_sku ]['price'] );
+			} elseif ( 1 === count( $p_var_by_sku ) ) {
+				$only_pv = reset( $p_var_by_sku );
+				if ( (float) ( $only_pv['price'] ?? 0 ) > 0 ) {
+					$pos_price = (float) round( (float) $only_pv['price'] );
+				}
+			}
+			if ( $pos_price <= 0 && (float) ( $pancake_item['min_price'] ?? 0 ) > 0 ) {
+				$pos_price = (float) round( (float) $pancake_item['min_price'] );
+			}
+
+			$cur_reg = (float) get_post_meta( $pid, '_regular_price', true );
+			$cur_pri = (float) get_post_meta( $pid, '_price', true );
+
+			if ( $pos_price > 0 && ( $cur_reg <= 0 || abs( $cur_reg - $pos_price ) >= 1.0 || $cur_pri <= 0 ) ) {
+				$p_str = (string) round( $pos_price );
+				update_post_meta( $pid, '_regular_price', $p_str );
+				if ( ! $has_nexxi_sale ) {
+					$cur_sale_str = trim( (string) get_post_meta( $pid, '_sale_price', true ) );
+					$cur_sale_num = '' !== $cur_sale_str ? (float) $cur_sale_str : 0.0;
+					if ( $cur_sale_num > 0 && $cur_sale_num < $pos_price ) {
+						update_post_meta( $pid, '_price', (string) round( $cur_sale_num ) );
+					} else {
+						if ( '' !== $cur_sale_str ) {
+							update_post_meta( $pid, '_sale_price', '' );
+						}
+						update_post_meta( $pid, '_price', $p_str );
+					}
+				}
+				$prices_updated++;
+			}
+
+			$sale_resynced = false;
+			if ( $has_nexxi_sale && function_exists( 'nexxi_kids_resync_product_sale_prices' ) ) {
+				$sale_resynced = nexxi_kids_resync_product_sale_prices( $pid );
+				if ( $sale_resynced && 0 === $prices_updated ) {
+					$prices_updated = 1;
+				}
+			}
+
+			if ( $prices_updated > 0 || $sale_resynced ) {
+				if ( function_exists( 'wc_delete_product_transients' ) ) {
+					wc_delete_product_transients( $pid );
+				}
+				clean_post_cache( $pid );
+			}
+		}
+
+		$GLOBALS['nexxi_bulk_syncing'] = $prev_bulk;
+		return (int) $prices_updated;
+	}
+
+	/**
 	 * Sync a single WooCommerce product with its matched Pancake product data in 2 strict steps:
 	 *  - BƯỚC 1: Dùng SKU sản phẩm truy vấn dữ liệu trên POS Pancake, tìm các Phân loại & SKU Phân loại
 	 *            của sản phẩm đó đồng bộ về các biến thể trên Website.
@@ -3138,6 +3407,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			'variations_img_set' => 0,
 			'var_sku_updated'    => 0,
 			'stock_updated'      => 0,
+			'prices_updated'     => 0,
 			'downloaded_urls'    => 0,
 			'messages'           => array(),
 		);
@@ -3254,26 +3524,18 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					$result['stock_updated']++;
 				}
 
-				// Ensure any Website variation with missing/zero price inherits its price from Pancake
-				$cur_v_reg = (float) get_post_meta( $child_id, '_regular_price', true );
-				$cur_v_pri = (float) get_post_meta( $child_id, '_price', true );
-				$pv_price  = $matched_pv && (float) ( $matched_pv['price'] ?? 0 ) > 0 ? (float) $matched_pv['price'] : (float) ( $pancake_item['min_price'] ?? 0 );
-				if ( $pv_price > 0 && ( $cur_v_reg <= 0 || $cur_v_pri <= 0 ) ) {
-					$p_str = (string) $pv_price;
-					if ( $cur_v_reg <= 0 ) {
-						update_post_meta( $child_id, '_regular_price', $p_str );
-					}
-					if ( $cur_v_pri <= 0 ) {
-						update_post_meta( $child_id, '_price', $p_str );
-					}
-				}
-
 				$wc_children_matched[ $child_id ] = array(
 					'v_sku'      => $v_sku,
 					'wc_c_key'   => $wc_c_key,
 					'matched_pv' => $matched_pv,
 				);
 			}
+		}
+
+		// Sync exact _regular_price from Pancake POS & recalculate active Giảm Giá SP / Flash Sale prices
+		$result['prices_updated'] = self::sync_wc_prices_from_pancake_item( $product, $pancake_item );
+		if ( $result['prices_updated'] > 0 ) {
+			$result['messages'][] = 'Đã đồng bộ giá gốc Pancake POS & tính lại giá giảm cho ' . (int) $result['prices_updated'] . ' phân loại.';
 		}
 
 		// =========================================================================
@@ -3531,7 +3793,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 		$result['reused_urls']       = max( 0, count( $url_to_att_id ) - (int) $result['downloaded_urls'] );
 		update_post_meta( $pid, '_nexxi_pancake_last_sync', time() );
 
-		if ( $result['thumb_set'] || $result['downloaded_urls'] > 0 || $result['variations_img_set'] > 0 || $result['sku_updated'] || $result['var_sku_updated'] > 0 || $result['stock_updated'] > 0 ) {
+		if ( $result['thumb_set'] || $result['downloaded_urls'] > 0 || $result['variations_img_set'] > 0 || $result['sku_updated'] || $result['var_sku_updated'] > 0 || $result['stock_updated'] > 0 || $result['prices_updated'] > 0 ) {
 			clean_post_cache( $pid );
 			if ( function_exists( 'wc_delete_product_transients' ) ) {
 				wc_delete_product_transients( $pid );
@@ -3674,19 +3936,55 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			}
 		}
 
-		$maps             = self::build_lookup_maps( $catalog );
-		$synced_count     = 0;
-		$live_single_left = 5;
+		$maps                 = self::build_lookup_maps( $catalog );
+		$synced_count         = 0;
+		$price_repaired_count = 0;
+		$live_single_left     = 5;
+
+		// Preload all variation & simple-product prices in 2 fast indexed SQL queries (< 15ms) so price-drift detection is O(1)
+		global $wpdb;
+		$vars_by_parent    = array();
+		$wc_var_price_rows = $wpdb->get_results(
+			"SELECT v.ID AS var_id, v.post_parent AS parent_id,
+			        pm_sku.meta_value AS var_sku,
+			        pm_reg.meta_value AS reg_price,
+			        pm_pri.meta_value AS act_price
+			 FROM {$wpdb->posts} v
+			 LEFT JOIN {$wpdb->postmeta} pm_sku ON v.ID = pm_sku.post_id AND pm_sku.meta_key = '_sku'
+			 LEFT JOIN {$wpdb->postmeta} pm_reg ON v.ID = pm_reg.post_id AND pm_reg.meta_key = '_regular_price'
+			 LEFT JOIN {$wpdb->postmeta} pm_pri ON v.ID = pm_pri.post_id AND pm_pri.meta_key = '_price'
+			 WHERE v.post_type = 'product_variation' AND v.post_status IN ('publish', 'private')"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( is_array( $wc_var_price_rows ) ) {
+			foreach ( $wc_var_price_rows as $vpr ) {
+				$vars_by_parent[ (int) $vpr->parent_id ][] = $vpr;
+			}
+			unset( $wc_var_price_rows );
+		}
+
+		$parent_prices        = array();
+		$wc_parent_price_rows = $wpdb->get_results(
+			"SELECT p.ID AS prod_id,
+			        pm_reg.meta_value AS reg_price,
+			        pm_pri.meta_value AS act_price
+			 FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} pm_reg ON p.ID = pm_reg.post_id AND pm_reg.meta_key = '_regular_price'
+			 LEFT JOIN {$wpdb->postmeta} pm_pri ON p.ID = pm_pri.post_id AND pm_pri.meta_key = '_price'
+			 WHERE p.post_type = 'product' AND p.post_status IN ('publish', 'private')"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( is_array( $wc_parent_price_rows ) ) {
+			foreach ( $wc_parent_price_rows as $ppr ) {
+				$parent_prices[ (int) $ppr->prod_id ] = $ppr;
+			}
+			unset( $wc_parent_price_rows );
+		}
 
 		foreach ( $wc_rows as $wrow ) {
-			if ( $synced_count >= 25 ) {
-				break;
-			}
-			$pid     = (int) $wrow['id'];
-			$match   = self::match_fast_wc_row( $wrow, $maps );
-			$p_item  = $match['pancake'];
+			$pid    = (int) $wrow['id'];
+			$match  = self::match_fast_wc_row( $wrow, $maps );
+			$p_item = $match['pancake'];
 
-			if ( ( ! $p_item || empty( $p_item['all_images'] ) ) && $live_single_left > 0 ) {
+			if ( ( ! $p_item || ( empty( $p_item['all_images'] ) && empty( $p_item['variations'] ) ) ) && $live_single_left > 0 ) {
 				$lookup_sku = trim( (string) ( $wrow['pancake_sku'] ?: $wrow['wc_sku'] ) );
 				if ( '' !== $lookup_sku ) {
 					$live_single_left--;
@@ -3697,28 +3995,41 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				}
 			}
 
-			if ( ! $p_item || empty( $p_item['all_images'] ) ) {
+			if ( ! $p_item ) {
 				continue;
 			}
 
-			$thumb_id        = (int) $wrow['thumb_id'];
-			$has_valid_thumb = $thumb_id > 0 && self::is_valid_attachment_on_disk( $thumb_id );
-			$p_cover         = self::get_pancake_primary_image_url( $p_item );
-			$p_cover_hash    = '' !== $p_cover ? self::extract_pancake_image_hash( $p_cover ) : '';
+			$price_drifted  = self::has_fast_price_drift(
+				$pid,
+				$wrow,
+				$p_item,
+				$vars_by_parent[ $pid ] ?? array(),
+				$parent_prices[ $pid ] ?? null
+			);
+			$needs_img_sync = false;
 
-			$missing_thumb = ( ! $has_valid_thumb && ! empty( $settings['auto_set_thumb'] ) );
-			$cover_changed = false;
-			if ( $has_valid_thumb && ! empty( $settings['auto_set_thumb'] ) && '' !== $p_cover ) {
-				if ( '' !== $p_cover_hash && '' !== $wrow['thumb_hash'] ) {
-					$cover_changed = ( $wrow['thumb_hash'] !== $p_cover_hash );
-				} else {
-					$cover_changed = ! self::attachment_matches_pancake_url( $thumb_id, $p_cover );
+			if ( ! empty( $p_item['all_images'] ) && $synced_count < 25 ) {
+				$thumb_id        = (int) $wrow['thumb_id'];
+				$has_valid_thumb = $thumb_id > 0 && self::is_valid_attachment_on_disk( $thumb_id );
+				$p_cover         = self::get_pancake_primary_image_url( $p_item );
+				$p_cover_hash    = '' !== $p_cover ? self::extract_pancake_image_hash( $p_cover ) : '';
+
+				$missing_thumb = ( ! $has_valid_thumb && ! empty( $settings['auto_set_thumb'] ) );
+				$cover_changed = false;
+				if ( $has_valid_thumb && ! empty( $settings['auto_set_thumb'] ) && '' !== $p_cover ) {
+					if ( '' !== $p_cover_hash && '' !== $wrow['thumb_hash'] ) {
+						$cover_changed = ( $wrow['thumb_hash'] !== $p_cover_hash );
+					} else {
+						$cover_changed = ! self::attachment_matches_pancake_url( $thumb_id, $p_cover );
+					}
 				}
-			}
-			$missing_var_img = ( ! empty( $settings['auto_set_var_img'] ) && (int) $wrow['var_total'] > 0 && (int) $wrow['var_with_img'] < (int) $wrow['var_total'] && ! empty( $p_item['class_images'] ) );
-			$missing_gallery = ( ! empty( $settings['auto_set_gallery'] ) && count( $p_item['all_images'] ) > ( ( $has_valid_thumb ? 1 : 0 ) + (int) $wrow['gallery_count'] ) );
+				$missing_var_img = ( ! empty( $settings['auto_set_var_img'] ) && (int) $wrow['var_total'] > 0 && (int) $wrow['var_with_img'] < (int) $wrow['var_total'] && ! empty( $p_item['class_images'] ) );
+				$missing_gallery = ( ! empty( $settings['auto_set_gallery'] ) && count( $p_item['all_images'] ) > ( ( $has_valid_thumb ? 1 : 0 ) + (int) $wrow['gallery_count'] ) );
 
-			if ( ! $missing_thumb && ! $cover_changed && ! $missing_var_img && ! $missing_gallery ) {
+				$needs_img_sync = ( $missing_thumb || $cover_changed || $missing_var_img || $missing_gallery );
+			}
+
+			if ( ! $needs_img_sync && ! $price_drifted ) {
 				continue;
 			}
 
@@ -3727,22 +4038,34 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				continue;
 			}
 
-			self::sync_product_with_pancake(
-				$product,
-				$p_item,
-				array(
-					'set_sku'          => ! empty( $settings['auto_set_sku'] ),
-					'set_thumb'        => ! empty( $settings['auto_set_thumb'] ),
-					'set_gallery'      => ! empty( $settings['auto_set_gallery'] ),
-					'set_var_img'      => ! empty( $settings['auto_set_var_img'] ),
-					'overwrite_images' => false,
-					'skip_live_query'  => true,
-				)
-			);
-			$synced_count++;
+			if ( $needs_img_sync ) {
+				self::sync_product_with_pancake(
+					$product,
+					$p_item,
+					array(
+						'set_sku'          => ! empty( $settings['auto_set_sku'] ),
+						'set_thumb'        => ! empty( $settings['auto_set_thumb'] ),
+						'set_gallery'      => ! empty( $settings['auto_set_gallery'] ),
+						'set_var_img'      => ! empty( $settings['auto_set_var_img'] ),
+						'overwrite_images' => false,
+						'skip_live_query'  => true,
+					)
+				);
+				$synced_count++;
+			} elseif ( $price_drifted ) {
+				// Fast DB-only price & sale sync (0 remote HTTP image downloads)
+				$repaired = self::sync_wc_prices_from_pancake_item( $product, $p_item );
+				if ( $repaired > 0 ) {
+					$price_repaired_count++;
+					do_action( 'litespeed_purge_post', $pid );
+				}
+			}
 		}
 
-		if ( $synced_count > 0 ) {
+		if ( $synced_count > 0 || $price_repaired_count > 0 ) {
+			if ( function_exists( 'nexxi_kids_flush_sale_cache' ) ) {
+				nexxi_kids_flush_sale_cache();
+			}
 			do_action( 'litespeed_purge_all' );
 		}
 	}
@@ -4909,6 +5232,24 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					}
 				}
 
+				// Even when skip_existing is enabled, automatically repair any _regular_price / sale-price drift from Pancake POS
+				$price_repaired = 0;
+				if ( ! empty( $opts['sync_price'] ) ) {
+					if ( '' !== $lookup_sku && empty( $pancake_item['variations'] ) && (float) ( $pancake_item['min_price'] ?? 0 ) <= 0 ) {
+						$live_for_price = self::query_pancake_product_by_sku( $lookup_sku, false );
+						if ( is_array( $live_for_price ) && ! empty( $live_for_price['id'] ) ) {
+							$pancake_item = $live_for_price;
+						}
+					}
+					$price_repaired = self::sync_wc_prices_from_pancake_item( $existing_prod, $pancake_item );
+					if ( $price_repaired > 0 ) {
+						if ( function_exists( 'nexxi_kids_flush_sale_cache' ) ) {
+							nexxi_kids_flush_sale_cache();
+						}
+						do_action( 'litespeed_purge_post', (int) $wc_id );
+					}
+				}
+
 				// Even when skip_existing is enabled, automatically update Featured Image / Gallery if Pancake's #1 cover changed or Web lacks cover
 				$cover_sync_res = null;
 				if ( ! empty( $opts['sync_images'] ) ) {
@@ -4949,7 +5290,8 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					'pancake_sku'        => $parent_sku,
 					'name'               => $prod_name,
 					'created_new'        => false,
-					'skipped_duplicate'  => null === $cover_sync_res,
+					'skipped_duplicate'  => ( null === $cover_sync_res && 0 === $price_repaired ),
+					'prices_updated'     => $price_repaired + (int) ( $cover_sync_res['prices_updated'] ?? 0 ),
 					'thumb_updated'      => ! empty( $cover_sync_res['thumb_updated'] ),
 					'variations_synced'  => $existing_prod->is_type( 'variable' ) ? count( $existing_prod->get_children() ) : 0,
 					'total_stock'        => (int) ( $pancake_item['total_stock'] ?? 0 ),
@@ -5237,9 +5579,15 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					$eff_v_price = (float) ( $pancake_item['min_price'] ?? $pancake_item['max_price'] ?? 0 );
 				}
 				if ( $opts['sync_price'] && $eff_v_price > 0 ) {
-					$price_str = (string) $eff_v_price;
+					$price_str = (string) round( $eff_v_price );
 					$var_obj->set_regular_price( $price_str );
-					if ( '' === (string) $var_obj->get_sale_price() || (float) $var_obj->get_sale_price() <= 0 ) {
+					$cur_vs = (float) $var_obj->get_sale_price();
+					if ( $cur_vs > 0 && $cur_vs < $eff_v_price ) {
+						$var_obj->set_price( (string) round( $cur_vs ) );
+					} else {
+						if ( '' !== (string) $var_obj->get_sale_price() ) {
+							$var_obj->set_sale_price( '' );
+						}
 						$var_obj->set_price( $price_str );
 					}
 				}
@@ -5327,9 +5675,16 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 		} else {
 			// Simple product price & stock sync
 			if ( $opts['sync_price'] && (float) ( $pancake_item['min_price'] ?? 0 ) > 0 ) {
-				$price_str = (string) (float) $pancake_item['min_price'];
+				$eff_s_price = (float) round( (float) $pancake_item['min_price'] );
+				$price_str   = (string) round( $eff_s_price );
 				$product->set_regular_price( $price_str );
-				if ( '' === (string) $product->get_sale_price() ) {
+				$cur_ss = (float) $product->get_sale_price();
+				if ( $cur_ss > 0 && $cur_ss < $eff_s_price ) {
+					$product->set_price( (string) round( $cur_ss ) );
+				} else {
+					if ( '' !== (string) $product->get_sale_price() ) {
+						$product->set_sale_price( '' );
+					}
 					$product->set_price( $price_str );
 				}
 			}
@@ -9148,7 +9503,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 						pancake_sku: sku
 					};
 				});
-				runBatchImport(items, 'Đang đồng bộ trực tiếp ' + items.length + ' sản phẩm theo Mã SKU từ Pancake POS về Website...', false, true);
+				runBatchImport(items, 'Đang đồng bộ trực tiếp ' + items.length + ' sản phẩm theo Mã SKU từ Pancake POS về Website...', true, true);
 			});
 
 			// Bulk SKU Input: Delete & Disconnect by SKU list

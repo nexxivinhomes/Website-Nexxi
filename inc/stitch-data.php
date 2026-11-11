@@ -166,6 +166,41 @@ function nexxi_kids_normalize_variable_sale( WC_Product $product ) {
 		return;
 	}
 
+	// When product has an active NEXXI Giảm Giá SP / Flash Sale rule, always compute exact per-tier sale price
+	// via nexxi_kids_resync_product_sale_prices() instead of copying from peer variations at the same regular price.
+	if (
+		function_exists( 'nexxi_kids_resync_product_sale_prices' )
+		&& (
+			'1' === (string) get_post_meta( $pid, '_nexxi_has_prod_sale', true )
+			|| '1' === (string) get_post_meta( $pid, '_nexxi_is_flash_sale', true )
+		)
+	) {
+		$comb         = function_exists( 'nexxi_kids_get_program_sale' ) ? nexxi_kids_get_program_sale( $product, 'combined' ) : array();
+		$needs_resync = false;
+		foreach ( $children as $child_id ) {
+			$reg = (float) get_post_meta( $child_id, '_regular_price', true );
+			if ( $reg <= 0 ) {
+				continue;
+			}
+			$cur_vs   = (string) get_post_meta( $child_id, '_sale_price', true );
+			$cur_vp   = (string) get_post_meta( $child_id, '_price', true );
+			$var_sale = ( ! empty( $comb['on_sale'] ) && function_exists( 'nexxi_kids_calc_combined_variation_price' ) )
+				? nexxi_kids_calc_combined_variation_price( $reg, $comb )
+				: 0.0;
+			$exp_vs   = ( $var_sale > 0 && $var_sale < $reg ) ? (string) round( $var_sale ) : '';
+			$exp_vp   = ( '' !== $exp_vs ) ? $exp_vs : (string) round( $reg );
+			if ( $cur_vs !== $exp_vs || $cur_vp !== $exp_vp ) {
+				$needs_resync = true;
+				break;
+			}
+		}
+		if ( $needs_resync ) {
+			nexxi_kids_resync_product_sale_prices( $pid );
+			delete_transient( 'wc_products_onsale' );
+		}
+		return;
+	}
+
 	$sale_by_reg = array();
 	$missing     = array();
 	foreach ( $children as $child_id ) {
