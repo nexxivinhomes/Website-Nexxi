@@ -358,15 +358,37 @@ final class Nexxi_Kids_Catalog {
 				'permission_callback' => '__return_true',
 			),
 		) );
+
+		register_rest_route( 'nexxi/v1', '/pos-app-snapshot', array(
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'pos_app_snapshot_get' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'pos_app_snapshot_post' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => 'OPTIONS',
+				'callback'            => array( $this, 'pos_app_state_options' ),
+				'permission_callback' => '__return_true',
+			),
+		) );
 	}
 
 	/**
-	 * Send explicit CORS and no-store headers for POS App shared state requests.
+	 * Send explicit CORS and no-store headers for POS App shared state & snapshot requests.
 	 */
 	public function pos_app_cors_headers( $served, $result, $request, $server ) {
+		unset( $result, $server );
 		$route = method_exists( $request, 'get_route' ) ? (string) $request->get_route() : '';
-		if ( 0 !== strpos( $route, '/nexxi/v1/pos-app-state' ) ) {
+		if ( 0 !== strpos( $route, '/nexxi/v1/pos-app-' ) ) {
 			return $served;
+		}
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
 		}
 		$origin = isset( $_SERVER['HTTP_ORIGIN'] ) ? trim( sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ) ) ) : '';
 		$allowed = '' !== $origin && (
@@ -382,8 +404,10 @@ final class Nexxi_Kids_Catalog {
 			header( 'Access-Control-Allow-Origin: *' );
 		}
 		header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-		header( 'Access-Control-Allow-Headers: Content-Type, Accept' );
+		header( 'Access-Control-Allow-Headers: Content-Type, Accept, X-Nexxi-Pos-Key' );
 		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		header( 'X-LiteSpeed-Cache-Control: no-cache' );
+		header( 'X-Robots-Tag: noindex, nofollow, noarchive' );
 		return $served;
 	}
 
@@ -544,6 +568,207 @@ final class Nexxi_Kids_Catalog {
 			'defaultsUpdatedBy' => $defaults_updated_by,
 			'productSettings'   => $merged_products,
 			'skuSettings'       => $merged_skus,
+		);
+	}
+
+	/**
+	 * Ensure the protected nexxi-pos-cache directory exists inside wp-content/uploads.
+	 *
+	 * @return string|WP_Error Directory path without trailing slash.
+	 */
+	private function ensure_pos_snapshot_cache_dir() {
+		$uploads  = wp_upload_dir();
+		$base_dir = isset( $uploads['basedir'] ) ? rtrim( (string) $uploads['basedir'], '/\\' ) : '';
+		if ( '' === $base_dir ) {
+			$base_dir = rtrim( WP_CONTENT_DIR, '/\\' ) . DIRECTORY_SEPARATOR . 'uploads';
+		}
+		$dir = $base_dir . DIRECTORY_SEPARATOR . 'nexxi-pos-cache';
+		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
+			return new WP_Error( 'cache_dir_failed', 'Could not create nexxi-pos-cache directory.', array( 'status' => 500 ) );
+		}
+		$htaccess = $dir . DIRECTORY_SEPARATOR . '.htaccess';
+		if ( ! file_exists( $htaccess ) ) {
+			@file_put_contents( $htaccess, "Order deny,allow\nDeny from all\n<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+		$index_php = $dir . DIRECTORY_SEPARATOR . 'index.php';
+		if ( ! file_exists( $index_php ) ) {
+			@file_put_contents( $index_php, "<?php\n// Silence is golden.\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+		return $dir;
+	}
+
+	/**
+	 * Read cached Nexxi POS App SyncSnapshot JSON file for a shop and slice key.
+	 */
+	public function pos_app_snapshot_get( WP_REST_Request $request ) {
+		$shop_id   = preg_replace( '/\D+/', '', (string) $request->get_param( 'shop_id' ) );
+		$slice_key = trim( (string) $request->get_param( 'slice_key' ) );
+		if ( '' === $shop_id || strlen( $shop_id ) > 20 || '' === $slice_key || strlen( $slice_key ) > 500 ) {
+			return new WP_Error( 'invalid_params', 'Missing or invalid shop_id / slice_key.', array( 'status' => 400 ) );
+		}
+
+		$dir = $this->ensure_pos_snapshot_cache_dir();
+		if ( is_wp_error( $dir ) ) {
+			return $dir;
+		}
+
+		$file_path = $dir . DIRECTORY_SEPARATOR . 'snapshot-' . $shop_id . '-' . md5( $slice_key ) . '.json';
+		if ( ! is_readable( $file_path ) ) {
+			return rest_ensure_response(
+				array(
+					'success'  => true,
+					'snapshot' => null,
+					'meta'     => null,
+				)
+			);
+		}
+
+		$raw    = @file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		$record = is_string( $raw ) && '' !== $raw ? json_decode( $raw, true ) : null;
+		if ( ! is_array( $record ) || ! isset( $record['snapshot'] ) || ! is_array( $record['snapshot'] ) ) {
+			return rest_ensure_response(
+				array(
+					'success'  => true,
+					'snapshot' => null,
+					'meta'     => null,
+				)
+			);
+		}
+
+		$meta              = isset( $record['meta'] ) && is_array( $record['meta'] ) ? $record['meta'] : null;
+		$prefer_compressed = ! empty( $request->get_param( 'compressed' ) );
+		if ( $prefer_compressed && function_exists( 'gzencode' ) ) {
+			$snap_json = wp_json_encode( $record['snapshot'] );
+			if ( is_string( $snap_json ) ) {
+				$gz = @gzencode( $snap_json, 6 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				if ( is_string( $gz ) && '' !== $gz ) {
+					return rest_ensure_response(
+						array(
+							'success'          => true,
+							'format'           => 'nexxi-gzip-v1',
+							'meta'             => $meta,
+							'compressedBase64' => base64_encode( $gz ),
+						)
+					);
+				}
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success'  => true,
+				'meta'     => $meta,
+				'snapshot' => $record['snapshot'],
+			)
+		);
+	}
+
+	/**
+	 * Store compressed or JSON Nexxi POS App SyncSnapshot file on disk.
+	 */
+	public function pos_app_snapshot_post( WP_REST_Request $request ) {
+		$raw_body = (string) $request->get_body();
+		if ( strlen( $raw_body ) > 26214400 ) {
+			return new WP_Error( 'payload_too_large', 'Snapshot payload exceeds 25 MB limit.', array( 'status' => 413 ) );
+		}
+		$body = json_decode( $raw_body, true );
+		if ( ! is_array( $body ) ) {
+			return new WP_Error( 'invalid_payload', 'Invalid snapshot JSON payload.', array( 'status' => 400 ) );
+		}
+
+		$shop_id   = preg_replace( '/\D+/', '', (string) ( $body['shopId'] ?? $request->get_param( 'shop_id' ) ) );
+		$slice_key = trim( (string) ( $body['sliceKey'] ?? '' ) );
+		if ( '' === $shop_id || strlen( $shop_id ) > 20 || '' === $slice_key || strlen( $slice_key ) > 500 ) {
+			return new WP_Error( 'invalid_params', 'Missing or invalid shopId / sliceKey.', array( 'status' => 400 ) );
+		}
+
+		$snapshot = null;
+		if ( isset( $body['format'] ) && 'nexxi-gzip-v1' === $body['format'] ) {
+			if ( ! function_exists( 'gzdecode' ) ) {
+				return new WP_Error( 'zlib_unavailable', 'Server does not support gzip decoding.', array( 'status' => 500 ) );
+			}
+			$bin      = base64_decode( (string) ( $body['compressedBase64'] ?? '' ), true );
+			$inflated = false !== $bin ? @gzdecode( $bin ) : false; // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			$decoded  = is_string( $inflated ) ? json_decode( $inflated, true ) : null;
+			$snapshot = is_array( $decoded ) ? $decoded : null;
+		} elseif ( isset( $body['snapshot'] ) && is_array( $body['snapshot'] ) ) {
+			$snapshot = $body['snapshot'];
+		}
+
+		if (
+			! is_array( $snapshot ) ||
+			empty( $snapshot['syncedAtIso'] ) ||
+			! isset( $snapshot['variations'] ) || ! is_array( $snapshot['variations'] ) ||
+			! isset( $snapshot['products'] ) || ! is_array( $snapshot['products'] )
+		) {
+			return new WP_Error( 'invalid_snapshot', 'Missing required snapshot fields.', array( 'status' => 400 ) );
+		}
+
+		$dir = $this->ensure_pos_snapshot_cache_dir();
+		if ( is_wp_error( $dir ) ) {
+			return $dir;
+		}
+
+		$file_path = $dir . DIRECTORY_SEPARATOR . 'snapshot-' . $shop_id . '-' . md5( $slice_key ) . '.json';
+		$existing  = null;
+		if ( is_readable( $file_path ) ) {
+			$old_raw  = @file_get_contents( $file_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			$existing = is_string( $old_raw ) && '' !== $old_raw ? json_decode( $old_raw, true ) : null;
+		}
+
+		$force    = ! empty( $body['force'] );
+		$new_sync = sanitize_text_field( (string) $snapshot['syncedAtIso'] );
+		$old_sync = is_array( $existing ) && isset( $existing['meta']['syncedAtIso'] ) ? (string) $existing['meta']['syncedAtIso'] : '';
+
+		if ( ! $force && '' !== $old_sync && strcmp( $old_sync, $new_sync ) > 0 ) {
+			return rest_ensure_response(
+				array(
+					'success'   => true,
+					'keptNewer' => true,
+					'meta'      => $existing['meta'],
+				)
+			);
+		}
+
+		$meta = array(
+			'shopId'       => (string) $shop_id,
+			'sliceKey'     => $slice_key,
+			'syncedAtIso'  => $new_sync,
+			'savedAtIso'   => gmdate( 'c' ),
+			'savedBy'      => sanitize_text_field( (string) ( $body['savedBy'] ?? '' ) ),
+			'productCount' => count( $snapshot['products'] ),
+			'skuCount'     => count( $snapshot['variations'] ),
+		);
+
+		$encoded = wp_json_encode(
+			array(
+				'meta'     => $meta,
+				'snapshot' => $snapshot,
+			)
+		);
+		if ( false === $encoded ) {
+			return new WP_Error( 'encode_failed', 'Failed to encode snapshot JSON.', array( 'status' => 500 ) );
+		}
+
+		$tmp = $file_path . '.tmp.' . uniqid( '', true );
+		$ok  = @file_put_contents( $tmp, $encoded, LOCK_EX ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( false === $ok ) {
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			return new WP_Error( 'write_failed', 'Failed to write snapshot cache file.', array( 'status' => 500 ) );
+		}
+		if ( ! @rename( $tmp, $file_path ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			$fallback = @file_put_contents( $file_path, $encoded, LOCK_EX ); // phpcs:ignore WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors.Discouraged
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			if ( false === $fallback ) {
+				return new WP_Error( 'write_failed', 'Failed to persist snapshot cache file.', array( 'status' => 500 ) );
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'meta'    => $meta,
+			)
 		);
 	}
 
