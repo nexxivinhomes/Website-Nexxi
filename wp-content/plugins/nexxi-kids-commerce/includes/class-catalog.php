@@ -36,6 +36,7 @@ final class Nexxi_Kids_Catalog {
 		add_action( 'created_pa_mau-sac', array( $this, 'color_save' ) );
 		add_action( 'edited_pa_mau-sac', array( $this, 'color_save' ) );
 		add_action( 'rest_api_init', array( $this, 'rest_routes' ) );
+		add_filter( 'rest_pre_serve_request', array( $this, 'pos_app_cors_headers' ), 15, 4 );
 		add_filter( 'woocommerce_add_to_cart_fragments', array( $this, 'cart_fragments' ) );
 	}
 
@@ -339,6 +340,211 @@ final class Nexxi_Kids_Catalog {
 				'args'                => array( 'ids' => array( 'type' => 'array', 'items' => array( 'type' => 'integer' ), 'required' => true ) ),
 			),
 		) );
+
+		register_rest_route( 'nexxi/v1', '/pos-app-state', array(
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'pos_app_state_get' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'pos_app_state_post' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => 'OPTIONS',
+				'callback'            => array( $this, 'pos_app_state_options' ),
+				'permission_callback' => '__return_true',
+			),
+		) );
+	}
+
+	/**
+	 * Send explicit CORS and no-store headers for POS App shared state requests.
+	 */
+	public function pos_app_cors_headers( $served, $result, $request, $server ) {
+		$route = method_exists( $request, 'get_route' ) ? (string) $request->get_route() : '';
+		if ( 0 !== strpos( $route, '/nexxi/v1/pos-app-state' ) ) {
+			return $served;
+		}
+		$origin = isset( $_SERVER['HTTP_ORIGIN'] ) ? trim( sanitize_text_field( wp_unslash( $_SERVER['HTTP_ORIGIN'] ) ) ) : '';
+		$allowed = '' !== $origin && (
+			1 === preg_match( '#^https://([a-z0-9-]+\.)?posapp\.pke\.gg$#i', $origin ) ||
+			1 === preg_match( '#^https://([a-z0-9-]+\.)?pancake\.vn$#i', $origin ) ||
+			1 === preg_match( '#^https://([a-z0-9-]+\.)?pages\.fm$#i', $origin ) ||
+			1 === preg_match( '#^http://(localhost|127\.0\.0\.1)(:\d+)?$#i', $origin )
+		);
+		if ( $allowed ) {
+			header( 'Access-Control-Allow-Origin: ' . $origin );
+			header( 'Vary: Origin' );
+		} else {
+			header( 'Access-Control-Allow-Origin: *' );
+		}
+		header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
+		header( 'Access-Control-Allow-Headers: Content-Type, Accept' );
+		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		return $served;
+	}
+
+	/**
+	 * Handle CORS preflight OPTIONS for POS App shared state endpoint.
+	 */
+	public function pos_app_state_options() {
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/**
+	 * Read shared Nexxi POS App configuration for a shop.
+	 */
+	public function pos_app_state_get( WP_REST_Request $request ) {
+		$shop_id = preg_replace( '/\D+/', '', (string) $request->get_param( 'shop_id' ) );
+		if ( '' === $shop_id || strlen( $shop_id ) > 20 ) {
+			return new WP_Error( 'invalid_shop_id', 'Missing or invalid shop_id.', array( 'status' => 400 ) );
+		}
+		$stored = get_option( 'nexxi_pos_app_shared_state_' . $shop_id, null );
+		if ( is_string( $stored ) && '' !== $stored ) {
+			$decoded = json_decode( $stored, true );
+			$stored  = is_array( $decoded ) ? $decoded : null;
+		}
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'state'   => is_array( $stored ) ? $this->normalize_state_for_json( $stored ) : null,
+			)
+		);
+	}
+
+	/**
+	 * Ensure associative maps serialize as JSON objects `{}` even when empty.
+	 *
+	 * @param array $state Shared state array.
+	 * @return array
+	 */
+	private function normalize_state_for_json( $state ) {
+		$products = isset( $state['productSettings'] ) && is_array( $state['productSettings'] ) ? $state['productSettings'] : array();
+		$skus     = isset( $state['skuSettings'] ) && is_array( $state['skuSettings'] ) ? $state['skuSettings'] : array();
+		$state['productSettings'] = empty( $products ) ? new stdClass() : $products;
+		$state['skuSettings']     = empty( $skus ) ? new stdClass() : $skus;
+		return $state;
+	}
+
+	/**
+	 * Save and timestamp-merge shared Nexxi POS App configuration for a shop.
+	 */
+	public function pos_app_state_post( WP_REST_Request $request ) {
+		$raw_body = (string) $request->get_body();
+		if ( strlen( $raw_body ) > 524288 ) {
+			return new WP_Error( 'payload_too_large', 'Shared state payload exceeds 512 KB limit.', array( 'status' => 413 ) );
+		}
+		$incoming = json_decode( $raw_body, true );
+		if ( ! is_array( $incoming ) || 1 !== (int) ( $incoming['schemaVersion'] ?? 0 ) ) {
+			return new WP_Error( 'invalid_payload', 'Invalid POS App shared config payload.', array( 'status' => 400 ) );
+		}
+		$shop_id = preg_replace( '/\D+/', '', (string) ( $incoming['shopId'] ?? $request->get_param( 'shop_id' ) ) );
+		if ( '' === $shop_id || strlen( $shop_id ) > 20 ) {
+			return new WP_Error( 'invalid_shop_id', 'Missing or invalid shopId.', array( 'status' => 400 ) );
+		}
+		if ( ! isset( $incoming['defaults'] ) || ! is_array( $incoming['defaults'] ) ) {
+			return new WP_Error( 'invalid_payload', 'Missing defaults object.', array( 'status' => 400 ) );
+		}
+
+		$option_key = 'nexxi_pos_app_shared_state_' . $shop_id;
+		$existing   = get_option( $option_key, null );
+		if ( is_string( $existing ) && '' !== $existing ) {
+			$decoded  = json_decode( $existing, true );
+			$existing = is_array( $decoded ) ? $decoded : null;
+		}
+		if ( ! is_array( $existing ) || 1 !== (int) ( $existing['schemaVersion'] ?? 0 ) ) {
+			$existing = null;
+		}
+
+		$merged = $this->merge_pos_app_shared_states( $shop_id, $existing, $incoming );
+		update_option( $option_key, wp_json_encode( $merged ), false );
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'state'   => $this->normalize_state_for_json( $merged ),
+			)
+		);
+	}
+
+	/**
+	 * Merge existing and incoming shop shared configuration by ISO updatedAt timestamps.
+	 *
+	 * @param string     $shop_id  Shop ID.
+	 * @param array|null $existing Stored server state.
+	 * @param array      $incoming Incoming client state.
+	 * @return array
+	 */
+	private function merge_pos_app_shared_states( $shop_id, $existing, $incoming ) {
+		$incoming_products = isset( $incoming['productSettings'] ) && is_array( $incoming['productSettings'] ) ? $incoming['productSettings'] : array();
+		$incoming_skus     = isset( $incoming['skuSettings'] ) && is_array( $incoming['skuSettings'] ) ? $incoming['skuSettings'] : array();
+
+		if ( ! is_array( $existing ) ) {
+			return array(
+				'schemaVersion'     => 1,
+				'shopId'            => (string) $shop_id,
+				'exportedAt'        => sanitize_text_field( (string) ( $incoming['exportedAt'] ?? gmdate( 'c' ) ) ),
+				'exportedBy'        => sanitize_text_field( (string) ( $incoming['exportedBy'] ?? '' ) ),
+				'defaults'          => $incoming['defaults'],
+				'defaultsUpdatedAt' => sanitize_text_field( (string) ( $incoming['defaultsUpdatedAt'] ?? '' ) ),
+				'defaultsUpdatedBy' => sanitize_text_field( (string) ( $incoming['defaultsUpdatedBy'] ?? '' ) ),
+				'productSettings'   => $incoming_products,
+				'skuSettings'       => $incoming_skus,
+			);
+		}
+
+		$existing_def_ts = (string) ( $existing['defaultsUpdatedAt'] ?? '' );
+		$incoming_def_ts = (string) ( $incoming['defaultsUpdatedAt'] ?? '' );
+		$use_incoming_def = '' !== $incoming_def_ts && ( '' === $existing_def_ts || strcmp( $incoming_def_ts, $existing_def_ts ) > 0 );
+
+		$defaults            = $use_incoming_def ? $incoming['defaults'] : ( $existing['defaults'] ?? $incoming['defaults'] );
+		$defaults_updated_at = $use_incoming_def ? $incoming_def_ts : $existing_def_ts;
+		$defaults_updated_by = $use_incoming_def
+			? sanitize_text_field( (string) ( $incoming['defaultsUpdatedBy'] ?? '' ) )
+			: (string) ( $existing['defaultsUpdatedBy'] ?? '' );
+
+		$merged_products = isset( $existing['productSettings'] ) && is_array( $existing['productSettings'] ) ? $existing['productSettings'] : array();
+		foreach ( $incoming_products as $pid => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$prev_ts = isset( $merged_products[ $pid ]['updatedAt'] ) ? (string) $merged_products[ $pid ]['updatedAt'] : '';
+			$next_ts = isset( $entry['updatedAt'] ) ? (string) $entry['updatedAt'] : '';
+			if ( ! isset( $merged_products[ $pid ] ) || ( '' !== $next_ts && strcmp( $next_ts, $prev_ts ) > 0 ) ) {
+				$merged_products[ $pid ] = $entry;
+			}
+		}
+
+		$merged_skus = isset( $existing['skuSettings'] ) && is_array( $existing['skuSettings'] ) ? $existing['skuSettings'] : array();
+		foreach ( $incoming_skus as $vid => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			$prev_ts = isset( $merged_skus[ $vid ]['updatedAt'] ) ? (string) $merged_skus[ $vid ]['updatedAt'] : '';
+			$next_ts = isset( $entry['updatedAt'] ) ? (string) $entry['updatedAt'] : '';
+			if ( ! isset( $merged_skus[ $vid ] ) || ( '' !== $next_ts && strcmp( $next_ts, $prev_ts ) > 0 ) ) {
+				$merged_skus[ $vid ] = $entry;
+			}
+		}
+
+		$existing_exp = (string) ( $existing['exportedAt'] ?? '' );
+		$incoming_exp = (string) ( $incoming['exportedAt'] ?? '' );
+		$take_incoming_exp = strcmp( $incoming_exp, $existing_exp ) >= 0;
+
+		return array(
+			'schemaVersion'     => 1,
+			'shopId'            => (string) $shop_id,
+			'exportedAt'        => $take_incoming_exp ? $incoming_exp : $existing_exp,
+			'exportedBy'        => sanitize_text_field( (string) ( $take_incoming_exp ? ( $incoming['exportedBy'] ?? '' ) : ( $existing['exportedBy'] ?? '' ) ) ),
+			'defaults'          => $defaults,
+			'defaultsUpdatedAt' => $defaults_updated_at,
+			'defaultsUpdatedBy' => $defaults_updated_by,
+			'productSettings'   => $merged_products,
+			'skuSettings'       => $merged_skus,
+		);
 	}
 
 	public function wishlist_get() {
