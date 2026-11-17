@@ -6,7 +6,12 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 final class Nexxi_Kids_Catalog {
-	const SCHEMA = '2';
+	const SCHEMA                          = '2';
+	const POS_APP_API_KEY                 = 'nxp_v1_8f4c9a2e7b1d6f3a5c8e0b2d4f6a8c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a';
+	const POS_MAX_SNAPSHOT_BYTES          = 26214400;
+	const POS_MAX_SNAPSHOT_FILES_PER_SHOP = 15;
+	const POS_MAX_FUTURE_SKEW_SECONDS     = 300;
+	const POS_SNAPSHOT_TTL_KEEP           = 1209600;
 
 	/** Global attributes used by filters, product pages and variations. */
 	public static function attributes() {
@@ -345,12 +350,12 @@ final class Nexxi_Kids_Catalog {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'pos_app_state_get' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'verify_pos_app_api_key' ),
 			),
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'pos_app_state_post' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'verify_pos_app_api_key' ),
 			),
 			array(
 				'methods'             => 'OPTIONS',
@@ -363,12 +368,12 @@ final class Nexxi_Kids_Catalog {
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'pos_app_snapshot_get' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'verify_pos_app_api_key' ),
 			),
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'pos_app_snapshot_post' ),
-				'permission_callback' => '__return_true',
+				'permission_callback' => array( $this, 'verify_pos_app_api_key' ),
 			),
 			array(
 				'methods'             => 'OPTIONS',
@@ -376,6 +381,37 @@ final class Nexxi_Kids_Catalog {
 				'permission_callback' => '__return_true',
 			),
 		) );
+	}
+
+	/**
+	 * Verify required X-Nexxi-Pos-Key header on POS storage REST routes.
+	 *
+	 * @param WP_REST_Request|null $request REST request.
+	 * @return true|WP_Error
+	 */
+	public function verify_pos_app_api_key( $request = null ) {
+		$provided = '';
+		if ( $request instanceof WP_REST_Request ) {
+			$provided = trim( (string) $request->get_header( 'x_nexxi_pos_key' ) );
+		}
+		if ( '' === $provided && isset( $_SERVER['HTTP_X_NEXXI_POS_KEY'] ) ) {
+			$provided = trim( (string) wp_unslash( $_SERVER['HTTP_X_NEXXI_POS_KEY'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		}
+		if ( '' === $provided && function_exists( 'getallheaders' ) ) {
+			$headers = getallheaders();
+			if ( is_array( $headers ) ) {
+				foreach ( $headers as $header_name => $header_value ) {
+					if ( 'x-nexxi-pos-key' === strtolower( (string) $header_name ) ) {
+						$provided = trim( (string) $header_value );
+						break;
+					}
+				}
+			}
+		}
+		if ( '' === $provided || ! hash_equals( self::POS_APP_API_KEY, $provided ) ) {
+			return new WP_Error( 'unauthorized_pos_key', 'Unauthorized POS storage access.', array( 'status' => 401 ) );
+		}
+		return true;
 	}
 
 	/**
@@ -400,11 +436,28 @@ final class Nexxi_Kids_Catalog {
 		if ( $allowed ) {
 			header( 'Access-Control-Allow-Origin: ' . $origin );
 			header( 'Vary: Origin' );
+			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
+			header( 'Access-Control-Allow-Headers: Content-Type, Accept, X-Nexxi-Pos-Key' );
 		} else {
-			header( 'Access-Control-Allow-Origin: *' );
+			if ( function_exists( 'header_remove' ) ) {
+				@header_remove( 'Access-Control-Allow-Origin' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				@header_remove( 'Access-Control-Allow-Credentials' ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+			if ( '' !== $origin ) {
+				status_header( 403 );
+				header( 'Content-Type: application/json; charset=utf-8' );
+				header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+				header( 'X-LiteSpeed-Cache-Control: no-cache' );
+				header( 'X-Robots-Tag: noindex, nofollow, noarchive' );
+				echo wp_json_encode(
+					array(
+						'success' => false,
+						'message' => 'Origin not allowed.',
+					)
+				);
+				exit;
+			}
 		}
-		header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-		header( 'Access-Control-Allow-Headers: Content-Type, Accept, X-Nexxi-Pos-Key' );
 		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
 		header( 'X-LiteSpeed-Cache-Control: no-cache' );
 		header( 'X-Robots-Tag: noindex, nofollow, noarchive' );
@@ -495,6 +548,25 @@ final class Nexxi_Kids_Catalog {
 	}
 
 	/**
+	 * Clamp client-provided ISO timestamps so future dates cannot poison LWW merges.
+	 *
+	 * @param mixed  $raw      Raw timestamp.
+	 * @param string $fallback Fallback if empty.
+	 * @return string
+	 */
+	private function clamp_pos_iso_timestamp( $raw, $fallback = '' ) {
+		$clean = sanitize_text_field( (string) $raw );
+		if ( '' === $clean ) {
+			return $fallback;
+		}
+		$ts = @strtotime( $clean ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		if ( false === $ts || $ts > ( time() + self::POS_MAX_FUTURE_SKEW_SECONDS ) ) {
+			return gmdate( 'c' );
+		}
+		return $clean;
+	}
+
+	/**
 	 * Merge existing and incoming shop shared configuration by ISO updatedAt timestamps.
 	 *
 	 * @param string     $shop_id  Shop ID.
@@ -506,22 +578,46 @@ final class Nexxi_Kids_Catalog {
 		$incoming_products = isset( $incoming['productSettings'] ) && is_array( $incoming['productSettings'] ) ? $incoming['productSettings'] : array();
 		$incoming_skus     = isset( $incoming['skuSettings'] ) && is_array( $incoming['skuSettings'] ) ? $incoming['skuSettings'] : array();
 
+		$sanitized_products = array();
+		foreach ( $incoming_products as $pid => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			if ( isset( $entry['updatedAt'] ) ) {
+				$entry['updatedAt'] = $this->clamp_pos_iso_timestamp( $entry['updatedAt'], gmdate( 'c' ) );
+			}
+			$sanitized_products[ $pid ] = $entry;
+		}
+
+		$sanitized_skus = array();
+		foreach ( $incoming_skus as $vid => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+			if ( isset( $entry['updatedAt'] ) ) {
+				$entry['updatedAt'] = $this->clamp_pos_iso_timestamp( $entry['updatedAt'], gmdate( 'c' ) );
+			}
+			$sanitized_skus[ $vid ] = $entry;
+		}
+
+		$incoming_exp    = $this->clamp_pos_iso_timestamp( $incoming['exportedAt'] ?? '', gmdate( 'c' ) );
+		$incoming_def_ts = $this->clamp_pos_iso_timestamp( $incoming['defaultsUpdatedAt'] ?? '', '' );
+
 		if ( ! is_array( $existing ) ) {
 			return array(
 				'schemaVersion'     => 1,
 				'shopId'            => (string) $shop_id,
-				'exportedAt'        => sanitize_text_field( (string) ( $incoming['exportedAt'] ?? gmdate( 'c' ) ) ),
+				'exportedAt'        => $incoming_exp,
 				'exportedBy'        => sanitize_text_field( (string) ( $incoming['exportedBy'] ?? '' ) ),
 				'defaults'          => $incoming['defaults'],
-				'defaultsUpdatedAt' => sanitize_text_field( (string) ( $incoming['defaultsUpdatedAt'] ?? '' ) ),
+				'defaultsUpdatedAt' => $incoming_def_ts,
 				'defaultsUpdatedBy' => sanitize_text_field( (string) ( $incoming['defaultsUpdatedBy'] ?? '' ) ),
-				'productSettings'   => $incoming_products,
-				'skuSettings'       => $incoming_skus,
+				'productSettings'   => $sanitized_products,
+				'skuSettings'       => $sanitized_skus,
 			);
 		}
 
-		$existing_def_ts = (string) ( $existing['defaultsUpdatedAt'] ?? '' );
-		$incoming_def_ts = (string) ( $incoming['defaultsUpdatedAt'] ?? '' );
+		$existing_def_ts  = (string) ( $existing['defaultsUpdatedAt'] ?? '' );
 		$use_incoming_def = '' !== $incoming_def_ts && ( '' === $existing_def_ts || strcmp( $incoming_def_ts, $existing_def_ts ) > 0 );
 
 		$defaults            = $use_incoming_def ? $incoming['defaults'] : ( $existing['defaults'] ?? $incoming['defaults'] );
@@ -531,10 +627,7 @@ final class Nexxi_Kids_Catalog {
 			: (string) ( $existing['defaultsUpdatedBy'] ?? '' );
 
 		$merged_products = isset( $existing['productSettings'] ) && is_array( $existing['productSettings'] ) ? $existing['productSettings'] : array();
-		foreach ( $incoming_products as $pid => $entry ) {
-			if ( ! is_array( $entry ) ) {
-				continue;
-			}
+		foreach ( $sanitized_products as $pid => $entry ) {
 			$prev_ts = isset( $merged_products[ $pid ]['updatedAt'] ) ? (string) $merged_products[ $pid ]['updatedAt'] : '';
 			$next_ts = isset( $entry['updatedAt'] ) ? (string) $entry['updatedAt'] : '';
 			if ( ! isset( $merged_products[ $pid ] ) || ( '' !== $next_ts && strcmp( $next_ts, $prev_ts ) > 0 ) ) {
@@ -543,10 +636,7 @@ final class Nexxi_Kids_Catalog {
 		}
 
 		$merged_skus = isset( $existing['skuSettings'] ) && is_array( $existing['skuSettings'] ) ? $existing['skuSettings'] : array();
-		foreach ( $incoming_skus as $vid => $entry ) {
-			if ( ! is_array( $entry ) ) {
-				continue;
-			}
+		foreach ( $sanitized_skus as $vid => $entry ) {
 			$prev_ts = isset( $merged_skus[ $vid ]['updatedAt'] ) ? (string) $merged_skus[ $vid ]['updatedAt'] : '';
 			$next_ts = isset( $entry['updatedAt'] ) ? (string) $entry['updatedAt'] : '';
 			if ( ! isset( $merged_skus[ $vid ] ) || ( '' !== $next_ts && strcmp( $next_ts, $prev_ts ) > 0 ) ) {
@@ -554,8 +644,7 @@ final class Nexxi_Kids_Catalog {
 			}
 		}
 
-		$existing_exp = (string) ( $existing['exportedAt'] ?? '' );
-		$incoming_exp = (string) ( $incoming['exportedAt'] ?? '' );
+		$existing_exp      = (string) ( $existing['exportedAt'] ?? '' );
 		$take_incoming_exp = strcmp( $incoming_exp, $existing_exp ) >= 0;
 
 		return array(
@@ -668,7 +757,7 @@ final class Nexxi_Kids_Catalog {
 	 */
 	public function pos_app_snapshot_post( WP_REST_Request $request ) {
 		$raw_body = (string) $request->get_body();
-		if ( strlen( $raw_body ) > 26214400 ) {
+		if ( strlen( $raw_body ) > self::POS_MAX_SNAPSHOT_BYTES ) {
 			return new WP_Error( 'payload_too_large', 'Snapshot payload exceeds 25 MB limit.', array( 'status' => 413 ) );
 		}
 		$body = json_decode( $raw_body, true );
@@ -687,9 +776,15 @@ final class Nexxi_Kids_Catalog {
 			if ( ! function_exists( 'gzdecode' ) ) {
 				return new WP_Error( 'zlib_unavailable', 'Server does not support gzip decoding.', array( 'status' => 500 ) );
 			}
-			$bin      = base64_decode( (string) ( $body['compressedBase64'] ?? '' ), true );
-			$inflated = false !== $bin ? @gzdecode( $bin ) : false; // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-			$decoded  = is_string( $inflated ) ? json_decode( $inflated, true ) : null;
+			$bin = base64_decode( (string) ( $body['compressedBase64'] ?? '' ), true );
+			if ( false === $bin ) {
+				return new WP_Error( 'invalid_gzip', 'Invalid base64 gzip snapshot payload.', array( 'status' => 400 ) );
+			}
+			$inflated = @gzdecode( $bin, self::POS_MAX_SNAPSHOT_BYTES ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			if ( ! is_string( $inflated ) || '' === $inflated ) {
+				return new WP_Error( 'invalid_gzip', 'Failed to gunzip snapshot payload or decoded size exceeds limit.', array( 'status' => 400 ) );
+			}
+			$decoded  = json_decode( $inflated, true );
 			$snapshot = is_array( $decoded ) ? $decoded : null;
 		} elseif ( isset( $body['snapshot'] ) && is_array( $body['snapshot'] ) ) {
 			$snapshot = $body['snapshot'];
@@ -716,9 +811,10 @@ final class Nexxi_Kids_Catalog {
 			$existing = is_string( $old_raw ) && '' !== $old_raw ? json_decode( $old_raw, true ) : null;
 		}
 
-		$force    = ! empty( $body['force'] );
-		$new_sync = sanitize_text_field( (string) $snapshot['syncedAtIso'] );
-		$old_sync = is_array( $existing ) && isset( $existing['meta']['syncedAtIso'] ) ? (string) $existing['meta']['syncedAtIso'] : '';
+		$force                   = ! empty( $body['force'] );
+		$new_sync                = $this->clamp_pos_iso_timestamp( $snapshot['syncedAtIso'], gmdate( 'c' ) );
+		$snapshot['syncedAtIso'] = $new_sync;
+		$old_sync                = is_array( $existing ) && isset( $existing['meta']['syncedAtIso'] ) ? (string) $existing['meta']['syncedAtIso'] : '';
 
 		if ( ! $force && '' !== $old_sync && strcmp( $old_sync, $new_sync ) > 0 ) {
 			return rest_ensure_response(
@@ -764,12 +860,64 @@ final class Nexxi_Kids_Catalog {
 			}
 		}
 
+		$this->cleanup_old_pos_snapshots( $dir, $shop_id, $file_path );
+
 		return rest_ensure_response(
 			array(
 				'success' => true,
 				'meta'    => $meta,
 			)
 		);
+	}
+
+	/**
+	 * Remove stale snapshot files (>14 days) and cap total snapshot files per shop.
+	 *
+	 * @param string $dir            Cache directory.
+	 * @param string $shop_id        Shop ID.
+	 * @param string $keep_file_path Current file path to retain on tie.
+	 */
+	private function cleanup_old_pos_snapshots( $dir, $shop_id, $keep_file_path = '' ) {
+		$pattern = $dir . DIRECTORY_SEPARATOR . 'snapshot-' . $shop_id . '-*.json';
+		$files   = glob( $pattern );
+		if ( ! is_array( $files ) ) {
+			return;
+		}
+		$cutoff    = time() - self::POS_SNAPSHOT_TTL_KEEP;
+		$remaining = array();
+		foreach ( $files as $file ) {
+			$mtime = @filemtime( $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			if ( false !== $mtime && $mtime < $cutoff && $file !== $keep_file_path ) {
+				@unlink( $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				continue;
+			}
+			$remaining[] = array(
+				'path'  => $file,
+				'mtime' => false !== $mtime ? (int) $mtime : 0,
+			);
+		}
+		if ( count( $remaining ) > self::POS_MAX_SNAPSHOT_FILES_PER_SHOP ) {
+			usort(
+				$remaining,
+				static function ( $a, $b ) use ( $keep_file_path ) {
+					if ( $a['path'] === $keep_file_path && $b['path'] !== $keep_file_path ) {
+						return -1;
+					}
+					if ( $b['path'] === $keep_file_path && $a['path'] !== $keep_file_path ) {
+						return 1;
+					}
+					if ( $a['mtime'] === $b['mtime'] ) {
+						return strcmp( $b['path'], $a['path'] );
+					}
+					return $b['mtime'] <=> $a['mtime'];
+				}
+			);
+			foreach ( array_slice( $remaining, self::POS_MAX_SNAPSHOT_FILES_PER_SHOP ) as $stale ) {
+				if ( $stale['path'] !== $keep_file_path ) {
+					@unlink( $stale['path'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+				}
+			}
+		}
 	}
 
 	public function wishlist_get() {
