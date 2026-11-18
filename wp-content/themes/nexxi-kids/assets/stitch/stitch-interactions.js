@@ -695,7 +695,7 @@
     btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   }));
 
-  /* ---------- Hero Background Banner Slideshow (5s/slide) ---------- */
+  /* ---------- Hero Background Banner Slideshow (5s/slide, up to 10 banners) ---------- */
   const initHeroSlider = () => {
     const slider = $('[data-nexxi-hero-slider]');
     if (!slider) return;
@@ -709,14 +709,45 @@
       section.appendChild(dotsWrap);
     }
 
+    let prevBtn = $('[data-nexxi-hero-prev]', slider);
+    let nextBtn = $('[data-nexxi-hero-next]', slider);
+    if (!prevBtn) {
+      prevBtn = document.createElement('button');
+      prevBtn.type = 'button';
+      prevBtn.className = 'nexxi-hero-bg__arrow nexxi-hero-bg__arrow--prev';
+      prevBtn.setAttribute('data-nexxi-hero-prev', '');
+      prevBtn.setAttribute('aria-label', 'Ảnh banner trước');
+      prevBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>';
+      slider.appendChild(prevBtn);
+    }
+    if (!nextBtn) {
+      nextBtn = document.createElement('button');
+      nextBtn.type = 'button';
+      nextBtn.className = 'nexxi-hero-bg__arrow nexxi-hero-bg__arrow--next';
+      nextBtn.setAttribute('data-nexxi-hero-next', '');
+      nextBtn.setAttribute('aria-label', 'Ảnh banner tiếp theo');
+      nextBtn.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>';
+      slider.appendChild(nextBtn);
+    }
+
     const intervalMs = Number(slider.getAttribute('data-interval')) || 5000;
     const slidesContainer = $('.nexxi-hero-bg__slides', slider) || slider;
+    const inCustomizer = Boolean(window.wp && window.wp.customize);
     let activeSlides = [];
     let currentIndex = 0;
     let timer = null;
+    let preloadTimer = null;
+    let isHovered = false;
+
+    const warmSlideImg = slide => {
+      const img = slide ? $('img', slide) : null;
+      if (img && img.getAttribute('loading') === 'lazy') {
+        img.setAttribute('loading', 'eager');
+      }
+    };
 
     const applySlideOrder = () => {
-      const rawOrder = (slider.getAttribute('data-order') || '1,2,3,4,5').split(',');
+      const rawOrder = (slider.getAttribute('data-order') || '1,2,3,4,5,6,7,8,9,10').split(',');
       const currentNodes = $$('.nexxi-hero-bg__slide', slidesContainer);
       const bySlot = new Map();
       currentNodes.forEach((node, idx) => {
@@ -748,9 +779,30 @@
       return valid;
     });
 
+    const stopTimer = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const startTimer = () => {
+      stopTimer();
+      if (activeSlides.length <= 1 || isHovered || document.hidden) return;
+      timer = setInterval(() => {
+        goTo(currentIndex + 1, false);
+      }, intervalMs);
+    };
+
     const goTo = (index, restartTimer = true) => {
       if (!activeSlides.length) return;
       currentIndex = ((index % activeSlides.length) + activeSlides.length) % activeSlides.length;
+      warmSlideImg(activeSlides[currentIndex]);
+      if (preloadTimer) clearTimeout(preloadTimer);
+      if (activeSlides.length > 1) {
+        const nextSlide = activeSlides[(currentIndex + 1) % activeSlides.length];
+        preloadTimer = setTimeout(() => warmSlideImg(nextSlide), 1400);
+      }
       activeSlides.forEach((slide, idx) => {
         slide.classList.toggle('is-active', idx === currentIndex);
       });
@@ -768,19 +820,21 @@
       if (restartTimer) startTimer();
     };
 
-    const startTimer = () => {
-      if (timer) clearInterval(timer);
-      if (activeSlides.length <= 1) return;
-      timer = setInterval(() => {
-        goTo(currentIndex + 1, false);
-      }, intervalMs);
-    };
-
     const rebuild = (focusKey = null) => {
       activeSlides = getValidSlides();
+      if (section) {
+        if (activeSlides.length === 0 && !inCustomizer) {
+          section.setAttribute('data-hero-empty', '1');
+        } else {
+          section.removeAttribute('data-hero-empty');
+        }
+      }
+      const hasMultiple = activeSlides.length > 1;
+      if (prevBtn) prevBtn.style.display = hasMultiple ? '' : 'none';
+      if (nextBtn) nextBtn.style.display = hasMultiple ? '' : 'none';
       if (dotsWrap) {
         dotsWrap.replaceChildren();
-        if (activeSlides.length > 1) {
+        if (hasMultiple) {
           activeSlides.forEach((slide, idx) => {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -797,6 +851,10 @@
           dotsWrap.style.display = 'none';
         }
       }
+      if (!activeSlides.length) {
+        stopTimer();
+        return;
+      }
       let targetIdx = currentIndex < activeSlides.length ? currentIndex : 0;
       if (focusKey) {
         const foundIdx = activeSlides.findIndex(s => $('img', s)?.getAttribute('data-nxi') === focusKey);
@@ -804,6 +862,49 @@
       }
       goTo(targetIdx, true);
     };
+
+    prevBtn.addEventListener('click', e => {
+      e.preventDefault();
+      if (activeSlides.length > 1) goTo(currentIndex - 1, true);
+    });
+    nextBtn.addEventListener('click', e => {
+      e.preventDefault();
+      if (activeSlides.length > 1) goTo(currentIndex + 1, true);
+    });
+
+    // Touch swipe left/right on phones & tablets (passive so vertical page scroll is never blocked)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    slider.addEventListener('touchstart', e => {
+      if (!e.touches || e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    slider.addEventListener('touchend', e => {
+      if (activeSlides.length <= 1 || !e.changedTouches || !e.changedTouches.length) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        goTo(dx < 0 ? currentIndex + 1 : currentIndex - 1, true);
+      }
+    }, { passive: true });
+
+    // Pause auto-advance while hovering with a fine pointer on desktop
+    if (section && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      section.addEventListener('mouseenter', () => {
+        isHovered = true;
+        stopTimer();
+      });
+      section.addEventListener('mouseleave', () => {
+        isHovered = false;
+        if (activeSlides.length > 1) goTo(currentIndex, true);
+      });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopTimer();
+      else if (activeSlides.length > 1) goTo(currentIndex, true);
+    });
 
     rebuild();
     document.addEventListener('nexxi:hero-slider-refresh', e => {

@@ -8,37 +8,52 @@ function nexxi_kids_home_category_slugs() {
 }
 
 function nexxi_kids_stitch_home( $html ) {
-	$hero_order   = nexxi_studio_hero_slide_order();
-	$slides_html  = '';
-	$first_found  = false;
-	$render_idx   = 0;
+	$hero_order    = nexxi_studio_hero_slide_order();
+	$slides_html   = '';
+	$first_found   = false;
+	$render_idx    = 0;
+	$valid_count   = 0;
 	$in_customizer = function_exists( 'is_customize_preview' ) && is_customize_preview();
-	$hero_alts    = array(
-		1 => 'Thời trang trẻ em thiết kế Hàn Quốc NEXXI Kids – BST Đầm & Chân Váy',
-		2 => 'Thời trang trẻ em NEXXI Kids – BST Set Phối & Đồ Bộ Năng Động',
-		3 => 'Bộ sưu tập quần áo trẻ em thiết kế mới nhất NEXXI Kids',
-		4 => 'Trang phục cho bé 12–45kg mềm mát chuẩn phom NEXXI Kids',
-		5 => 'Banner ưu đãi thời trang trẻ em NEXXI Kids Fashion',
+	$hero_alts     = array(
+		1  => 'Thời trang trẻ em phong cách Hàn Quốc NEXXI Kids – BST Đầm & Chân Váy',
+		2  => 'Thời trang trẻ em NEXXI Kids – BST Set Phối & Đồ Bộ Năng Động',
+		3  => 'Bộ sưu tập quần áo trẻ em thiết kế mùa mới NEXXI Kids',
+		4  => 'Trang phục cho bé 12–45kg mềm mát chuẩn phom NEXXI Kids',
+		5  => 'Banner ưu đãi thời trang trẻ em NEXXI Kids Fashion',
+		6  => 'Thời trang trẻ em phong cách Hàn Quốc cho bé trai và bé gái NEXXI Kids',
+		7  => 'Bộ sưu tập trang phục dạo phố & dự tiệc cho bé NEXXI Kids',
+		8  => 'Quần áo trẻ em co giãn mềm mại cho bé vận động mỗi ngày NEXXI Kids',
+		9  => 'Xu hướng thời trang trẻ em mùa mới tại NEXXI Kids Boutique',
+		10 => 'Chương trình ưu đãi đặc biệt dành cho mẹ và bé NEXXI Kids',
 	);
 	foreach ( $hero_order as $slot ) {
 		$url = nexxi_studio_hero_slide_url( $slot );
+		// On live storefront, strictly skip empty slots so ONLY configured banners are output in HTML.
 		if ( '' === $url && ! $in_customizer ) {
 			continue;
 		}
-		$cls = 'nexxi-hero-bg__slide';
+		$cls             = 'nexxi-hero-bg__slide';
+		$is_first_active = false;
 		if ( '' === $url ) {
 			$cls .= ' is-empty';
-		} elseif ( ! $first_found ) {
-			$cls        .= ' is-active';
-			$first_found = true;
+		} else {
+			$valid_count++;
+			if ( ! $first_found ) {
+				$cls            .= ' is-active';
+				$first_found     = true;
+				$is_first_active = true;
+			}
 		}
-		$loading = ( 0 === $render_idx && '' !== $url ) ? ' loading="eager" fetchpriority="high" decoding="async" data-no-lazy="1"' : ' loading="lazy" decoding="async"';
-		$srcset  = function_exists( 'nexxi_perf_srcset_attr_for_url' ) ? nexxi_perf_srcset_attr_for_url( $url, '100vw' ) : '';
+		$loading = $is_first_active ? ' loading="eager" fetchpriority="high" decoding="async" data-no-lazy="1"' : ' loading="lazy" decoding="async"';
+		$srcset  = ( '' !== $url && function_exists( 'nexxi_perf_srcset_attr_for_url' ) ) ? nexxi_perf_srcset_attr_for_url( $url, '100vw' ) : '';
 		$alt_txt = isset( $hero_alts[ (int) $slot ] ) ? $hero_alts[ (int) $slot ] : ( 'Banner NEXXI Kids ' . (int) $slot );
 		$slides_html .= '<div class="' . esc_attr( $cls ) . '" data-hero-slide="' . (int) $render_idx . '" data-hero-slot="' . (int) $slot . '">'
 			. '<img data-nxi="home-hero__bg' . (int) $slot . '" class="nexxi-hero-bg__img" src="' . esc_url( $url ) . '"' . $srcset . ' alt="' . esc_attr( $alt_txt ) . '"' . $loading . '>'
 			. '</div>';
 		$render_idx++;
+	}
+	if ( 0 === $valid_count && ! $in_customizer ) {
+		$html = nexxi_dom_set_attr( $html, 'data-nxr="home-hero"', 'data-hero-empty', '1' );
 	}
 	$html = nexxi_dom_set_attr( $html, 'data-nexxi-hero-slider', 'data-order', implode( ',', $hero_order ) );
 	$html = nexxi_dom_set_inner( $html, '<div class="nexxi-hero-bg__slides">', $slides_html );

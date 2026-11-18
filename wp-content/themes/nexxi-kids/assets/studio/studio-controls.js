@@ -78,16 +78,23 @@
 			api('nexxi_studio[custom_font_' + slot + '_file]', function (s) { s.bind(refreshCustomFontLabels); });
 		});
 
-		/* ---------- Hero Banner Sorter (Drag & Drop + Up/Down Buttons) ---------- */
+		/* ---------- Hero Banner Sorter (Drag & Drop + Up/Down Buttons, 1..10) ---------- */
+		var HERO_MAX = Math.max(1, parseInt(D.heroMaxSlides, 10) || 10);
+		var HERO_SLOTS = [];
+		for (var hs = 1; hs <= HERO_MAX; hs++) {
+			HERO_SLOTS.push(hs);
+		}
+		var HERO_DEFAULT_ORDER = HERO_SLOTS.join(',');
+
 		function parseHeroOrder(raw) {
 			var order = [];
-			String(raw || '1,2,3,4,5').split(',').forEach(function (p) {
+			String(raw || HERO_DEFAULT_ORDER).split(',').forEach(function (p) {
 				var n = parseInt($.trim(p), 10);
-				if (n >= 1 && n <= 5 && order.indexOf(n) === -1) {
+				if (n >= 1 && n <= HERO_MAX && order.indexOf(n) === -1) {
 					order.push(n);
 				}
 			});
-			for (var s = 1; s <= 5; s++) {
+			for (var s = 1; s <= HERO_MAX; s++) {
 				if (order.indexOf(s) === -1) { order.push(s); }
 			}
 			return order;
@@ -95,15 +102,18 @@
 
 		function getHeroOrder() {
 			var s = api('nexxi_studio[home-hero__order]');
-			return parseHeroOrder(s ? s.get() : '1,2,3,4,5');
+			return parseHeroOrder(s ? s.get() : HERO_DEFAULT_ORDER);
 		}
 
 		function getSlotImageUrl(slot) {
 			var s = api('nexxi_studio[home-hero__bg' + slot + ']');
+			var url = '';
 			if (s) {
-				return $.trim(s.get() || '');
+				url = $.trim(s.get() || '');
+			} else if (D.heroDefaults && D.heroDefaults[slot]) {
+				url = $.trim(D.heroDefaults[slot] || '');
 			}
-			return (D.heroDefaults && D.heroDefaults[slot]) ? D.heroDefaults[slot] : '';
+			return (url === '' || /\/$/.test(url)) ? '' : url;
 		}
 
 		function setHeroOrder(newOrder, movedSlot) {
@@ -134,7 +144,7 @@
 
 		function syncHeroUI(order) {
 			order = order || getHeroOrder();
-			// 1. Update priorities of the 5 WP_Customize_Image_Control boxes so they reorder in sidebar
+			// 1. Update priorities of the 10 WP_Customize_Image_Control boxes so they reorder in sidebar
 			order.forEach(function (slot, idx) {
 				var ctrl = api.control('nexxi_studio[home-hero__bg' + slot + ']');
 				if (ctrl) {
@@ -251,13 +261,13 @@
 				syncHeroUI();
 				orderCtrl.container.on('click', '[data-nxs-hero-order-reset]', function (e) {
 					e.preventDefault();
-					setHeroOrder([1, 2, 3, 4, 5], 1);
+					setHeroOrder(HERO_SLOTS.slice(), 1);
 				});
 			});
 		} else {
 			setTimeout(function () { syncHeroUI(); }, 300);
 		}
-		[1, 2, 3, 4, 5].forEach(function (slot) {
+		HERO_SLOTS.forEach(function (slot) {
 			api('nexxi_studio[home-hero__bg' + slot + ']', function (s) {
 				s.bind(function () { syncHeroUI(); });
 			});

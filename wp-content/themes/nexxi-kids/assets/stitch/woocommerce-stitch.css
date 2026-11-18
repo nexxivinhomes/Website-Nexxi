@@ -1558,8 +1558,12 @@ body.nexxi-mob-drawer-open {
 }
 
 /* ==========================================================================
-   Hero Pure Banner Slideshow (5s/slide, 0px gap under Header, no blur overlay)
+   Hero Pure Banner Slideshow (5s/slide, up to 10 banners, 0px gap under Header)
    ========================================================================== */
+.nexxi-hero-section[data-hero-empty="1"],
+[data-nxr="home-hero"][data-hero-empty="1"] {
+  display: none !important;
+}
 .nexxi-hero-section,
 [data-nxr="home-hero"] {
   position: relative;
@@ -1588,6 +1592,7 @@ body.nexxi-mob-drawer-open {
   height: 100%;
   z-index: 1;
   overflow: hidden;
+  touch-action: pan-y pinch-zoom;
 }
 .nexxi-hero-bg__slides {
   position: absolute;
@@ -1622,6 +1627,57 @@ body.nexxi-mob-drawer-open {
 .nexxi-hero-bg__overlay {
   display: none !important;
 }
+.nexxi-hero-bg__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #031444;
+  border: 1px solid rgba(3, 20, 68, 0.14);
+  box-shadow: 0 6px 18px rgba(3, 20, 68, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity 0.22s ease, transform 0.22s ease, background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease;
+}
+.nexxi-hero-bg__arrow--prev {
+  left: 16px;
+}
+.nexxi-hero-bg__arrow--next {
+  right: 16px;
+}
+.nexxi-hero-bg__arrow .material-symbols-outlined {
+  font-size: 24px;
+  line-height: 1;
+}
+.nexxi-hero-bg__arrow:hover {
+  background: #fd6a49;
+  color: #ffffff;
+  border-color: #fd6a49;
+  transform: translateY(-50%) scale(1.06);
+}
+.nexxi-hero-bg__arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nexxi-hero-bg__arrow {
+    opacity: 0;
+  }
+  .nexxi-hero-section:hover .nexxi-hero-bg__arrow,
+  .nexxi-hero-section:focus-within .nexxi-hero-bg__arrow,
+  [data-nxr="home-hero"]:hover .nexxi-hero-bg__arrow,
+  [data-nxr="home-hero"]:focus-within .nexxi-hero-bg__arrow {
+    opacity: 1;
+  }
+}
 .nexxi-hero-bg__nav {
   position: absolute;
   bottom: 18px;
@@ -1629,15 +1685,19 @@ body.nexxi-mob-drawer-open {
   right: 0;
   z-index: 20;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0;
+  padding: 0 16px;
+  max-width: 100%;
+  box-sizing: border-box;
   pointer-events: auto;
 }
 .nexxi-hero-bg__dot {
   width: 10px;
   height: 10px;
+  flex-shrink: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(3, 20, 68, 0.25);
@@ -1653,7 +1713,7 @@ body.nexxi-mob-drawer-open {
   background: #ffffff;
 }
 .nexxi-hero-bg__dot.is-active {
-  width: 38px;
+  width: 36px;
   background: rgba(255, 255, 255, 0.95);
   border-color: rgba(174, 49, 21, 0.5);
 }
@@ -1668,6 +1728,40 @@ body.nexxi-mob-drawer-open {
   border-radius: 999px;
   transform-origin: left center;
   animation: nexxiHeroDotProgress 5s linear forwards;
+}
+@media (hover: hover) and (pointer: fine) {
+  .nexxi-hero-section:hover .nexxi-hero-bg__dot.is-active::after,
+  [data-nxr="home-hero"]:hover .nexxi-hero-bg__dot.is-active::after {
+    animation-play-state: paused;
+  }
+}
+@media (max-width: 767px) {
+  .nexxi-hero-bg__arrow {
+    width: 30px;
+    height: 30px;
+    opacity: 0.72;
+  }
+  .nexxi-hero-bg__arrow--prev {
+    left: 8px;
+  }
+  .nexxi-hero-bg__arrow--next {
+    right: 8px;
+  }
+  .nexxi-hero-bg__arrow .material-symbols-outlined {
+    font-size: 19px;
+  }
+  .nexxi-hero-bg__nav {
+    bottom: 10px;
+    gap: 6px;
+    padding: 0 12px;
+  }
+  .nexxi-hero-bg__dot {
+    width: 8px;
+    height: 8px;
+  }
+  .nexxi-hero-bg__dot.is-active {
+    width: 26px;
+  }
 }
 @keyframes nexxiHeroDotProgress {
   0% { transform: scaleX(0); }

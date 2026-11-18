@@ -9,6 +9,15 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+if ( ! defined( 'NEXXI_STUDIO_HERO_MAX_SLIDES' ) ) {
+	define( 'NEXXI_STUDIO_HERO_MAX_SLIDES', 10 );
+}
+
+/** Default comma-separated slide order string ("1,2,...,10"). */
+function nexxi_studio_hero_default_order_string() {
+	return implode( ',', range( 1, NEXXI_STUDIO_HERO_MAX_SLIDES ) );
+}
+
 /** Customizer panels, in display order. */
 function nexxi_studio_panels() {
 	return array(
@@ -90,6 +99,11 @@ function nexxi_studio_manual_fields() {
 		'home-hero__bg3'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/stitch-019.jpg', 'l' => 'Ảnh nền Banner chạy #3 (5s/ảnh)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
 		'home-hero__bg4'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '{{STITCH_ASSET}}/images/stitch-044.jpg', 'l' => 'Ảnh nền Banner chạy #4 (5s/ảnh)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
 		'home-hero__bg5'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #5 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
+		'home-hero__bg6'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #6 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
+		'home-hero__bg7'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #7 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
+		'home-hero__bg8'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #8 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
+		'home-hero__bg9'       => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #9 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
+		'home-hero__bg10'      => array( 'r' => 'home-hero', 't' => 'image', 'd' => '', 'l' => 'Ảnh nền Banner chạy #10 (tùy chọn thêm)', 'g' => 'Ảnh nền Banner chạy tự động (5s/ảnh)' ),
 		'home-commit__t1'      => array( 'r' => 'home-commit', 't' => 'text', 'd' => 'CAM KẾT TỪ NEXXI', 'l' => 'Nhãn nhỏ', 'g' => 'Tiêu đề' ),
 		'home-commit__t2'      => array( 'r' => 'home-commit', 't' => 'text', 'd' => '4 Trái Tim Gửi Trọn Đến Bé Yêu', 'l' => 'Tiêu đề khu vực', 'g' => 'Tiêu đề' ),
 		'home-commit__t3'      => array( 'r' => 'home-commit', 't' => 'text', 'd' => 'Mẹ an tâm chọn đồ, bé vui chơi thật thoải mái mỗi ngày.', 'l' => 'Mô tả', 'g' => 'Tiêu đề' ),
@@ -217,28 +231,29 @@ function nexxi_studio_changed( $key ) {
 		$legacy_ticker = "🎉 Freeship cho mọi đơn hàng từ 299K toàn quốc!\n🎈 Tặng kèm vớ gấu bông xinh xắn cho bé yêu\n✨ Đổi size & mẫu miễn phí 30 ngày tận nhà mẹ nhé\n🧸 Chất liệu 100% Organic Cotton mềm mịn nâng niu da bé";
 		if ( $norm === $legacy_ticker ) { return null; }
 	}
-	if ( ! preg_match( '~(_extra_links|_hide_\d+)$~', (string) $key ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
+	if ( ! preg_match( '~(^home-hero__(?:bg\d+|order)$|^custom_font_\d+_file$|_extra_links$|_hide_\d+$)~', (string) $key ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', $value ) ) {
 		return null;
 	}
-	if ( preg_match( '~^home-hero__bg[1-5]$~', $key ) && '' === $value ) {
+	if ( preg_match( '~^home-hero__bg(?:[1-9]|10)$~', $key ) && '' === $value ) {
 		return '';
 	}
 	return ( '' === $value || $value === nexxi_studio_default( $key ) ) ? null : $value;
 }
 
-/** Normalized 1..5 slide order for the Hero Banner slideshow. */
+/** Normalized 1..10 slide order for the Hero Banner slideshow (auto-appends missing new slots 6..10 for legacy saved theme_mod). */
 function nexxi_studio_hero_slide_order( $raw = null ) {
+	$max = NEXXI_STUDIO_HERO_MAX_SLIDES;
 	if ( null === $raw ) {
-		$raw = nexxi_studio_opt( 'home-hero__order', '1,2,3,4,5' );
+		$raw = nexxi_studio_opt( 'home-hero__order', nexxi_studio_hero_default_order_string() );
 	}
 	$order = array();
 	foreach ( explode( ',', (string) $raw ) as $part ) {
 		$slot = (int) trim( $part );
-		if ( $slot >= 1 && $slot <= 5 && ! in_array( $slot, $order, true ) ) {
+		if ( $slot >= 1 && $slot <= $max && ! in_array( $slot, $order, true ) ) {
 			$order[] = $slot;
 		}
 	}
-	for ( $slot = 1; $slot <= 5; $slot++ ) {
+	for ( $slot = 1; $slot <= $max; $slot++ ) {
 		if ( ! in_array( $slot, $order, true ) ) {
 			$order[] = $slot;
 		}
@@ -246,12 +261,17 @@ function nexxi_studio_hero_slide_order( $raw = null ) {
 	return $order;
 }
 
-/** Resolved image URL for Hero Banner slot 1..5 (empty string if removed). */
+/** Resolved image URL for Hero Banner slot 1..10 (empty string if removed or unset). */
 function nexxi_studio_hero_slide_url( $slot ) {
-	$key   = 'home-hero__bg' . (int) $slot;
+	$slot = (int) $slot;
+	if ( $slot < 1 || $slot > NEXXI_STUDIO_HERO_MAX_SLIDES ) {
+		return '';
+	}
+	$key   = 'home-hero__bg' . $slot;
 	$saved = nexxi_studio_saved();
 	if ( array_key_exists( $key, $saved ) && is_scalar( $saved[ $key ] ) ) {
-		return trim( (string) $saved[ $key ] );
+		$url = trim( (string) $saved[ $key ] );
+		return ( '' === $url || '/' === substr( $url, -1 ) ) ? '' : $url;
 	}
 	return nexxi_studio_default( $key );
 }
