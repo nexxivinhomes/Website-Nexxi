@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261111_pancake_price_sync_v55';
+	$purge_ver = '20261118_hero_10_banners_v56';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		delete_transient( 'nexxi_zalo_scan_running_lock' );
@@ -258,7 +258,7 @@ add_action( 'init', static function () {
 		if ( is_array( $saved ) && $saved ) {
 			$changed_mod = false;
 			foreach ( $saved as $k => $v ) {
-				if ( preg_match( '~(_extra_links|_hide_\d+)$~', (string) $k ) ) {
+				if ( preg_match( '~(^home-hero__(?:bg\d+|order)$|^custom_font_\d+_file$|_extra_links$|_hide_\d+$)~', (string) $k ) ) {
 					continue;
 				}
 				if ( is_scalar( $v ) && preg_match( '~(organic|hữu\s*cơ|sợi\s*tre|bamboo|oeko|30\s*ngày|kháng\s*khuẩn|tơ\s*tằm|lọt\s*lòng|kẹo\s*bông|50\.000đ|voucher\s*50k|nhận\s*quà\s*chào\s*đón\s*50k|kẹp\s*nơ|vớ\s*gấu|hỏa\s*tốc\s*2h|0\s*gây\s*ngứa|không\s*mẩn\s*ngứa|50\s*lần\s*giặt|mẹ\s*thảo\s*linh|chuẩn\s*style\s*nhật|10\.000\+\s*mẹ|100%\s*vải\s*lành|đơn\s*từ\s*199k|299k|299\.000|flash10|freeshipxinh|beyeu20|tặng\s*20k|bảo\s*hành\s*an\s*toàn)~iu', (string) $v ) ) {
