@@ -530,3 +530,66 @@ function nexxi_perf_finalize_html( $html ) {
 	$html = nexxi_perf_polish_accessibility_and_seo( $html );
 	return $html;
 }
+
+/* ==========================================================================
+ * 6. TỐI ƯU WOOCOMMERCE REST API (PANCAKE POS / ĐỐI TÁC ĐỒNG BỘ)
+ * ========================================================================== */
+
+/**
+ * Nhận diện request thuộc WooCommerce REST API (/wp-json/wc/v1..v3/ hoặc ?rest_route=/wc/v1..v3/).
+ * Không tác động lên /wp-json/wp/v2/*, /wp-json/nexxi/v1/yoast-seo hay giao diện HTML.
+ */
+function nexxi_perf_is_wc_rest_request() {
+	$req_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	if ( '' !== $req_uri && preg_match( '#/wp-json/wc/v[1-3]/#i', $req_uri ) ) {
+		return true;
+	}
+	if ( isset( $_GET['rest_route'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$route = (string) wp_unslash( $_GET['rest_route'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( preg_match( '#^/?wc/v[1-3]/#i', $route ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Gỡ đăng ký 2 trường nặng yoast_head & yoast_head_json khỏi $wp_rest_additional_fields
+ * cho các đối tượng WooCommerce trước khi controller chạy (tiết kiệm ~1.35 MB & ~2-3s mỗi 100 SP).
+ */
+function nexxi_perf_strip_yoast_wc_rest_fields() {
+	global $wp_rest_additional_fields;
+	if ( ! is_array( $wp_rest_additional_fields ) ) {
+		return;
+	}
+	foreach ( array( 'product', 'product_variation', 'product_cat', 'product_tag', 'shop_order', 'shop_coupon' ) as $obj_type ) {
+		if ( isset( $wp_rest_additional_fields[ $obj_type ] ) && is_array( $wp_rest_additional_fields[ $obj_type ] ) ) {
+			unset(
+				$wp_rest_additional_fields[ $obj_type ]['yoast_head'],
+				$wp_rest_additional_fields[ $obj_type ]['yoast_head_json']
+			);
+		}
+	}
+}
+
+add_action(
+	'rest_api_init',
+	static function () {
+		if ( nexxi_perf_is_wc_rest_request() ) {
+			nexxi_perf_strip_yoast_wc_rest_fields();
+		}
+	},
+	9999
+);
+
+add_filter(
+	'rest_pre_dispatch',
+	static function ( $result, $server, $request ) {
+		if ( $request instanceof WP_REST_Request && preg_match( '#^/wc/v[1-3]/#i', (string) $request->get_route() ) ) {
+			nexxi_perf_strip_yoast_wc_rest_fields();
+		}
+		return $result;
+	},
+	1,
+	3
+);
