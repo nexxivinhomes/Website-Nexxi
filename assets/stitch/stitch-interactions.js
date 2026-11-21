@@ -245,7 +245,7 @@
   $$('[data-nexxi-search]').forEach(input => input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); search(input); } }));
   $$('[data-nexxi-search-btn]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); search($('[data-nexxi-search]', button.parentElement) || $('[data-nexxi-search]')); }));
 
-  /* ---------- Listing filters ---------- */
+  /* ---------- Listing filters (no-reload Shop navigation + floating Loading...) ---------- */
   const listingUrl = () => {
     const url = new URL(location.href);
     url.pathname = url.pathname.replace(/\/page\/\d+\/?$/, '/');
@@ -253,54 +253,285 @@
     url.searchParams.delete('product-page');
     return url;
   };
-  $$('[data-nexxi-sort]').forEach(select => select.addEventListener('change', () => {
-    const val = (select.value || '').trim();
-    if (!val) return;
-    if (/^https?:\/\//i.test(val) || val.startsWith('/')) {
-      location.href = val;
+  const isShopListingPage = () => Boolean($('[data-nx="shop-grid"]') && $('[data-nx="shop-quickfilters"]'));
+  const shopHtmlCache = new Map();
+  let shopAbortCtrl = null;
+  let activeShopReqId = 0;
+
+  const ensureShopLoader = () => {
+    let progress = $('#nexxi-shop-progress');
+    if (!progress) {
+      progress = document.createElement('div');
+      progress.id = 'nexxi-shop-progress';
+      progress.className = 'nexxi-shop-progress';
+      progress.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(progress);
+    }
+    let loader = $('#nexxi-shop-loader');
+    if (!loader) {
+      loader = document.createElement('div');
+      loader.id = 'nexxi-shop-loader';
+      loader.className = 'nexxi-shop-loader';
+      loader.setAttribute('aria-hidden', 'true');
+      const card = document.createElement('div');
+      card.className = 'nexxi-shop-loader__card';
+      const orbit = document.createElement('div');
+      orbit.className = 'nexxi-shop-loader__orbit';
+      const ringOuter = document.createElement('span');
+      ringOuter.className = 'nexxi-shop-loader__ring';
+      const ringInner = document.createElement('span');
+      ringInner.className = 'nexxi-shop-loader__ring nexxi-shop-loader__ring--inner';
+      const dot = document.createElement('span');
+      dot.className = 'nexxi-shop-loader__dot';
+      orbit.append(ringOuter, ringInner, dot);
+
+      const textWrap = document.createElement('div');
+      textWrap.className = 'nexxi-shop-loader__text';
+      const title = document.createElement('div');
+      title.className = 'nexxi-shop-loader__title';
+      Array.from('Loading...').forEach(ch => {
+        const span = document.createElement('span');
+        span.className = 'nexxi-shop-loader__char' + (ch === '.' ? ' is-dot' : '');
+        span.textContent = ch;
+        title.appendChild(span);
+      });
+      const sub = document.createElement('div');
+      sub.className = 'nexxi-shop-loader__sub';
+      sub.textContent = 'Đang tải sản phẩm NEXXI...';
+      textWrap.append(title, sub);
+      card.append(orbit, textWrap);
+      loader.appendChild(card);
+      document.body.appendChild(loader);
+    }
+    return { progress, loader };
+  };
+
+  const setShopLoading = active => {
+    const { progress, loader } = ensureShopLoader();
+    progress.classList.toggle('is-visible', active);
+    progress.setAttribute('aria-hidden', active ? 'false' : 'true');
+    loader.classList.toggle('is-visible', active);
+    loader.setAttribute('aria-hidden', active ? 'false' : 'true');
+    $('[data-nx="shop-grid"]')?.classList.toggle('is-loading', active);
+    $('[data-nx="shop-quickfilters"]')?.classList.toggle('is-loading', active);
+  };
+
+  const navigateShopNoReload = async (targetUrl, opts = {}) => {
+    if (!isShopListingPage()) {
+      location.href = targetUrl;
       return;
     }
-    const url = listingUrl();
-    url.searchParams.set('orderby', val);
-    location.href = url.toString();
-  }));
-  $$('[data-nexxi-filter]').forEach(input => input.addEventListener('change', () => {
-    const slug = input.dataset.nexxiFilter;
-    const values = $$(`[data-nexxi-filter="${slug}"]:checked`).map(box => box.value);
-    const url = listingUrl();
-    if (values.length) url.searchParams.set('filter_' + slug, values.join(',')); else url.searchParams.delete('filter_' + slug);
-    if (values.length > 1) url.searchParams.set('query_type_' + slug, 'or'); else url.searchParams.delete('query_type_' + slug);
-    location.href = url.toString();
-  }));
-  $$('[data-nexxi-more-toggle]').forEach(button => {
-    const label = button.textContent;
-    button.addEventListener('click', () => {
-      const items = $$(`[data-nexxi-more="${button.dataset.nexxiMoreToggle}"]`);
-      const open = items.some(item => item.classList.contains('hidden'));
-      items.forEach(item => item.classList.toggle('hidden', !open));
-      button.textContent = open ? 'Thu gọn' : label;
-    });
-  });
-  $$('[data-nexxi-cat-toggle]').forEach(button => {
-    button.addEventListener('click', event => {
+    let urlObj;
+    try {
+      urlObj = new URL(targetUrl, location.origin);
+    } catch (e) {
+      location.href = targetUrl;
+      return;
+    }
+    if (urlObj.origin !== location.origin) {
+      location.href = targetUrl;
+      return;
+    }
+
+    if (shopAbortCtrl) {
+      try { shopAbortCtrl.abort(); } catch (e) {}
+    }
+    shopAbortCtrl = new AbortController();
+    const { signal } = shopAbortCtrl;
+    const reqId = ++activeShopReqId;
+    const finalUrl = urlObj.toString();
+
+    setShopLoading(true);
+    try {
+      let htmlText = '';
+      const cached = shopHtmlCache.get(finalUrl);
+      if (cached && (Date.now() - cached.ts) < 90000) {
+        htmlText = cached.html;
+        await new Promise(resolve => setTimeout(resolve, 180));
+        if (signal.aborted || reqId !== activeShopReqId) return;
+      } else {
+        const resp = await fetch(finalUrl, {
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'text/html'
+          },
+          signal
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        htmlText = await resp.text();
+        if (signal.aborted || reqId !== activeShopReqId) return;
+        if (shopHtmlCache.size >= 25) {
+          const oldestKey = shopHtmlCache.keys().next().value;
+          if (oldestKey) shopHtmlCache.delete(oldestKey);
+        }
+        shopHtmlCache.set(finalUrl, { html: htmlText, ts: Date.now() });
+      }
+
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      const incomingGrid = doc.querySelector('[data-nx="shop-grid"]');
+      if (!incomingGrid) {
+        location.href = finalUrl;
+        return;
+      }
+
+      [
+        '[data-nx="shop-breadcrumb"]',
+        '[data-nx="shop-title"]',
+        '[data-nx="shop-intro"]',
+        '[data-nx="shop-quickfilters"]',
+        '[data-nx="shop-sidebar"]',
+        '[data-nx="shop-status"]',
+        '[data-nx="shop-grid"]'
+      ].forEach(sel => {
+        const curEl = $(sel);
+        const nextEl = doc.querySelector(sel);
+        if (curEl && nextEl) {
+          curEl.innerHTML = nextEl.innerHTML;
+        }
+      });
+
+      const curPag = $('[data-nx="shop-pagination"]');
+      const nextPag = doc.querySelector('[data-nx="shop-pagination"]');
+      if (curPag && nextPag) {
+        curPag.outerHTML = nextPag.outerHTML;
+      }
+
+      if (doc.title) {
+        document.title = doc.title;
+      }
+
+      if (opts.push !== false && window.history && window.history.pushState) {
+        window.history.pushState({ nexxiShopUrl: finalUrl }, '', finalUrl);
+      }
+
+      const swappedGrid = $('[data-nx="shop-grid"]');
+      if (swappedGrid) {
+        initCards(swappedGrid);
+        paintWishlist(swappedGrid);
+        swappedGrid.classList.remove('is-fresh');
+        void swappedGrid.offsetWidth;
+        swappedGrid.classList.add('is-fresh');
+        setTimeout(() => swappedGrid.classList.remove('is-fresh'), 320);
+      }
+
+      const quickfilters = $('[data-nx="shop-quickfilters"]');
+      if (quickfilters) {
+        const rect = quickfilters.getBoundingClientRect();
+        if (opts.scroll || rect.top < 0) {
+          window.scrollTo({
+            top: Math.max(0, window.scrollY + rect.top - 96),
+            behavior: 'smooth'
+          });
+        }
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      if (reqId === activeShopReqId) {
+        location.href = finalUrl;
+      }
+    } finally {
+      if (reqId === activeShopReqId) {
+        setShopLoading(false);
+      }
+    }
+  };
+
+  document.addEventListener('click', event => {
+    const link = event.target.closest(
+      '[data-nx="shop-quickfilters"] a[href], [data-nx="shop-sidebar"] .nexxi-shop-filter-card a[href], [data-nx="shop-status"] a[href], [data-nx="shop-pagination"] a[href]'
+    );
+    if (link && isShopListingPage()) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+      if (link.target === '_blank' || link.hasAttribute('download')) return;
+      const rawHref = (link.getAttribute('href') || '').trim();
+      if (!rawHref || rawHref.startsWith('#') || /^(mailto:|tel:|javascript:)/i.test(rawHref)) return;
+      event.preventDefault();
+      navigateShopNoReload(link.href, {
+        push: true,
+        scroll: Boolean(link.closest('[data-nx="shop-pagination"]'))
+      });
+      return;
+    }
+
+    const catToggle = event.target.closest('[data-nexxi-cat-toggle]');
+    if (catToggle) {
       event.preventDefault();
       event.stopPropagation();
-      const group = button.closest('.nexxi-cat-group');
+      const group = catToggle.closest('.nexxi-cat-group');
       if (!group) return;
       const open = group.classList.toggle('is-open');
-      button.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
+      catToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+
+    const moreToggle = event.target.closest('[data-nexxi-more-toggle]');
+    if (moreToggle) {
+      if (!moreToggle.dataset.moreLabel) {
+        moreToggle.dataset.moreLabel = moreToggle.textContent;
+      }
+      const items = $$(`[data-nexxi-more="${moreToggle.dataset.nexxiMoreToggle}"]`);
+      const open = items.some(item => item.classList.contains('hidden'));
+      items.forEach(item => item.classList.toggle('hidden', !open));
+      moreToggle.textContent = open ? 'Thu gọn' : moreToggle.dataset.moreLabel;
+    }
   });
-  $$('[data-nexxi-price]').forEach(range => {
+
+  document.addEventListener('change', event => {
+    const select = event.target.closest('[data-nexxi-sort]');
+    if (select) {
+      const val = (select.value || '').trim();
+      if (!val) return;
+      if (/^https?:\/\//i.test(val) || val.startsWith('/')) {
+        if (isShopListingPage()) navigateShopNoReload(val, { push: true });
+        else location.href = val;
+        return;
+      }
+      const url = listingUrl();
+      url.searchParams.set('orderby', val);
+      const nextUrl = url.toString();
+      if (isShopListingPage()) navigateShopNoReload(nextUrl, { push: true });
+      else location.href = nextUrl;
+      return;
+    }
+
+    const filterBox = event.target.closest('[data-nexxi-filter]');
+    if (filterBox) {
+      const slug = filterBox.dataset.nexxiFilter;
+      const values = $$(`[data-nexxi-filter="${slug}"]:checked`).map(box => box.value);
+      const url = listingUrl();
+      if (values.length) url.searchParams.set('filter_' + slug, values.join(',')); else url.searchParams.delete('filter_' + slug);
+      if (values.length > 1) url.searchParams.set('query_type_' + slug, 'or'); else url.searchParams.delete('query_type_' + slug);
+      const nextUrl = url.toString();
+      if (isShopListingPage()) navigateShopNoReload(nextUrl, { push: true });
+      else location.href = nextUrl;
+      return;
+    }
+
+    const priceRange = event.target.closest('[data-nexxi-price]');
+    if (priceRange) {
+      const url = listingUrl();
+      if (Number(priceRange.value) >= Number(priceRange.max)) url.searchParams.delete('max_price');
+      else url.searchParams.set('max_price', priceRange.value);
+      const nextUrl = url.toString();
+      if (isShopListingPage()) navigateShopNoReload(nextUrl, { push: true });
+      else location.href = nextUrl;
+    }
+  });
+
+  document.addEventListener('input', event => {
+    const priceRange = event.target.closest('[data-nexxi-price]');
+    if (!priceRange) return;
     const label = $('[data-nexxi-price-label]');
     const short = value => (value >= 1000 ? new Intl.NumberFormat('vi-VN').format(Math.round(value / 1000)) + 'k' : String(value));
-    const min = Number(range.dataset.min || range.min || 0);
-    range.addEventListener('input', () => { if (label) label.textContent = `${short(min)} - ${short(Number(range.value))} đ`; });
-    range.addEventListener('change', () => {
-      const url = listingUrl();
-      if (Number(range.value) >= Number(range.max)) url.searchParams.delete('max_price'); else url.searchParams.set('max_price', range.value);
-      location.href = url.toString();
-    });
+    const min = Number(priceRange.dataset.min || priceRange.min || 0);
+    if (label) label.textContent = `${short(min)} - ${short(Number(priceRange.value))} đ`;
+  });
+
+  window.addEventListener('popstate', () => {
+    if (isShopListingPage()) {
+      navigateShopNoReload(location.href, { push: false, scroll: false });
+    }
   });
 
   /* ---------- Home: best-seller tabs ---------- */
@@ -696,14 +927,15 @@
     if (e.key === 'Escape' && mobDrawer?.classList.contains('is-open')) setMobDrawer(false);
   });
 
-  $$('[data-nexxi-mobile-filter-toggle]').forEach(btn => btn.addEventListener('click', e => {
-    if (window.innerWidth >= 1024) return;
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-nexxi-mobile-filter-toggle]');
+    if (!btn || window.innerWidth >= 1024) return;
     e.preventDefault();
     const card = btn.closest('.nexxi-shop-filter-card');
     if (!card) return;
     const isOpen = card.classList.toggle('is-open');
     btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  }));
+  });
 
   /* ---------- Hero Background Banner Slideshow (5s/slide, up to 10 banners) ---------- */
   const initHeroSlider = () => {

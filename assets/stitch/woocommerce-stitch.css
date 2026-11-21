@@ -3153,12 +3153,12 @@ a.nexxi-cart-errors-item__name:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1 1 560px;
+  flex: 1 1 480px;
   min-width: 0;
   flex-wrap: wrap;
 }
 .nexxi-shop-ribbon__label {
-  min-width: 102px;
+  min-width: 88px;
   font-family: Quicksand, sans-serif;
   font-size: 11px;
   font-weight: 700;
@@ -3443,4 +3443,166 @@ a.nexxi-cart-errors-item__name:hover {
     margin-left: 0;
     padding-top: 4px;
   }
+}
+
+/* ---------- Shop No-Reload Floating Loading... Overlay & Progress Shimmer ---------- */
+.nexxi-shop-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, #031444 0%, #fd6a49 38%, #ffb95f 68%, #031444 100%);
+  background-size: 220% 100%;
+  transition: opacity 0.2s ease;
+}
+.nexxi-shop-progress.is-visible {
+  opacity: 1;
+  animation: nexxi-progress-flow 1.1s linear infinite;
+}
+.nexxi-shop-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: rgba(251, 249, 245, 0.28);
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+.nexxi-shop-loader.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+.nexxi-shop-loader__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 26px 14px 18px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(253, 106, 73, 0.24);
+  box-shadow: 0 20px 50px -12px rgba(3, 20, 68, 0.24), 0 6px 20px -4px rgba(253, 106, 73, 0.18);
+  transform: translateY(10px) scale(0.94);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nexxi-shop-loader.is-visible .nexxi-shop-loader__card {
+  transform: translateY(0) scale(1);
+}
+.nexxi-shop-loader__orbit {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+.nexxi-shop-loader__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  border-top-color: #fd6a49;
+  border-right-color: rgba(253, 106, 73, 0.35);
+  animation: nexxi-spin 0.85s linear infinite;
+}
+.nexxi-shop-loader__ring--inner {
+  inset: 6px;
+  border-width: 2.5px;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-bottom-color: #031444;
+  border-left-color: rgba(3, 20, 68, 0.3);
+  animation: nexxi-spin-rev 1.15s linear infinite;
+}
+.nexxi-shop-loader__dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 9999px;
+  background: #fd6a49;
+  animation: nexxi-pulse-dot 1.1s ease-in-out infinite;
+}
+.nexxi-shop-loader__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nexxi-shop-loader__title {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: Quicksand, sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #031444;
+  line-height: 1.2;
+}
+.nexxi-shop-loader__char {
+  display: inline-block;
+  animation: nexxi-wave-letter 1.2s ease-in-out infinite;
+}
+.nexxi-shop-loader__char.is-dot {
+  color: #fd6a49;
+}
+.nexxi-shop-loader__char:nth-child(1) { animation-delay: 0s; }
+.nexxi-shop-loader__char:nth-child(2) { animation-delay: 0.05s; }
+.nexxi-shop-loader__char:nth-child(3) { animation-delay: 0.1s; }
+.nexxi-shop-loader__char:nth-child(4) { animation-delay: 0.15s; }
+.nexxi-shop-loader__char:nth-child(5) { animation-delay: 0.2s; }
+.nexxi-shop-loader__char:nth-child(6) { animation-delay: 0.25s; }
+.nexxi-shop-loader__char:nth-child(7) { animation-delay: 0.3s; }
+.nexxi-shop-loader__char:nth-child(8) { animation-delay: 0.35s; }
+.nexxi-shop-loader__char:nth-child(9) { animation-delay: 0.4s; }
+.nexxi-shop-loader__char:nth-child(10) { animation-delay: 0.45s; }
+.nexxi-shop-loader__sub {
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.3;
+}
+[data-nx="shop-grid"].is-loading {
+  opacity: 0.42;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+[data-nx="shop-quickfilters"].is-loading {
+  opacity: 0.78;
+  transition: opacity 0.18s ease;
+}
+[data-nx="shop-grid"].is-fresh {
+  animation: nexxi-grid-reveal 0.28s ease-out both;
+}
+
+@keyframes nexxi-progress-flow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -120% 0; }
+}
+@keyframes nexxi-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes nexxi-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+@keyframes nexxi-pulse-dot {
+  0%, 100% { transform: scale(0.82); opacity: 0.75; }
+  50% { transform: scale(1.22); opacity: 1; }
+}
+@keyframes nexxi-wave-letter {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+@keyframes nexxi-grid-reveal {
+  from { opacity: 0.25; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
