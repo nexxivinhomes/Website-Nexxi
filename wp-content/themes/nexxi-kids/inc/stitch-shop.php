@@ -438,7 +438,7 @@ function nexxi_kids_shop_quickfilters() {
 	$out  = '<div class="nexxi-shop-ribbon">';
 	$out .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--parent">';
 	$out .= '<div class="nexxi-shop-ribbon__main">';
-	$out .= '<span class="nexxi-shop-ribbon__label">Danh mục cha:</span>';
+	$out .= '<span class="nexxi-shop-ribbon__label">Danh mục 1:</span>';
 	$out .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
 	$out .= '<a class="nexxi-shop-pill' . ( '' === $active_cg && 0 === $current_id ? ' is-active' : '' ) . '" href="' . esc_url( $all_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $all_url ) . '>Tất cả</a>';
 
@@ -480,7 +480,7 @@ function nexxi_kids_shop_quickfilters() {
 	if ( $active_parent_id > 0 && ! empty( $tree['children'][ $active_parent_id ] ) ) {
 		$parent_obj = $tree['parent_map'][ $active_parent_id ] ?? get_term( $active_parent_id, 'product_cat' );
 		$out       .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--child"><div class="nexxi-shop-ribbon__main">';
-		$out       .= '<span class="nexxi-shop-ribbon__label">Danh mục con:</span>';
+		$out       .= '<span class="nexxi-shop-ribbon__label">Danh mục 2:</span>';
 		$out       .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
 		if ( $parent_obj instanceof WP_Term ) {
 			$p_link = get_term_link( $parent_obj );
@@ -535,7 +535,7 @@ function nexxi_kids_shop_quickfilters() {
 		}
 		if ( ! empty( $top_children ) ) {
 			$out .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--child"><div class="nexxi-shop-ribbon__main">';
-			$out .= '<span class="nexxi-shop-ribbon__label">Danh mục con:</span>';
+			$out .= '<span class="nexxi-shop-ribbon__label">Danh mục 2:</span>';
 			$out .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
 			foreach ( $top_children as $sub ) {
 				$s_link = get_term_link( $sub );
