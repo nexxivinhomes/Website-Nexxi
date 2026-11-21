@@ -136,10 +136,27 @@ function nexxi_kids_compact_number( $number ) {
 	return $number >= 1000 ? rtrim( rtrim( number_format( $number / 1000, 1, '.', '' ), '0' ), '.' ) . 'k' : (string) $number;
 }
 
-/** First category name for labels. */
+/** Primary or child category name for labels. */
 function nexxi_kids_product_category( WC_Product $product ) {
-	$terms = get_the_terms( $product->get_id(), 'product_cat' );
-	return $terms && ! is_wp_error( $terms ) ? $terms[0] : null;
+	$pid   = $product->get_id();
+	$terms = get_the_terms( $pid, 'product_cat' );
+	if ( ! $terms || is_wp_error( $terms ) ) {
+		return null;
+	}
+	$primary_id = (int) get_post_meta( $pid, '_yoast_wpseo_primary_product_cat', true );
+	if ( $primary_id > 0 ) {
+		foreach ( $terms as $t ) {
+			if ( (int) $t->term_id === $primary_id ) {
+				return $t;
+			}
+		}
+	}
+	foreach ( $terms as $t ) {
+		if ( (int) $t->parent > 0 ) {
+			return $t;
+		}
+	}
+	return $terms[0];
 }
 
 /** Comma separated attribute names (non-variation attributes such as material). */

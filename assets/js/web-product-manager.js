@@ -576,7 +576,7 @@
 			h += field('Tình trạng kho', sel('stock_status', p.stock_status, [['instock', 'Còn hàng'], ['outofstock', 'Hết hàng'], ['onbackorder', 'Đặt trước']]));
 		}
 		h += field('Thẻ sản phẩm (cách nhau bởi dấu | hoặc dấu phẩy)', inp('tags', p.tags), 'span-2');
-		h += '<div class="nxwpm-field span-2"><span>Danh mục sản phẩm</span><input type="search" class="nxwpm-cat-search" placeholder="🔎 Lọc danh mục…"><div class="nxwpm-cat-list">';
+		h += '<div class="nxwpm-field span-2"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px;"><span>Danh mục sản phẩm</span><span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;"><button type="button" class="nxp-btn nxp-btn-outline nxp-btn-sm" id="nxwpmFetchShopeeCatBtn" style="border-color:#c4b5fd;color:#5b21b6;background:#f5f3ff;">🏷️ Lấy Danh mục Tầng 2 &amp; 3 Shopee (theo SKU)</button><span id="nxwpmShopeeCatStatus" style="font-size:12px;color:#475569;"></span></span></div><input type="search" class="nxwpm-cat-search" placeholder="🔎 Lọc danh mục…"><div class="nxwpm-cat-list">';
 		(C.categories || []).forEach((c) => {
 			h += '<label data-path="' + esc(c.path.toLowerCase()) + '"><input type="checkbox" class="nxwpm-cat" value="' + c.id + '" data-path="' + esc(c.path) + '"' + (p.category_ids.includes(c.id) ? ' checked' : '') + '> ' + esc(c.path) + '</label>';
 		});
@@ -797,7 +797,7 @@
 	body.addEventListener('click', (e) => {
 		const E = state.edit;
 		if (!E) return;
-		const t = e.target.closest('[data-img],[data-vimg],[data-vdel],#nxwpmBtnAddVar,#nxwpmBtnGen,#nxwpmBtnApplyAll,#nxwpmSeoAuto,#nxwpmPreviewDesc');
+		const t = e.target.closest('[data-img],[data-vimg],[data-vdel],#nxwpmBtnAddVar,#nxwpmBtnGen,#nxwpmBtnApplyAll,#nxwpmSeoAuto,#nxwpmPreviewDesc,#nxwpmFetchShopeeCatBtn');
 		if (!t) return;
 		e.preventDefault();
 		readP();
@@ -881,6 +881,61 @@
 			const pv = $('#nxwpmDescPreview');
 			pv.hidden = !pv.hidden;
 			pv.innerHTML = '<h4>Mô tả ngắn</h4>' + (E.p.short_description || '<em>(trống)</em>') + '<hr><h4>Mô tả chi tiết</h4>' + (E.p.description || '<em>(trống)</em>');
+		} else if (t.id === 'nxwpmFetchShopeeCatBtn') {
+			const wcId = Number(E.p.id || 0);
+			const sku = String(E.p.sku || '').trim().toUpperCase();
+			const stEl = $('#nxwpmShopeeCatStatus', body);
+			const setSt = (txt, color = '#475569') => {
+				if (!stEl) return;
+				stEl.style.color = color;
+				stEl.textContent = txt;
+			};
+			if (wcId <= 0) {
+				setSt('⚠️ Vui lòng bấm Lưu tạo sản phẩm trước rồi mới lấy danh mục Shopee.', '#b45309');
+				return;
+			}
+			if (!sku) {
+				setSt('⚠️ Vui lòng nhập Mã SKU trước khi tra cứu Shopee.', '#b45309');
+				return;
+			}
+			if (!window.NexxiShopeeCatSync) {
+				setSt('✗ Không tìm thấy bộ kết nối Extension.', '#b91c1c');
+				return;
+			}
+			t.disabled = true;
+			window.NexxiShopeeCatSync.syncSingleForModal(wcId, sku, {
+				onStatus(msg) {
+					setSt(msg, '#1d4ed8');
+				},
+				onPaused(reason) {
+					setSt('⚠️ ' + reason + ' Xác minh trên tab Shopee vừa mở rồi bấm Tiếp tục trên popup Extension.', '#b45309');
+				},
+				onApplied(data) {
+					t.disabled = false;
+					if (Array.isArray(data.categories_options) && data.categories_options.length) {
+						C.categories = data.categories_options;
+					}
+					if (state.edit && Number(state.edit.p.id) === wcId) {
+						state.edit.p.category_ids = Array.isArray(data.term_ids) ? data.term_ids.map(Number) : state.edit.p.category_ids;
+						const catListEl = $('.nxwpm-cat-list', body);
+						if (catListEl) {
+							let ch = '';
+							(C.categories || []).forEach((c) => {
+								ch += '<label data-path="' + esc(c.path.toLowerCase()) + '"><input type="checkbox" class="nxwpm-cat" value="' + c.id + '" data-path="' + esc(c.path) + '"' + (state.edit.p.category_ids.includes(c.id) ? ' checked' : '') + '> ' + esc(c.path) + '</label>';
+							});
+							catListEl.innerHTML = ch;
+						}
+					}
+					const catPath = data.category_path || [data.parent_name, data.child_name].filter(Boolean).join(' › ');
+					setSt('✅ Đã gán: ' + catPath, '#15803d');
+					toast('Đã lấy & gán danh mục Shopee: ' + catPath, 'ok');
+					loadList();
+				},
+				onError(errMsg) {
+					t.disabled = false;
+					setSt('⚠️ ' + errMsg, '#b91c1c');
+				}
+			});
 		}
 	});
 
