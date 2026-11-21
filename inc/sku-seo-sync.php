@@ -825,28 +825,9 @@ final class Nexxi_SKU_SEO_Sync {
 			return;
 		}
 
+		// Chỉ gán taxonomy `pa_chat-lieu` (đủ cho huy hiệu Chất liệu ở stitch-data.php:1215 và Schema seo-schema.php:449),
+		// tránh ghi thuộc tính thứ 3 (`variation: false`) vào `_product_attributes` trong WooCommerce REST API khi đồng bộ sang Pancake POS.
 		wp_set_object_terms( $wc_id, $term_ids, 'pa_chat-lieu', false );
-
-		if ( function_exists( 'wc_get_product' ) && class_exists( 'WC_Product_Attribute' ) ) {
-			$wc_prod = wc_get_product( $wc_id );
-			if ( $wc_prod ) {
-				$attrs = $wc_prod->get_attributes();
-				$attrs = is_array( $attrs ) ? $attrs : array();
-				if ( ! isset( $attrs['pa_chat-lieu'] ) ) {
-					$tax_id = function_exists( 'wc_attribute_taxonomy_id_by_name' ) ? (int) wc_attribute_taxonomy_id_by_name( 'pa_chat-lieu' ) : 0;
-					$attr_m = new WC_Product_Attribute();
-					$attr_m->set_id( $tax_id );
-					$attr_m->set_name( 'pa_chat-lieu' );
-					$attr_m->set_options( $term_ids );
-					$attr_m->set_position( count( $attrs ) );
-					$attr_m->set_visible( true );
-					$attr_m->set_variation( false );
-					$attrs['pa_chat-lieu'] = $attr_m;
-					$wc_prod->set_attributes( $attrs );
-					$wc_prod->save();
-				}
-			}
-		}
 	}
 
 	/**
