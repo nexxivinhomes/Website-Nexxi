@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "NEXXI Shopee Category Sync (Pancake SKU)",
+  "version": "1.0.0",
+  "description": "Liên kết trực tiếp trang Pancake SKU của nexxi.vn: mở tab Shopee theo link từ Pancake, lấy danh mục Tầng 2 (Cha) & Tầng 3 (Con) rồi tự đóng tab.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://shopee.vn/*",
+    "https://*.shopee.vn/*",
+    "https://nexxi.vn/wp-admin/*",
+    "https://*.nexxi.vn/wp-admin/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://nexxi.vn/wp-admin/*",
+        "https://*.nexxi.vn/wp-admin/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "NEXXI Shopee Category Sync",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

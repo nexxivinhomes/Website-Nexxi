@@ -345,14 +345,35 @@ function nexxi_kids_shop_quickfilters() {
 		$out .= '<a class="' . esc_attr( $is_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $cg_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $cg_url ) . '>' . esc_html( $cg_info['short'] ) . '</a>';
 	}
 	$out .= '</div><div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Danh Mục:</span>';
-	$current = function_exists( 'is_product_category' ) && is_product_category() ? get_queried_object_id() : 0;
+	$current_term = ( function_exists( 'is_product_category' ) && is_product_category() ) ? get_queried_object() : $active_term;
+	$current = ( $current_term instanceof WP_Term ) ? (int) $current_term->term_id : 0;
+	$active_parent_id = ( $current_term instanceof WP_Term ) ? ( (int) $current_term->parent > 0 ? (int) $current_term->parent : (int) $current_term->term_id ) : 0;
 	$cats = get_terms( array( 'taxonomy' => 'product_cat', 'parent' => 0, 'hide_empty' => true, 'exclude' => array( (int) get_option( 'default_product_cat' ) ) ) );
 	foreach ( is_wp_error( $cats ) ? array() : $cats as $cat ) {
-		$active = $current === $cat->term_id;
-		$url = $active ? nexxi_kids_shop_link( array(), nexxi_kids_shop_url() ) : nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $cat ) );
-		$out .= '<a class="' . esc_attr( $active ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $url ) . '"' . nexxi_kids_rel_nofollow_if_query( $url ) . '>' . ( $active ? '<span class="material-symbols-outlined text-[16px]">child_care</span> ' : '' ) . esc_html( $cat->name ) . '</a>';
+		$active_parent = $active_parent_id === (int) $cat->term_id;
+		$is_exact_self = $current === (int) $cat->term_id;
+		$url = $is_exact_self ? nexxi_kids_shop_link( array( 'product_cat' => null ), nexxi_kids_shop_url() ) : nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $cat ) );
+		$out .= '<a class="' . esc_attr( $active_parent ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $url ) . '"' . nexxi_kids_rel_nofollow_if_query( $url ) . '>' . ( $active_parent ? '<span class="material-symbols-outlined text-[16px]">child_care</span> ' : '' ) . esc_html( $cat->name ) . '</a>';
 	}
-	$out .= '</div></div><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md pt-space-xs"><div class="flex items-center gap-space-xs overflow-x-auto pb-1 max-w-full"><span class="font-label-sm text-label-sm text-outline mr-space-xs shrink-0 uppercase tracking-wider">Kiểu dáng:</span>';
+	$out .= '</div>';
+	if ( $active_parent_id > 0 ) {
+		$sub_cats = get_terms( array( 'taxonomy' => 'product_cat', 'parent' => $active_parent_id, 'hide_empty' => true ) );
+		if ( ! is_wp_error( $sub_cats ) && ! empty( $sub_cats ) ) {
+			$parent_obj = get_term( $active_parent_id, 'product_cat' );
+			$out .= '<div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap w-full pt-1"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Danh Mục Con:</span>';
+			if ( $parent_obj instanceof WP_Term ) {
+				$p_url = nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $parent_obj ) );
+				$out .= '<a class="' . esc_attr( $current === $active_parent_id ? $age_active : $idle ) . ' shrink-0" href="' . esc_url( $p_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $p_url ) . '>Tất cả trong ' . esc_html( $parent_obj->name ) . '</a>';
+			}
+			foreach ( $sub_cats as $sub ) {
+				$sub_on  = $current === (int) $sub->term_id;
+				$sub_url = nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $sub ) );
+				$out .= '<a class="' . esc_attr( $sub_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $sub_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $sub_url ) . '>' . esc_html( $sub->name ) . '</a>';
+			}
+			$out .= '</div>';
+		}
+	}
+	$out .= '</div><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md pt-space-xs"><div class="flex items-center gap-space-xs overflow-x-auto pb-1 max-w-full"><span class="font-label-sm text-label-sm text-outline mr-space-xs shrink-0 uppercase tracking-wider">Kiểu dáng:</span>';
 	$styles = nexxi_kids_chosen( 'kieu-dang' );
 	foreach ( nexxi_kids_attribute_terms( 'kieu-dang' ) as $t ) {
 		$t_url = nexxi_kids_toggle_link( 'kieu-dang', $t->slug );

@@ -19,13 +19,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( defined( 'NEXXI_PANCAKE_SYNC_BOOTED_VER' ) ) {
 	return;
 }
-define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.8' );
+define( 'NEXXI_PANCAKE_SYNC_BOOTED_VER', '1.5.9' );
 
 if ( ! class_exists( 'Nexxi_Pancake_Sync_Manager_V7', false ) ) :
 
 final class Nexxi_Pancake_Sync_Manager_V7 {
 
-	const VERSION                      = '1.5.8';
+	const VERSION                      = '1.5.9';
 	const MENU_SLUG                    = 'nexxi-pancake-sync';
 	const CACHE_OPTION                 = 'nexxi_pancake_catalog_cache_v4';
 	const CACHE_TIME_OPT               = 'nexxi_pancake_catalog_cache_time';
@@ -72,11 +72,13 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			'wp_ajax_nexxi_pancake_get_classifications'   => 'ajax_get_classifications',
 			'wp_ajax_nexxi_pancake_apply_classifications' => 'ajax_apply_classifications',
 			'wp_ajax_nexxi_pancake_link_sku'              => 'ajax_link_sku',
-			'wp_ajax_nexxi_pancake_import_product'        => 'ajax_import_product',
-			'wp_ajax_nexxi_pancake_delete_disconnect'     => 'ajax_delete_disconnect',
-			'wp_ajax_nexxi_pancake_cleanup_duplicates'    => 'ajax_cleanup_duplicates',
-			'wp_ajax_nexxi_pancake_set_warehouse'         => 'ajax_set_warehouse',
-			'wp_ajax_nexxi_pancake_spa_nav'               => 'ajax_spa_nav',
+			'wp_ajax_nexxi_pancake_import_product'         => 'ajax_import_product',
+			'wp_ajax_nexxi_pancake_delete_disconnect'      => 'ajax_delete_disconnect',
+			'wp_ajax_nexxi_pancake_cleanup_duplicates'     => 'ajax_cleanup_duplicates',
+			'wp_ajax_nexxi_pancake_set_warehouse'          => 'ajax_set_warehouse',
+			'wp_ajax_nexxi_pancake_spa_nav'                => 'ajax_spa_nav',
+			'wp_ajax_nexxi_pancake_resolve_shopee_links'   => 'ajax_resolve_shopee_links',
+			'wp_ajax_nexxi_pancake_apply_shopee_category'  => 'ajax_apply_shopee_category',
 		);
 
 		foreach ( $legacy_classes as $legacy_cls ) {
@@ -216,6 +218,8 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			add_action( 'wp_ajax_nexxi_pancake_cleanup_duplicates', array( $this, 'ajax_cleanup_duplicates' ) );
 			add_action( 'wp_ajax_nexxi_pancake_set_warehouse', array( $this, 'ajax_set_warehouse' ) );
 			add_action( 'wp_ajax_nexxi_pancake_spa_nav', array( $this, 'ajax_spa_nav' ) );
+			add_action( 'wp_ajax_nexxi_pancake_resolve_shopee_links', array( $this, 'ajax_resolve_shopee_links' ) );
+			add_action( 'wp_ajax_nexxi_pancake_apply_shopee_category', array( $this, 'ajax_apply_shopee_category' ) );
 		}
 
 		if ( is_admin() || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) ) {
@@ -1943,13 +1947,15 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				'thumb_hash'    => '',
 				'gallery_ids'   => array(),
 				'gallery_count' => 0,
-				'pancake_id'     => '',
-				'pancake_sku'    => '',
-				'shopee_url'     => '',
-				'content_source' => '',
-				'var_total'      => 0,
-				'var_with_img'   => 0,
-				'child_skus'     => array(),
+				'pancake_id'        => '',
+				'pancake_sku'       => '',
+				'shopee_url'        => '',
+				'content_source'    => '',
+				'categories_path'   => '',
+				'shopee_cat_synced' => false,
+				'var_total'         => 0,
+				'var_with_img'      => 0,
+				'child_skus'        => array(),
 			);
 		}
 
@@ -1960,7 +1966,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
 			 WHERE p.post_type = 'product'
 			   AND p.post_status IN ('publish', 'draft', 'private')
-			   AND pm.meta_key IN ('_sku', '_thumbnail_id', '_product_image_gallery', '_nexxi_pancake_product_id', '_nexxi_pancake_sku', '_nexxi_shopee_url', '_nexxi_shopee_ref_source')"
+			   AND pm.meta_key IN ('_sku', '_thumbnail_id', '_product_image_gallery', '_nexxi_pancake_product_id', '_nexxi_pancake_sku', '_nexxi_shopee_url', '_nexxi_shopee_ref_source', '_nexxi_shopee_cat_synced')"
 		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
 		foreach ( (array) $meta_rows as $mr ) {
@@ -1987,6 +1993,8 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				$by_id[ $pid ]['shopee_url'] = $mv;
 			} elseif ( '_nexxi_shopee_ref_source' === $mk ) {
 				$by_id[ $pid ]['content_source'] = $mv;
+			} elseif ( '_nexxi_shopee_cat_synced' === $mk ) {
+				$by_id[ $pid ]['shopee_cat_synced'] = ( '1' === $mv );
 			}
 		}
 
@@ -2053,6 +2061,75 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			$vsku = trim( (string) $vr->v_sku );
 			if ( '' !== $vsku ) {
 				$by_id[ $parent_id ]['child_skus'][] = $vsku;
+			}
+		}
+
+		// Bulk-load WooCommerce product_cat hierarchy display strings in 2 fast queries
+		$all_cat_terms = $wpdb->get_results(
+			"SELECT t.term_id, t.name, tt.parent
+			 FROM {$wpdb->terms} t
+			 INNER JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+			 WHERE tt.taxonomy = 'product_cat'"
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$cat_by_id     = array();
+		foreach ( (array) $all_cat_terms as $ct ) {
+			$cat_by_id[ (int) $ct->term_id ] = array(
+				'id'     => (int) $ct->term_id,
+				'name'   => (string) $ct->name,
+				'parent' => (int) $ct->parent,
+			);
+		}
+		if ( ! empty( $cat_by_id ) ) {
+			$default_cat_id = (int) get_option( 'default_product_cat' );
+			$rel_rows       = $wpdb->get_results(
+				"SELECT tr.object_id, tt.term_id
+				 FROM {$wpdb->term_relationships} tr
+				 INNER JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+				 WHERE tt.taxonomy = 'product_cat'"
+			); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$terms_by_pid   = array();
+			foreach ( (array) $rel_rows as $rr ) {
+				$obj_id = (int) $rr->object_id;
+				$tid    = (int) $rr->term_id;
+				if ( isset( $by_id[ $obj_id ], $cat_by_id[ $tid ] ) ) {
+					$terms_by_pid[ $obj_id ][ $tid ] = $cat_by_id[ $tid ];
+				}
+			}
+			foreach ( $terms_by_pid as $obj_id => $tmap ) {
+				$filtered = array();
+				foreach ( $tmap as $tid => $tinfo ) {
+					if ( $tid === $default_cat_id && count( $tmap ) > 1 ) {
+						continue;
+					}
+					$filtered[ $tid ] = $tinfo;
+				}
+				if ( empty( $filtered ) ) {
+					$filtered = $tmap;
+				}
+				$parents_with_children = array();
+				foreach ( $filtered as $tinfo ) {
+					if ( $tinfo['parent'] > 0 ) {
+						$parents_with_children[ $tinfo['parent'] ] = true;
+					}
+				}
+				$paths = array();
+				foreach ( $filtered as $tid => $tinfo ) {
+					if ( 0 === $tinfo['parent'] && isset( $parents_with_children[ $tid ] ) ) {
+						continue;
+					}
+					$chain   = array( $tinfo['name'] );
+					$cur_pid = $tinfo['parent'];
+					$guard   = 0;
+					while ( $cur_pid > 0 && isset( $cat_by_id[ $cur_pid ] ) && $guard < 4 ) {
+						array_unshift( $chain, $cat_by_id[ $cur_pid ]['name'] );
+						$cur_pid = $cat_by_id[ $cur_pid ]['parent'];
+						$guard++;
+					}
+					$paths[] = implode( ' › ', $chain );
+				}
+				if ( ! empty( $paths ) ) {
+					$by_id[ $obj_id ]['categories_path'] = implode( ' | ', array_unique( $paths ) );
+				}
 			}
 		}
 
@@ -5165,6 +5242,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			'sync_price'          => true,
 			'sync_stock'          => true,
 			'sync_categories'     => true,
+			'skip_pos_categories' => false,
 			'sync_images'         => true,
 			'sync_shopee_content' => true,
 		);
@@ -5302,6 +5380,8 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					'thumb_url'          => $thumb_url ? $thumb_url : '',
 					'shopee_url'         => $ex_shopee_url,
 					'content_source'     => trim( (string) get_post_meta( $wc_id, '_nexxi_shopee_ref_source', true ) ),
+					'wc_categories'      => self::format_wc_product_cat_path( $wc_id ),
+					'shopee_cat_synced'  => ( '1' === (string) get_post_meta( $wc_id, '_nexxi_shopee_cat_synced', true ) ),
 				);
 			}
 		}
@@ -5408,8 +5488,10 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			update_post_meta( $wc_id, '_nexxi_pancake_sku', $parent_sku );
 		}
 
-		// Sync categories from Pancake (`categories` array) to WooCommerce `product_cat`
-		if ( $opts['sync_categories'] && ! empty( $pancake_item['categories'] ) && is_array( $pancake_item['categories'] ) ) {
+		// Sync categories from Pancake (`categories` array) to WooCommerce `product_cat`,
+		// UNLESS user opted to fetch Shopee Tier 2/3 via Extension or product was already synced from Shopee.
+		$already_shopee_cat = ( '1' === (string) get_post_meta( $wc_id, '_nexxi_shopee_cat_synced', true ) );
+		if ( $opts['sync_categories'] && empty( $opts['skip_pos_categories'] ) && ! $already_shopee_cat && ! empty( $pancake_item['categories'] ) && is_array( $pancake_item['categories'] ) ) {
 			$cat_term_ids = array();
 			foreach ( $pancake_item['categories'] as $cat_name ) {
 				$cat_name = trim( (string) $cat_name );
@@ -5706,6 +5788,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 		$existing_shopee_url         = ( ! $created_new && $wc_id > 0 ) ? trim( (string) get_post_meta( $wc_id, '_nexxi_shopee_url', true ) ) : '';
 		$needs_shopee_lookup         = $should_write_shopee_content
 			|| ( ! empty( $opts['sync_shopee_content'] ) && '' === $existing_shopee_url )
+			|| ( ! empty( $opts['skip_pos_categories'] ) && '' === $existing_shopee_url )
 			|| ( ! empty( $opts['sync_images'] ) && empty( $pancake_item['all_images'] ) );
 
 		$shopee_ctx = array();
@@ -5840,6 +5923,8 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			'thumb_url'          => $thumb_url ? $thumb_url : '',
 			'shopee_url'         => $applied_shopee_url,
 			'content_source'     => $applied_content_source,
+			'wc_categories'      => self::format_wc_product_cat_path( $wc_id ),
+			'shopee_cat_synced'  => ( '1' === (string) get_post_meta( $wc_id, '_nexxi_shopee_cat_synced', true ) ),
 		);
 	}
 
@@ -5990,6 +6075,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				'sync_price'          => ! isset( $_POST['sync_price'] ) || '1' === (string) $_POST['sync_price'],
 				'sync_stock'          => ! isset( $_POST['sync_stock'] ) || '1' === (string) $_POST['sync_stock'],
 				'sync_categories'     => ! isset( $_POST['sync_categories'] ) || '1' === (string) $_POST['sync_categories'],
+				'skip_pos_categories' => ! empty( $_POST['skip_pos_categories'] ) && '1' === (string) $_POST['skip_pos_categories'],
 				'sync_images'         => ! isset( $_POST['sync_images'] ) || '1' === (string) $_POST['sync_images'],
 				'sync_shopee_content' => ! isset( $_POST['sync_shopee_content'] ) || '1' === (string) $_POST['sync_shopee_content'],
 			);
@@ -6020,6 +6106,505 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			self::clean_send_json_success( $res );
 		} catch ( \Throwable $e ) {
 			self::clean_send_json_error( 'Lỗi xóa / ngắt kết nối SP: ' . $e->getMessage() . ' (' . basename( $e->getFile() ) . ':' . $e->getLine() . ')' );
+		}
+	}
+
+	/**
+	 * Format a readable hierarchical `product_cat` display string for a WooCommerce product ID.
+	 */
+	public static function format_wc_product_cat_path( $wc_id ) {
+		$wc_id = absint( $wc_id );
+		if ( $wc_id <= 0 ) {
+			return '';
+		}
+		$terms = get_the_terms( $wc_id, 'product_cat' );
+		if ( ! $terms || is_wp_error( $terms ) ) {
+			return '';
+		}
+		$default_cat_id = (int) get_option( 'default_product_cat' );
+		$filtered       = array();
+		foreach ( $terms as $t ) {
+			if ( (int) $t->term_id === $default_cat_id && count( $terms ) > 1 ) {
+				continue;
+			}
+			$filtered[ (int) $t->term_id ] = $t;
+		}
+		if ( empty( $filtered ) ) {
+			foreach ( $terms as $t ) {
+				$filtered[ (int) $t->term_id ] = $t;
+			}
+		}
+		$parents_with_children = array();
+		foreach ( $filtered as $t ) {
+			if ( (int) $t->parent > 0 ) {
+				$parents_with_children[ (int) $t->parent ] = true;
+			}
+		}
+		$paths = array();
+		foreach ( $filtered as $tid => $t ) {
+			if ( 0 === (int) $t->parent && isset( $parents_with_children[ $tid ] ) ) {
+				continue;
+			}
+			$chain   = array( $t->name );
+			$cur_pid = (int) $t->parent;
+			$guard   = 0;
+			while ( $cur_pid > 0 && $guard < 4 ) {
+				$pt = get_term( $cur_pid, 'product_cat' );
+				if ( ! $pt || is_wp_error( $pt ) ) {
+					break;
+				}
+				array_unshift( $chain, $pt->name );
+				$cur_pid = (int) $pt->parent;
+				$guard++;
+			}
+			$paths[] = implode( ' › ', $chain );
+		}
+		return implode( ' | ', array_unique( $paths ) );
+	}
+
+	/**
+	 * Find or create Parent (Shopee Tier 2) and optional Child (Shopee Tier 3) `product_cat` terms
+	 * without slug collisions across different parents or legacy flat categories.
+	 */
+	public static function find_or_create_shopee_hierarchy_terms( $tier2_name, $tier3_name = '' ) {
+		$clean_name = static function ( $raw ) {
+			$s = html_entity_decode( (string) $raw, ENT_QUOTES, 'UTF-8' );
+			$s = preg_replace( '/\s+/u', ' ', trim( $s ) );
+			return is_string( $s ) ? $s : '';
+		};
+
+		$parent_name = $clean_name( $tier2_name );
+		$child_name  = $clean_name( $tier3_name );
+		$invalid     = array( '', 'shopee', 'trang chủ', 'home' );
+
+		if ( in_array( mb_strtolower( $parent_name, 'UTF-8' ), $invalid, true ) ) {
+			return new \WP_Error( 'invalid_tier2', 'Tên danh mục Tầng 2 (Danh mục Cha) không hợp lệ.' );
+		}
+		if ( in_array( mb_strtolower( $child_name, 'UTF-8' ), $invalid, true ) || mb_strtolower( $child_name, 'UTF-8' ) === mb_strtolower( $parent_name, 'UTF-8' ) ) {
+			$child_name = '';
+		}
+
+		// 1. Find or create Parent (Tier 2) under parent = 0
+		$parent_id       = 0;
+		$parent_target_l = mb_strtolower( $parent_name, 'UTF-8' );
+		$parent_slug_raw = sanitize_title( $parent_name );
+		$top_terms       = get_terms(
+			array(
+				'taxonomy'   => 'product_cat',
+				'parent'     => 0,
+				'hide_empty' => false,
+			)
+		);
+		if ( ! is_wp_error( $top_terms ) ) {
+			foreach ( $top_terms as $tt ) {
+				if ( mb_strtolower( trim( $tt->name ), 'UTF-8' ) === $parent_target_l || $tt->slug === $parent_slug_raw ) {
+					$parent_id = (int) $tt->term_id;
+					break;
+				}
+			}
+		}
+		if ( $parent_id <= 0 ) {
+			$p_slug      = $parent_slug_raw;
+			$slug_owner  = $p_slug ? get_term_by( 'slug', $p_slug, 'product_cat' ) : false;
+			if ( $slug_owner && (int) $slug_owner->parent !== 0 ) {
+				$p_slug .= '-nhom';
+			}
+			$ins_parent = wp_insert_term(
+				$parent_name,
+				'product_cat',
+				array(
+					'parent' => 0,
+					'slug'   => $p_slug,
+				)
+			);
+			if ( is_wp_error( $ins_parent ) ) {
+				$err_id = (int) $ins_parent->get_error_data();
+				if ( $err_id > 0 && 'term_exists' === $ins_parent->get_error_code() ) {
+					$parent_id = $err_id;
+				} else {
+					return $ins_parent;
+				}
+			} elseif ( ! empty( $ins_parent['term_id'] ) ) {
+				$parent_id = (int) $ins_parent['term_id'];
+			}
+		}
+
+		$parent_term = get_term( $parent_id, 'product_cat' );
+		if ( ! $parent_term || is_wp_error( $parent_term ) ) {
+			return new \WP_Error( 'parent_create_failed', 'Không thể tạo hoặc đọc danh mục Cha: ' . $parent_name );
+		}
+
+		// 2. Find or create Child (Tier 3) under parent = $parent_id
+		$child_id   = 0;
+		$child_term = null;
+		if ( '' !== $child_name ) {
+			$child_target_l = mb_strtolower( $child_name, 'UTF-8' );
+			$sub_terms      = get_terms(
+				array(
+					'taxonomy'   => 'product_cat',
+					'parent'     => $parent_id,
+					'hide_empty' => false,
+				)
+			);
+			if ( ! is_wp_error( $sub_terms ) ) {
+				foreach ( $sub_terms as $st ) {
+					if ( mb_strtolower( trim( $st->name ), 'UTF-8' ) === $child_target_l ) {
+						$child_id   = (int) $st->term_id;
+						$child_term = $st;
+						break;
+					}
+				}
+			}
+
+			if ( $child_id <= 0 ) {
+				$desired_slug = sanitize_title( $child_name );
+				$slug_owner   = $desired_slug ? get_term_by( 'slug', $desired_slug, 'product_cat' ) : false;
+				if ( $slug_owner && (int) $slug_owner->parent !== (int) $parent_id ) {
+					$desired_slug = sanitize_title( $child_name . '-' . $parent_term->slug );
+				}
+				$ins_child = wp_insert_term(
+					$child_name,
+					'product_cat',
+					array(
+						'parent' => $parent_id,
+						'slug'   => $desired_slug,
+					)
+				);
+				if ( is_wp_error( $ins_child ) ) {
+					if ( 'term_exists' === $ins_child->get_error_code() ) {
+						$err_id    = (int) $ins_child->get_error_data();
+						$err_term  = $err_id > 0 ? get_term( $err_id, 'product_cat' ) : null;
+						if ( $err_term && ! is_wp_error( $err_term ) && (int) $err_term->parent === (int) $parent_id ) {
+							$child_id = (int) $err_term->term_id;
+						} else {
+							$fallback_slug = $desired_slug . '-' . $parent_id;
+							$ins_retry     = wp_insert_term(
+								$child_name,
+								'product_cat',
+								array(
+									'parent' => $parent_id,
+									'slug'   => $fallback_slug,
+								)
+							);
+							if ( is_wp_error( $ins_retry ) ) {
+								return $ins_retry;
+							}
+							$child_id = (int) ( $ins_retry['term_id'] ?? 0 );
+						}
+					} else {
+						return $ins_child;
+					}
+				} elseif ( ! empty( $ins_child['term_id'] ) ) {
+					$child_id = (int) $ins_child['term_id'];
+				}
+				if ( $child_id > 0 && ! $child_term ) {
+					$child_term = get_term( $child_id, 'product_cat' );
+				}
+			}
+		}
+
+		return array(
+			'parent_id'   => (int) $parent_term->term_id,
+			'parent_name' => (string) $parent_term->name,
+			'parent_slug' => (string) $parent_term->slug,
+			'child_id'    => $child_term && ! is_wp_error( $child_term ) ? (int) $child_term->term_id : 0,
+			'child_name'  => $child_term && ! is_wp_error( $child_term ) ? (string) $child_term->name : '',
+			'child_slug'  => $child_term && ! is_wp_error( $child_term ) ? (string) $child_term->slug : '',
+		);
+	}
+
+	/**
+	 * AJAX (Tab 1 & Tab 3): Resolve Pancake -> Shopee product links for 1 or many SKU/WC items
+	 * before handing the queue to the Cốc Cốc / Chrome Extension.
+	 */
+	public function ajax_resolve_shopee_links() {
+		self::begin_safe_json_ajax( true );
+		global $wpdb;
+		try {
+			$force_refresh_mp = ! empty( $_POST['force_refresh_mp'] ) && '1' === (string) $_POST['force_refresh_mp'];
+			if ( $force_refresh_mp ) {
+				self::get_pos_marketplace_shopee_index( true );
+			}
+
+			$raw_items = array();
+			if ( isset( $_POST['items_json'] ) && '' !== trim( (string) $_POST['items_json'] ) ) {
+				$decoded = json_decode( wp_unslash( $_POST['items_json'] ), true );
+				if ( is_array( $decoded ) ) {
+					$raw_items = $decoded;
+				}
+			} else {
+				$single_wc_id = isset( $_POST['wc_id'] ) ? absint( $_POST['wc_id'] ) : 0;
+				$single_sku   = isset( $_POST['sku'] ) ? sanitize_text_field( wp_unslash( $_POST['sku'] ) ) : '';
+				if ( $single_wc_id > 0 || '' !== $single_sku ) {
+					$raw_items[] = array(
+						'wc_id'       => $single_wc_id,
+						'pancake_sku' => $single_sku,
+						'row_dom'     => isset( $_POST['row_dom'] ) ? sanitize_text_field( wp_unslash( $_POST['row_dom'] ) ) : '',
+					);
+				}
+			}
+
+			if ( empty( $raw_items ) ) {
+				self::clean_send_json_error( 'Chưa có sản phẩm hoặc mã SKU nào để tra cứu link Shopee.' );
+			}
+
+			$resolved_items   = array();
+			$matched_count    = 0;
+			$missing_count    = 0;
+			$did_live_refresh = $force_refresh_mp;
+
+			foreach ( $raw_items as $entry ) {
+				if ( ! is_array( $entry ) ) {
+					continue;
+				}
+				$wc_id       = absint( $entry['wc_id'] ?? 0 );
+				$pancake_id  = trim( sanitize_text_field( (string) ( $entry['pancake_id'] ?? '' ) ) );
+				$sku         = strtoupper( trim( sanitize_text_field( (string) ( $entry['pancake_sku'] ?? ( $entry['sku'] ?? '' ) ) ) ) );
+				$row_dom     = trim( sanitize_text_field( (string) ( $entry['row_dom'] ?? '' ) ) );
+				$wc_prod     = $wc_id > 0 ? wc_get_product( $wc_id ) : null;
+
+				if ( ! $wc_prod && ( '' !== $sku || '' !== $pancake_id ) ) {
+					$wc_prod = self::find_existing_wc_product_for_pancake(
+						array(
+							'id'  => $pancake_id,
+							'sku' => $sku,
+						)
+					);
+					if ( ! $wc_prod && '' !== $sku && function_exists( 'wc_get_product_id_by_sku' ) ) {
+						$by_sku_id = (int) wc_get_product_id_by_sku( $sku );
+						if ( $by_sku_id > 0 ) {
+							$p_parent  = wp_get_post_parent_id( $by_sku_id );
+							$wc_prod   = wc_get_product( $p_parent > 0 ? $p_parent : $by_sku_id );
+						}
+					}
+					if ( ! $wc_prod && '' !== $sku ) {
+						$meta_id = (int) $wpdb->get_var(
+							$wpdb->prepare(
+								"SELECT p.ID FROM {$wpdb->posts} p
+								 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+								 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
+								   AND pm.meta_key IN ('_sku','_nexxi_pancake_sku') AND UPPER(TRIM(pm.meta_value)) = %s
+								 ORDER BY p.ID ASC LIMIT 1",
+								$sku
+							)
+						); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+						if ( $meta_id > 0 ) {
+							$wc_prod = wc_get_product( $meta_id );
+						}
+					}
+				}
+
+				if ( $wc_prod ) {
+					$wc_id = (int) $wc_prod->get_id();
+					if ( '' === $sku ) {
+						$sku = strtoupper( trim( (string) get_post_meta( $wc_id, '_nexxi_pancake_sku', true ) ) );
+					}
+					if ( '' === $sku ) {
+						$sku = strtoupper( trim( (string) $wc_prod->get_sku() ) );
+					}
+					if ( '' === $sku && $wc_prod->is_type( 'variable' ) ) {
+						foreach ( $wc_prod->get_children() as $cid ) {
+							$csku = strtoupper( trim( (string) get_post_meta( (int) $cid, '_sku', true ) ) );
+							if ( '' !== $csku ) {
+								$sku = false !== strpos( $csku, '-' ) ? explode( '-', $csku )[0] : $csku;
+								break;
+							}
+						}
+					}
+				}
+
+				$prod_name  = $wc_prod ? (string) $wc_prod->get_name() : ( '' !== $sku ? 'SKU ' . $sku : 'Sản phẩm chưa rõ' );
+				$shopee_url = '';
+				$shop_id    = '';
+				$shop_name  = '';
+				$item_id    = '';
+
+				if ( '' !== $sku ) {
+					$mp = self::lookup_pos_shopee_by_sku( $sku, $prod_name, ! $did_live_refresh );
+					if ( ! $did_live_refresh ) {
+						$did_live_refresh = true;
+					}
+					if ( is_array( $mp ) ) {
+						$chosen = null;
+						if ( ! empty( $mp['all_urls'] ) && is_array( $mp['all_urls'] ) ) {
+							foreach ( $mp['all_urls'] as $u_entry ) {
+								if ( '71134111' === (string) ( $u_entry['shop_id'] ?? '' ) && ! empty( $u_entry['url'] ) ) {
+									$chosen = $u_entry;
+									break;
+								}
+							}
+						}
+						if ( ! $chosen && ! empty( $mp['primary']['shopee_url'] ) ) {
+							$chosen = array(
+								'shop_id'   => $mp['primary']['shop_id'] ?? '',
+								'shop_name' => $mp['primary']['shop_name'] ?? '',
+								'item_id'   => $mp['primary']['item_id'] ?? '',
+								'url'       => $mp['primary']['shopee_url'],
+							);
+						}
+						if ( $chosen && ! empty( $chosen['url'] ) ) {
+							$shopee_url = (string) $chosen['url'];
+							$shop_id    = (string) ( $chosen['shop_id'] ?? '' );
+							$shop_name  = (string) ( $chosen['shop_name'] ?? '' );
+							$item_id    = (string) ( $chosen['item_id'] ?? '' );
+						}
+					}
+				}
+
+				if ( '' === $shopee_url && $wc_id > 0 ) {
+					$saved_url = trim( (string) get_post_meta( $wc_id, '_nexxi_shopee_url', true ) );
+					if ( '' !== $saved_url && 0 === strpos( $saved_url, 'https://shopee.vn/' ) ) {
+						$shopee_url = $saved_url;
+						if ( preg_match( '~/product/(\d+)/(\d+)~', $saved_url, $pm ) ) {
+							$shop_id = $pm[1];
+							$item_id = $pm[2];
+						}
+					}
+				}
+
+				if ( '' !== $shopee_url && $wc_id > 0 && '' === trim( (string) get_post_meta( $wc_id, '_nexxi_shopee_url', true ) ) ) {
+					update_post_meta( $wc_id, '_nexxi_shopee_url', esc_url_raw( $shopee_url ) );
+				}
+
+				$found_link = ( '' !== $shopee_url );
+				if ( $found_link ) {
+					$matched_count++;
+				} else {
+					$missing_count++;
+				}
+
+				if ( '' === $row_dom && '' !== $sku ) {
+					$row_dom = sanitize_html_class( $sku );
+				}
+
+				$resolved_items[] = array(
+					'wc_id'        => $wc_id,
+					'sku'          => $sku,
+					'name'         => $prod_name,
+					'row_dom'      => $row_dom,
+					'shopee_url'   => $shopee_url,
+					'shop_id'      => $shop_id,
+					'shop_name'    => $shop_name,
+					'item_id'      => $item_id,
+					'current_cats' => $wc_id > 0 ? self::format_wc_product_cat_path( $wc_id ) : '',
+					'found_link'   => $found_link,
+				);
+			}
+
+			self::clean_send_json_success(
+				array(
+					'items'   => $resolved_items,
+					'summary' => array(
+						'total'   => count( $resolved_items ),
+						'matched' => $matched_count,
+						'missing' => $missing_count,
+					),
+				)
+			);
+		} catch ( \Throwable $e ) {
+			self::clean_send_json_error( 'Lỗi tra cứu link Shopee từ Pancake: ' . $e->getMessage() . ' (' . basename( $e->getFile() ) . ':' . $e->getLine() . ')' );
+		}
+	}
+
+	/**
+	 * AJAX (Tab 1 & Tab 3): Create/match Tier 2 (Parent) & Tier 3 (Child) Shopee categories
+	 * and assign them to the WooCommerce product.
+	 */
+	public function ajax_apply_shopee_category() {
+		self::begin_safe_json_ajax( true );
+		global $wpdb;
+		try {
+			$wc_id            = isset( $_POST['wc_id'] ) ? absint( $_POST['wc_id'] ) : 0;
+			$sku              = isset( $_POST['sku'] ) ? strtoupper( trim( sanitize_text_field( wp_unslash( $_POST['sku'] ) ) ) ) : '';
+			$tier1            = isset( $_POST['tier1'] ) ? sanitize_text_field( wp_unslash( $_POST['tier1'] ) ) : '';
+			$tier2            = isset( $_POST['tier2'] ) ? sanitize_text_field( wp_unslash( $_POST['tier2'] ) ) : '';
+			$tier3            = isset( $_POST['tier3'] ) ? sanitize_text_field( wp_unslash( $_POST['tier3'] ) ) : '';
+			$shopee_url       = isset( $_POST['shopee_url'] ) ? esc_url_raw( trim( wp_unslash( $_POST['shopee_url'] ) ) ) : '';
+			$replace_existing = ! isset( $_POST['replace_existing'] ) || '1' === (string) $_POST['replace_existing'];
+
+			if ( $wc_id <= 0 && '' !== $sku ) {
+				if ( function_exists( 'wc_get_product_id_by_sku' ) ) {
+					$by_sku = (int) wc_get_product_id_by_sku( $sku );
+					if ( $by_sku > 0 ) {
+						$p_parent = wp_get_post_parent_id( $by_sku );
+						$wc_id    = $p_parent > 0 ? $p_parent : $by_sku;
+					}
+				}
+				if ( $wc_id <= 0 ) {
+					$wc_id = (int) $wpdb->get_var(
+						$wpdb->prepare(
+							"SELECT p.ID FROM {$wpdb->posts} p
+							 INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+							 WHERE p.post_type = 'product' AND p.post_status IN ('publish','draft','private','pending')
+							   AND pm.meta_key IN ('_sku','_nexxi_pancake_sku') AND UPPER(TRIM(pm.meta_value)) = %s
+							 ORDER BY p.ID ASC LIMIT 1",
+							$sku
+						)
+					); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				}
+			}
+
+			$product = $wc_id > 0 ? wc_get_product( $wc_id ) : null;
+			if ( ! $product ) {
+				self::clean_send_json_error( 'Không tìm thấy sản phẩm trên Website để gán danh mục (' . ( $sku ? $sku : '#' . $wc_id ) . ').' );
+			}
+			if ( '' === $sku ) {
+				$sku = strtoupper( trim( (string) ( get_post_meta( $wc_id, '_nexxi_pancake_sku', true ) ?: $product->get_sku() ) ) );
+			}
+
+			$terms_res = self::find_or_create_shopee_hierarchy_terms( $tier2, $tier3 );
+			if ( is_wp_error( $terms_res ) ) {
+				self::clean_send_json_error( $terms_res->get_error_message() );
+			}
+
+			$term_ids = array_values( array_unique( array_filter( array( (int) $terms_res['parent_id'], (int) $terms_res['child_id'] ) ) ) );
+			if ( empty( $term_ids ) ) {
+				self::clean_send_json_error( 'Không tạo được danh mục sản phẩm hợp lệ từ dữ liệu Shopee.' );
+			}
+
+			$set_res = wp_set_object_terms( $wc_id, $term_ids, 'product_cat', ! $replace_existing );
+			if ( is_wp_error( $set_res ) ) {
+				self::clean_send_json_error( 'Lỗi khi gán danh mục sản phẩm: ' . $set_res->get_error_message() );
+			}
+
+			$primary_cat_id = ! empty( $terms_res['child_id'] ) ? (int) $terms_res['child_id'] : (int) $terms_res['parent_id'];
+			update_post_meta( $wc_id, '_yoast_wpseo_primary_product_cat', $primary_cat_id );
+			update_post_meta( $wc_id, '_nexxi_shopee_cat_synced', '1' );
+			update_post_meta( $wc_id, '_nexxi_shopee_cat_tier1', $tier1 );
+			update_post_meta( $wc_id, '_nexxi_shopee_cat_tier2', $terms_res['parent_name'] );
+			update_post_meta( $wc_id, '_nexxi_shopee_cat_tier3', $terms_res['child_name'] );
+			update_post_meta( $wc_id, '_nexxi_shopee_cat_synced_at', current_time( 'mysql' ) );
+			if ( '' !== $shopee_url && '' === trim( (string) get_post_meta( $wc_id, '_nexxi_shopee_url', true ) ) ) {
+				update_post_meta( $wc_id, '_nexxi_shopee_url', $shopee_url );
+			}
+
+			clean_post_cache( $wc_id );
+			if ( function_exists( 'wc_delete_product_transients' ) ) {
+				wc_delete_product_transients( $wc_id );
+			}
+			do_action( 'litespeed_purge_post', $wc_id );
+			do_action( 'litespeed_purge_all' );
+
+			$final_ids = wp_get_post_terms( $wc_id, 'product_cat', array( 'fields' => 'ids' ) );
+			if ( is_wp_error( $final_ids ) ) {
+				$final_ids = $term_ids;
+			}
+
+			self::clean_send_json_success(
+				array(
+					'wc_id'              => $wc_id,
+					'sku'                => $sku,
+					'parent_id'          => (int) $terms_res['parent_id'],
+					'parent_name'        => (string) $terms_res['parent_name'],
+					'child_id'           => (int) $terms_res['child_id'],
+					'child_name'         => (string) $terms_res['child_name'],
+					'term_ids'           => array_values( array_map( 'intval', $final_ids ) ),
+					'category_path'      => self::format_wc_product_cat_path( $wc_id ),
+					'categories_options' => class_exists( 'Nexxi_Web_Product_Manager' ) ? Nexxi_Web_Product_Manager::get_category_options() : array(),
+				)
+			);
+		} catch ( \Throwable $e ) {
+			self::clean_send_json_error( 'Lỗi áp dụng danh mục Shopee: ' . $e->getMessage() . ' (' . basename( $e->getFile() ) . ':' . $e->getLine() . ')' );
 		}
 	}
 
@@ -6440,6 +7025,10 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					<p>Quản lý danh mục sản phẩm đồng bộ từ Pancake POS về Website &amp; đồng bộ ảnh sản phẩm / ảnh phân loại màu sắc theo mã SKU riêng biệt.</p>
 				</div>
 				<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+					<span id="nxpExtStatusPill" style="font-size:12px;background:rgba(254,243,199,0.2);border:1px solid rgba(253,224,71,0.45);color:#fef08a;padding:6px 11px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;">
+						<span id="nxpExtStatusText">🧩 Extension Danh Mục Shopee: Chưa kết nối</span>
+						<button type="button" id="nxpBtnExtHelp" style="background:rgba(255,255,255,0.18);color:#fff;border:1px solid rgba(255,255,255,0.35);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:600;cursor:pointer;">Hướng dẫn cài</button>
+					</span>
 					<span id="nxpHeroCatalogBadge" style="font-size:12px;background:rgba(255,255,255,0.14);padding:6px 12px;border-radius:8px;">
 						Dữ liệu Pancake: <strong><?php echo count( $catalog ); ?> SP</strong>
 						<?php if ( $cache_time ) : ?>
@@ -6450,6 +7039,19 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 						🔄 Làm Mới Dữ Liệu Từ Pancake POS
 					</button>
 				</div>
+			</div>
+
+			<div id="nxpExtInstallGuide" style="display:none;margin:0 0 16px;padding:14px 18px;border-radius:12px;border:1.5px solid #fbbf24;background:#fffbeb;color:#78350f;font-size:13px;line-height:1.55;">
+				<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+					<strong style="font-size:14px;">🧩 Hướng dẫn cài Extension lấy Danh mục Tầng 2 &amp; 3 Shopee trên Cốc Cốc (chỉ làm 1 lần):</strong>
+					<button type="button" id="nxpBtnExtHelpClose" class="nxp-btn nxp-btn-outline nxp-btn-sm">Đóng</button>
+				</div>
+				<ol style="margin:4px 0 0 18px;padding:0;">
+					<li>Mở tab mới trên trình duyệt <strong>Cốc Cốc</strong>, gõ vào thanh địa chỉ: <code>coccoc://extensions</code> rồi nhấn Enter.</li>
+					<li>Bật công tắc <strong>Chế độ dành cho nhà phát triển</strong> (góc trên bên phải).</li>
+					<li>Nhấn <strong>Tải tiện ích đã giải nén</strong> và chọn thư mục: <code>D:\Code web\Nexxi\tools\nexxi-shopee-category-extension</code>.</li>
+					<li>Quay lại trang này và nhấn <strong>F5 (tải lại trang)</strong> — huy hiệu phía trên sẽ chuyển màu xanh <strong>Đã kết nối</strong>.</li>
+				</ol>
 			</div>
 
 			<div class="nxp-progress-box" id="nxpHeroSyncBox" style="display:none;margin:0 0 18px;border:1.5px solid #93c5fd;background:#eff6ff;">
@@ -8483,20 +9085,22 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			}
 
 			$filtered_items[] = array(
-				'pancake'        => $p,
-				'status_code'    => $status_code,
-				'is_disc'        => $is_disc,
-				'wc_id'          => $wc_match ? (int) $wc_match['id'] : 0,
-				'wc_name'        => $wc_match ? (string) $wc_match['name'] : '',
-				'wc_sku'         => $wc_match ? (string) $wc_match['sku'] : '',
-				'wc_status'      => $wc_match ? (string) $wc_match['status'] : '',
-				'wc_var_count'   => $wc_match ? (int) $wc_match['var_total'] : 0,
-				'wc_thumb_id'    => $wc_match ? (int) $wc_match['thumb_id'] : 0,
-				'wc_thumb_url'   => '',
-				'wc_edit_url'    => '',
-				'wc_view_url'    => '',
-				'shopee_url'     => $wc_match ? (string) ( $wc_match['shopee_url'] ?? '' ) : '',
-				'content_source' => $wc_match ? (string) ( $wc_match['content_source'] ?? '' ) : '',
+				'pancake'           => $p,
+				'status_code'       => $status_code,
+				'is_disc'           => $is_disc,
+				'wc_id'             => $wc_match ? (int) $wc_match['id'] : 0,
+				'wc_name'           => $wc_match ? (string) $wc_match['name'] : '',
+				'wc_sku'            => $wc_match ? (string) $wc_match['sku'] : '',
+				'wc_status'         => $wc_match ? (string) $wc_match['status'] : '',
+				'wc_var_count'      => $wc_match ? (int) $wc_match['var_total'] : 0,
+				'wc_thumb_id'       => $wc_match ? (int) $wc_match['thumb_id'] : 0,
+				'wc_thumb_url'      => '',
+				'wc_edit_url'       => '',
+				'wc_view_url'       => '',
+				'shopee_url'        => $wc_match ? (string) ( $wc_match['shopee_url'] ?? '' ) : '',
+				'content_source'    => $wc_match ? (string) ( $wc_match['content_source'] ?? '' ) : '',
+				'wc_categories'     => $wc_match ? (string) ( $wc_match['categories_path'] ?? '' ) : '',
+				'shopee_cat_synced' => $wc_match ? ! empty( $wc_match['shopee_cat_synced'] ) : false,
 			);
 		}
 
@@ -8604,6 +9208,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				<label><input type="checkbox" id="nxpProdOptPrice" checked> Đồng bộ <strong>Giá bán</strong></label>
 				<label><input type="checkbox" id="nxpProdOptStock" checked> Đồng bộ <strong>Tồn kho Pancake</strong></label>
 				<label><input type="checkbox" id="nxpProdOptCats" checked> Đồng bộ <strong>Danh mục SP</strong></label>
+				<label style="background:#f0fdf4;padding:4px 10px;border-radius:6px;border:1px solid #86efac;color:#166534;font-weight:700;" title="Sau khi đồng bộ từ Pancake, tự động mở link Shopee qua Extension Cốc Cốc để lấy Danh mục Tầng 2 (Cha) & Tầng 3 (Con) rồi tự đóng tab"><input type="checkbox" id="nxpProdOptShopeeCatExt"> 🏷️ Lấy <strong>Danh mục Tầng 2 &amp; 3 Shopee</strong> qua Extension (tự mở &amp; đóng tab)</label>
 				<label><input type="checkbox" id="nxpProdOptImages" checked> Đồng bộ luôn <strong>Ảnh SP &amp; Ảnh phân loại</strong> (chỉ lấy ảnh chưa có)</label>
 				<label style="background:#fff7ed;padding:4px 10px;border-radius:6px;border:1px solid #fdba74;color:#9a3412;font-weight:700;" title="Tự động tra cứu Link Shopee liên kết theo SKU trên POS để tham khảo và viết lại Tên SP, Mô tả ngắn, Mô tả chi tiết &amp; SEO chuẩn Website cho SP mới (bảo vệ không ghi đè SP đã biên tập trên Web)"><input type="checkbox" id="nxpProdOptShopeeContent" checked> ✍️ Viết <strong>Tên &amp; Mô tả Web</strong> tham khảo từ <strong>Shopee POS</strong> (SP mới)</label>
 				<label style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;">
@@ -8622,6 +9227,12 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				</button>
 				<button type="button" class="nxp-btn nxp-btn-navy" id="nxpBtnUpdateAllOnWeb" style="background:linear-gradient(135deg,#0f766e,#0d9488);border-color:#0f766e;box-shadow:0 2px 6px rgba(13,148,136,0.25);">
 					🔄 Cập Nhật Từ Pancake Cho Toàn Bộ SP Có Trên Web (<?php echo count( $all_on_web_items ); ?> SP)
+				</button>
+				<button type="button" class="nxp-btn nxp-btn-navy" id="nxpBtnShopeeCatSelected" style="background:#7c3aed;border-color:#6d28d9;color:#fff;">
+					🏷️ Lấy Danh Mục Shopee (SP Đã Chọn)
+				</button>
+				<button type="button" class="nxp-btn nxp-btn-outline" id="nxpBtnShopeeCatAllOnWeb" style="border-color:#a78bfa;color:#5b21b6;background:#f5f3ff;">
+					🏷️ Quét Danh Mục Shopee Tất Cả SP Trên Web (<?php echo count( $all_on_web_items ); ?> SP)
 				</button>
 				<button type="button" class="nxp-btn nxp-btn-danger" id="nxpBtnDeleteDisconnectSelected">
 					🗑️ Xóa Khỏi Website &amp; Ngắt Kết Nối Pancake (Các SP Đã Chọn)
@@ -8647,6 +9258,9 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					<button type="button" class="nxp-btn nxp-btn-primary" id="nxpBtnImportBySkuList">
 						⬇️ Đồng Bộ Theo Mã SKU Về Website
 					</button>
+					<button type="button" class="nxp-btn nxp-btn-navy" id="nxpBtnShopeeCatBySkuList" style="background:#7c3aed;border-color:#6d28d9;">
+						🏷️ Lấy Danh Mục Shopee Theo Mã SKU
+					</button>
 					<button type="button" class="nxp-btn nxp-btn-danger" id="nxpBtnDeleteBySkuList">
 						🗑️ Xóa Khỏi Web &amp; Ngắt Kết Nối Theo Mã SKU
 					</button>
@@ -8663,6 +9277,56 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					<div class="nxp-progress-bar" id="nxpProdProgressBar"></div>
 				</div>
 				<div class="nxp-log" id="nxpProdProgressLog"></div>
+			</div>
+
+			<!-- SHOPEE TIER 2 & 3 CATEGORY EXTENSION SYNC PANEL -->
+			<div class="nxp-progress-box" id="nxpShopeeCatBox" style="display:none;border:1.5px solid #c4b5fd;background:#faf5ff;">
+				<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;font-weight:700;color:#4c1d95;">
+					<span id="nxpShopeeCatTitle">🏷️ Đang chuẩn bị quét Danh mục Tầng 2 &amp; 3 Shopee...</span>
+					<span id="nxpShopeeCatCount">0 / 0</span>
+				</div>
+				<div class="nxp-progress-bar-wrap">
+					<div class="nxp-progress-bar" id="nxpShopeeCatBar" style="background:linear-gradient(90deg,#7c3aed,#e85d3f);"></div>
+				</div>
+				<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0;font-size:12.5px;color:#334155;">
+					<label style="display:inline-flex;align-items:center;gap:5px;">
+						<span>Nhịp mở tab Shopee:</span>
+						<select id="nxpShopeeCatDelay" style="padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1;font-size:12px;">
+							<option value="3000">3 giây</option>
+							<option value="5000" selected>5 giây (Khuyên dùng)</option>
+							<option value="8000">8 giây</option>
+						</select>
+					</label>
+					<label><input type="checkbox" id="nxpShopeeCatOpenActive"> Mở tab Shopee lên trước mặt</label>
+					<label><input type="checkbox" id="nxpShopeeCatAutoApply" checked> Tự động áp dụng ngay lên Web</label>
+					<label><input type="checkbox" id="nxpShopeeCatReplace" checked> Thay thế danh mục cũ của SP</label>
+					<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-outline" id="nxpShopeeCatBtnPause" style="display:none;">⏸️ Tạm dừng</button>
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-navy" id="nxpShopeeCatBtnResume" style="display:none;">▶️ Tiếp tục</button>
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-outline" id="nxpShopeeCatBtnSkip" style="display:none;">⏭️ Bỏ qua SP đang dừng</button>
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-danger" id="nxpShopeeCatBtnStop" style="display:none;">⏹️ Dừng</button>
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-primary" id="nxpShopeeCatBtnApplyManual" style="display:none;">✅ Áp dụng toàn bộ kết quả đã quét</button>
+						<button type="button" class="nxp-btn nxp-btn-sm nxp-btn-outline" id="nxpShopeeCatBtnClose">✖ Đóng bảng</button>
+					</div>
+				</div>
+				<div id="nxpShopeeCatGateAlert" style="display:none;margin:8px 0;padding:10px 14px;border-radius:8px;border:1.5px solid #f59e0b;background:#fef3c7;color:#92400e;font-size:12.5px;font-weight:600;">
+					⚠️ <span id="nxpShopeeCatGateText">Shopee đang yêu cầu đăng nhập hoặc xác minh CAPTCHA trên tab vừa mở. Vui lòng hoàn tất xác minh trực tiếp trên tab Shopee đó, sau đó bấm <strong>▶️ Tiếp tục</strong> (hoặc bấm <strong>⏭️ Bỏ qua</strong>).</span>
+				</div>
+				<div style="max-height:290px;overflow-y:auto;background:#fff;border:1px solid #ddd6fe;border-radius:8px;margin-top:8px;">
+					<table class="nxp-table" style="font-size:12px;">
+						<thead>
+							<tr>
+								<th style="width:120px;">SKU</th>
+								<th>Tên Sản Phẩm</th>
+								<th style="width:110px;">Link Shopee</th>
+								<th>Tầng 2 (Cha)</th>
+								<th>Tầng 3 (Con)</th>
+								<th style="width:200px;">Trạng Thái</th>
+							</tr>
+						</thead>
+						<tbody id="nxpShopeeCatTableBody"></tbody>
+					</table>
+				</div>
 			</div>
 		</div>
 
@@ -8871,6 +9535,16 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 													SKU Web: <strong><?php echo esc_html( $item['wc_sku'] ?: $p_sku ); ?></strong>
 													(<?php echo (int) $item['wc_var_count']; ?> biến thể)
 												</div>
+												<?php
+												$cat_display   = trim( (string) ( $item['wc_categories'] ?? '' ) );
+												$is_shopee_cat = ! empty( $item['shopee_cat_synced'] );
+												?>
+												<div id="nxp-prod-cat-<?php echo esc_attr( $row_dom_id ); ?>" style="font-size:11px;margin-top:2px;color:<?php echo $is_shopee_cat ? '#166534' : '#475569'; ?>;">
+													📁 Danh mục: <strong><?php echo esc_html( '' !== $cat_display ? $cat_display : 'Chưa phân loại' ); ?></strong>
+													<?php if ( $is_shopee_cat ) : ?>
+														<span style="background:#dcfce7;color:#15803d;padding:1px 5px;border-radius:4px;font-weight:700;font-size:10px;margin-left:3px;">Shopee T2/3</span>
+													<?php endif; ?>
+												</div>
 												<?php if ( '' !== $src_human ) : ?>
 													<div style="font-size:11px;color:#9a3412;margin-top:2px;">
 														✍️ Nguồn ND: <strong><?php echo esc_html( $src_human ); ?></strong>
@@ -8908,6 +9582,14 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 											data-pancake-id="<?php echo esc_attr( $pid ); ?>"
 											data-pancake-sku="<?php echo esc_attr( strtoupper( $p_sku ) ); ?>">
 											🔄 Cập Nhật Từ Pancake
+										</button>
+										<button type="button" class="nxp-btn nxp-btn-outline nxp-btn-sm nxp-btn-shopee-cat-one"
+											style="border-color:#c4b5fd;color:#5b21b6;background:#f5f3ff;"
+											data-row-dom="<?php echo esc_attr( $row_dom_id ); ?>"
+											data-wc-id="<?php echo (int) $wc_id; ?>"
+											data-pancake-id="<?php echo esc_attr( $pid ); ?>"
+											data-pancake-sku="<?php echo esc_attr( strtoupper( $p_sku ) ); ?>">
+											🏷️ Danh mục Shopee
 										</button>
 										<button type="button" class="nxp-btn nxp-btn-danger nxp-btn-sm nxp-btn-delete-one"
 											data-row-dom="<?php echo esc_attr( $row_dom_id ); ?>"
@@ -9077,12 +9759,14 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 			}
 
 			function getImportOpts(forceUpdate = false) {
+				const extCatChecked = Boolean($('#nxpProdOptShopeeCatExt')?.checked && window.NexxiShopeeCatSync?.isConnected());
 				return {
 					skip_existing:       forceUpdate ? '0' : ($('#nxpProdOptSkipExisting')?.checked ? '1' : '0'),
 					sync_variations:     $('#nxpProdOptVars')?.checked ? '1' : '0',
 					sync_price:          $('#nxpProdOptPrice')?.checked ? '1' : '0',
 					sync_stock:          $('#nxpProdOptStock')?.checked ? '1' : '0',
 					sync_categories:     $('#nxpProdOptCats')?.checked ? '1' : '0',
+					skip_pos_categories: extCatChecked ? '1' : '0',
 					sync_images:         $('#nxpProdOptImages')?.checked ? '1' : '0',
 					sync_shopee_content: $('#nxpProdOptShopeeContent')?.checked ? '1' : '0',
 					post_status:         $('#nxpProdOptStatus')?.value || 'publish',
@@ -9113,11 +9797,22 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				return k ? (map[k] || k) : '';
 			}
 
+			function updateRowCategoryDisplay(rowDom, catPath, isShopeeSynced = false) {
+				if (!rowDom) return;
+				const catEl = $('#nxp-prod-cat-' + rowDom);
+				if (!catEl) return;
+				catEl.style.color = isShopeeSynced ? '#166534' : '#475569';
+				const badge = isShopeeSynced ? ' <span style="background:#dcfce7;color:#15803d;padding:1px 5px;border-radius:4px;font-weight:700;font-size:10px;margin-left:3px;">Shopee T2/3</span>' : '';
+				catEl.innerHTML = '📁 Danh mục: <strong>' + escHtml(catPath || 'Chưa phân loại') + '</strong>' + badge;
+			}
+
 			function updateRowAfterImport(rowDom, d) {
 				const stEl = $('#nxp-prod-web-status-' + rowDom);
 				if (stEl) {
 					const thumbHtml = d.thumb_url ? '<img src="' + escHtml(d.thumb_url) + '" style="width:36px;height:36px;border-radius:6px;object-fit:cover;border:1px solid #cbd5e1;" alt="">' : '';
 					const nameHtml  = d.name ? '<div style="font-size:12px;color:#0f172a;font-weight:600;margin-top:3px;max-width:290px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escHtml(d.name) + '">' + escHtml(d.name) + '</div>' : '';
+					const catBadge  = d.shopee_cat_synced ? ' <span style="background:#dcfce7;color:#15803d;padding:1px 5px;border-radius:4px;font-weight:700;font-size:10px;margin-left:3px;">Shopee T2/3</span>' : '';
+					const catHtml   = '<div id="nxp-prod-cat-' + escHtml(rowDom) + '" style="font-size:11px;margin-top:2px;color:' + (d.shopee_cat_synced ? '#166534' : '#475569') + ';">📁 Danh mục: <strong>' + escHtml(d.wc_categories || 'Chưa phân loại') + '</strong>' + catBadge + '</div>';
 					const srcLbl    = formatContentSourceLabel(d.content_source);
 					const srcHtml   = srcLbl ? '<div style="font-size:11px;color:#9a3412;margin-top:2px;">✍️ Nguồn ND: <strong>' + escHtml(srcLbl) + '</strong></div>' : '';
 					const shopeeLnk = d.shopee_url ? '<a href="' + escHtml(d.shopee_url) + '" target="_blank" rel="noopener noreferrer" style="color:#ea580c;text-decoration:none;font-weight:600;" title="Link Shopee tham khảo liên kết từ POS (chỉ hiển thị trong Admin)">Shopee POS ↗</a>' : '';
@@ -9125,12 +9820,26 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 						'<div><span class="nxp-badge nxp-badge-ok">✓ Đã đồng bộ lên Website (#' + Number(d.wc_id || 0) + ')</span>' +
 						nameHtml +
 						'<div style="font-size:11.5px;color:#475569;margin-top:2px;">SKU Web: <strong>' + escHtml(d.pancake_sku || '') + '</strong> (' + Number(d.variations_synced || 0) + ' biến thể, Tồn: <strong>' + Number(d.total_stock ?? 0) + '</strong>)</div>' +
+						catHtml +
 						srcHtml +
 						'<div style="font-size:11.5px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">' +
 						(d.edit_url ? '<a href="' + escHtml(d.edit_url) + '" style="color:#1d4ed8;text-decoration:none;font-weight:600;">Sửa SP ↗</a>' : '') +
 						(d.view_url ? '<a href="' + escHtml(d.view_url) + '" target="_blank" style="color:#64748b;text-decoration:none;">Xem Web ↗</a>' : '') +
 						shopeeLnk +
 						'</div></div></div>';
+				}
+				const actEl = $('#nxp-prod-actions-' + rowDom);
+				if (actEl && Number(d.wc_id || 0) > 0 && !actEl.querySelector('.nxp-btn-shopee-cat-one')) {
+					const btnCat = document.createElement('button');
+					btnCat.type = 'button';
+					btnCat.className = 'nxp-btn nxp-btn-outline nxp-btn-sm nxp-btn-shopee-cat-one';
+					btnCat.style.cssText = 'border-color:#c4b5fd;color:#5b21b6;background:#f5f3ff;';
+					btnCat.dataset.rowDom = rowDom;
+					btnCat.dataset.wcId = String(d.wc_id || 0);
+					btnCat.dataset.pancakeId = String(d.pancake_id || '');
+					btnCat.dataset.pancakeSku = String(d.pancake_sku || '').toUpperCase();
+					btnCat.textContent = '🏷️ Danh mục Shopee';
+					actEl.appendChild(btnCat);
 				}
 				if (typeof d.total_stock !== 'undefined') {
 					const stockEl = $('#nxp-prod-stock-' + rowDom);
@@ -9186,6 +9895,7 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				progBar.style.width = '0%';
 				const opts = getImportOpts(forceUpdate);
 				let done = 0;
+				const importedForShopeeCat = [];
 
 				// Xử lý song song 3 SP cùng lúc (nhanh hơn ~3 lần so với lần lượt từng SP).
 				let nextIdx = 0;
@@ -9208,6 +9918,14 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 								const spTxt    = d.shopee_url ? ' [Link Shopee POS ✓]' : '';
 								appendLog('✓ [' + (d.pancake_sku || d.pancake_id) + '] ' + d.name + ' → ' + (d.created_new ? 'Tạo mới SP #' : 'Cập nhật SP #') + d.wc_id + ' (' + d.variations_synced + ' biến thể, Tồn kho: ' + Number(d.total_stock ?? 0) + ', tải mới ' + d.downloaded_urls + ' ảnh' + coverTxt + srcTxt + ')' + spTxt);
 							}
+							if (Number(d.wc_id || 0) > 0 && (!d.skipped_duplicate || !d.shopee_cat_synced)) {
+								importedForShopeeCat.push({
+									row_dom: it.row_dom || '',
+									wc_id: Number(d.wc_id),
+									pancake_id: d.pancake_id || it.pancake_id || '',
+									pancake_sku: d.pancake_sku || it.pancake_sku || ''
+								});
+							}
 							if (it.row_dom) updateRowAfterImport(it.row_dom, d);
 						} else {
 							appendLog('✗ [' + (it.pancake_sku || it.pancake_id) + '] ' + extractAjaxErr(res, 'Lỗi đồng bộ'), true);
@@ -9228,6 +9946,15 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				await Promise.all(Array.from({ length: Math.min(3, items.length) }, worker));
 				progTitle.textContent = '🎉 Hoàn tất đồng bộ ' + done + '/' + items.length + ' sản phẩm về Website!';
 				isRunningBatch = false;
+
+				if ($('#nxpProdOptShopeeCatExt')?.checked && window.NexxiShopeeCatSync?.isConnected() && importedForShopeeCat.length > 0) {
+					appendLog('🏷️ Chuyển sang bước lấy Danh mục Tầng 2 & 3 Shopee qua Extension cho ' + importedForShopeeCat.length + ' sản phẩm...');
+					await window.NexxiShopeeCatSync.run(importedForShopeeCat, {
+						autoApply: true,
+						replaceExisting: true,
+						title: '🏷️ Đang lấy Danh mục Tầng 2 & 3 Shopee cho sản phẩm vừa đồng bộ...'
+					});
+				}
 			}
 
 			// Batch runner for deleting from Website & disconnecting from Pancake
@@ -9358,6 +10085,22 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					return;
 				}
 
+				const btnShopeeCat = e.target.closest ? e.target.closest('.nxp-btn-shopee-cat-one') : null;
+				if (btnShopeeCat) {
+					e.preventDefault();
+					const tr = $('#nxp-prod-row-' + btnShopeeCat.dataset.rowDom);
+					const wcId = Number(btnShopeeCat.dataset.wcId || (tr ? tr.dataset.wcId : 0) || 0);
+					window.NexxiShopeeCatSync?.run([{
+						row_dom: btnShopeeCat.dataset.rowDom,
+						wc_id: wcId,
+						pancake_id: btnShopeeCat.dataset.pancakeId,
+						pancake_sku: btnShopeeCat.dataset.pancakeSku
+					}], {
+						title: '🏷️ Đang lấy Danh mục Tầng 2 & 3 Shopee cho [' + (btnShopeeCat.dataset.pancakeSku || '') + ']...'
+					});
+					return;
+				}
+
 				const btnDelete = e.target.closest ? e.target.closest('.nxp-btn-delete-one') : null;
 				if (btnDelete) {
 					e.preventDefault();
@@ -9475,6 +10218,33 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 				btn.innerHTML = origHtml;
 			});
 
+			// Bulk button: Shopee Tier 2 & 3 category sync for selected items
+			$('#nxpBtnShopeeCatSelected')?.addEventListener('click', function() {
+				const selected = collectSelectedProductItems();
+				if (!selected.length) {
+					alert('Vui lòng tích chọn ít nhất 1 sản phẩm cần lấy Danh mục Tầng 2 & 3 Shopee.');
+					return;
+				}
+				window.NexxiShopeeCatSync?.run(selected, {
+					title: '🏷️ Đang lấy Danh mục Tầng 2 & 3 Shopee cho ' + selected.length + ' sản phẩm đã chọn...'
+				});
+			});
+
+			// Bulk button: Shopee Tier 2 & 3 category sync for ALL products on Website
+			$('#nxpBtnShopeeCatAllOnWeb')?.addEventListener('click', function() {
+				const items = deduplicateBatchItems(allOnWebItems);
+				if (!items.length) {
+					alert('Hiện chưa có sản phẩm nào trên Website để quét danh mục Shopee.');
+					return;
+				}
+				if (!confirm('Extension Cốc Cốc sẽ mở lần lượt link Shopee của tối đa ' + items.length + ' sản phẩm (nhịp ' + Math.round(Number($('#nxpShopeeCatDelay')?.value || 5000) / 1000) + 's/link, lấy xong tự đóng tab) để cập nhật Danh mục Tầng 2 & 3.\n\nBạn có muốn bắt đầu ngay không?')) {
+					return;
+				}
+				window.NexxiShopeeCatSync?.run(items, {
+					title: '🏷️ Đang quét Danh mục Tầng 2 & 3 Shopee cho ' + items.length + ' sản phẩm trên Website...'
+				});
+			});
+
 			// Bulk button: Delete from Web & Disconnect selected
 			$('#nxpBtnDeleteDisconnectSelected')?.addEventListener('click', function() {
 				const selected = collectSelectedProductItems();
@@ -9504,6 +10274,28 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 					};
 				});
 				runBatchImport(items, 'Đang đồng bộ trực tiếp ' + items.length + ' sản phẩm theo Mã SKU từ Pancake POS về Website...', true, true);
+			});
+
+			// Bulk SKU Input: Shopee Category Sync by SKU list
+			$('#nxpBtnShopeeCatBySkuList')?.addEventListener('click', function() {
+				const raw = ($('#nxpProdBulkSkuInput')?.value || '').trim();
+				if (!raw) {
+					alert('Vui lòng nhập ít nhất 1 mã SKU cần lấy danh mục Shopee (VD: 2VBKHN2B01, 2QVKATL01).');
+					return;
+				}
+				const skus = Array.from(new Set(raw.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean)));
+				const items = skus.map(sku => {
+					const tr = $('tr[data-pancake-sku="' + sku + '"]');
+					return {
+						row_dom: tr ? tr.dataset.rowDom : '',
+						wc_id: tr ? Number(tr.dataset.wcId || 0) : 0,
+						pancake_id: tr ? tr.dataset.pancakeId : '',
+						pancake_sku: sku
+					};
+				});
+				window.NexxiShopeeCatSync?.run(items, {
+					title: '🏷️ Đang lấy Danh mục Tầng 2 & 3 Shopee cho ' + items.length + ' mã SKU...'
+				});
 			});
 
 			// Bulk SKU Input: Delete & Disconnect by SKU list
@@ -9820,6 +10612,452 @@ final class Nexxi_Pancake_Sync_Manager_V7 {
 						v.price = priceBySize[sk] || p.min_price;
 					}
 				});
+			}
+
+			// ============================================================================
+			// EXTENSION BRIDGE CONTROLLER: Shopee Tier 2 & 3 Category Sync (Cốc Cốc MV3)
+			// ============================================================================
+			if (!window.__nxpShopeeCatBound) {
+				window.__nxpShopeeCatBound = true;
+
+				const extState = {
+					connected: Boolean(document.documentElement.dataset.nexxiShopeeCatExt),
+					version: document.documentElement.dataset.nexxiShopeeCatExt || '',
+					userToggledOpt: false,
+					running: false,
+					paused: false,
+					jobId: '',
+					totalQueue: 0,
+					doneQueue: 0,
+					queueByIdx: new Map(),
+					pendingManualItems: [],
+					pendingApplyPromises: [],
+					appliedResults: [],
+					activeOpts: null
+				};
+
+				const extPill      = $('#nxpExtStatusPill');
+				const extStatusTxt = $('#nxpExtStatusText');
+				const extGuide     = $('#nxpExtInstallGuide');
+				const extCheckbox  = $('#nxpProdOptShopeeCatExt');
+				const catBox       = $('#nxpShopeeCatBox');
+				const catTitle     = $('#nxpShopeeCatTitle');
+				const catCount     = $('#nxpShopeeCatCount');
+				const catBar       = $('#nxpShopeeCatBar');
+				const catTbody     = $('#nxpShopeeCatTableBody');
+				const gateAlert    = $('#nxpShopeeCatGateAlert');
+				const gateText     = $('#nxpShopeeCatGateText');
+				const btnPause     = $('#nxpShopeeCatBtnPause');
+				const btnResume    = $('#nxpShopeeCatBtnResume');
+				const btnSkip      = $('#nxpShopeeCatBtnSkip');
+				const btnStop      = $('#nxpShopeeCatBtnStop');
+				const btnApplyMan  = $('#nxpShopeeCatBtnApplyManual');
+
+				function setExtConnected(ver) {
+					extState.connected = true;
+					extState.version = ver || '1.0.0';
+					if (extPill) {
+						extPill.style.background = 'rgba(16,185,129,0.22)';
+						extPill.style.borderColor = 'rgba(110,231,183,0.55)';
+						extPill.style.color = '#ecfdf5';
+					}
+					if (extStatusTxt) {
+						extStatusTxt.textContent = '🧩 Extension Cốc Cốc: Đã kết nối (v' + extState.version + ')';
+					}
+					const helpBtn = $('#nxpBtnExtHelp');
+					if (helpBtn) helpBtn.style.display = 'none';
+					if (extGuide) extGuide.style.display = 'none';
+					if (extCheckbox && !extState.userToggledOpt) {
+						extCheckbox.checked = true;
+					}
+				}
+
+				if (extState.connected) {
+					setExtConnected(extState.version);
+				}
+
+				extCheckbox?.addEventListener('change', () => {
+					extState.userToggledOpt = true;
+				});
+
+				$('#nxpBtnExtHelp')?.addEventListener('click', () => {
+					if (extGuide) extGuide.style.display = extGuide.style.display === 'none' ? 'block' : 'none';
+				});
+				$('#nxpBtnExtHelpClose')?.addEventListener('click', () => {
+					if (extGuide) extGuide.style.display = 'none';
+				});
+				$('#nxpShopeeCatBtnClose')?.addEventListener('click', () => {
+					if (extState.running) {
+						if (!confirm('Đang chạy quét danh mục Shopee. Bạn có muốn dừng và đóng bảng này không?')) return;
+						window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_STOP' }, window.location.origin);
+					}
+					if (catBox) catBox.style.display = 'none';
+				});
+
+				btnPause?.addEventListener('click', () => {
+					window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_PAUSE' }, window.location.origin);
+				});
+				btnResume?.addEventListener('click', () => {
+					if (gateAlert) gateAlert.style.display = 'none';
+					window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_RESUME' }, window.location.origin);
+				});
+				btnSkip?.addEventListener('click', () => {
+					if (gateAlert) gateAlert.style.display = 'none';
+					window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_SKIP' }, window.location.origin);
+				});
+				btnStop?.addEventListener('click', () => {
+					window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_STOP' }, window.location.origin);
+				});
+
+				function setRunButtons(running, paused) {
+					if (btnPause) btnPause.style.display = running && !paused ? 'inline-flex' : 'none';
+					if (btnResume) btnResume.style.display = running && paused ? 'inline-flex' : 'none';
+					if (btnSkip) btnSkip.style.display = running && paused ? 'inline-flex' : 'none';
+					if (btnStop) btnStop.style.display = running ? 'inline-flex' : 'none';
+				}
+
+				function updateScatRow(rowIdx, patch) {
+					const tr = document.getElementById('nxp-scat-row-' + rowIdx);
+					if (!tr) return;
+					if (patch.tier2 !== undefined) {
+						const c2 = tr.querySelector('.nxp-scat-t2');
+						if (c2) c2.textContent = patch.tier2 || '—';
+					}
+					if (patch.tier3 !== undefined) {
+						const c3 = tr.querySelector('.nxp-scat-t3');
+						if (c3) c3.textContent = patch.tier3 || '—';
+					}
+					if (patch.statusHtml !== undefined) {
+						const cs = tr.querySelector('.nxp-scat-st');
+						if (cs) cs.innerHTML = patch.statusHtml;
+					}
+				}
+
+				async function applyOneToWoo(entry, replaceExisting) {
+					try {
+						const res = await postAjax('nexxi_pancake_apply_shopee_category', {
+							wc_id: entry.wc_id || 0,
+							sku: entry.sku || '',
+							tier1: entry.tier1 || '',
+							tier2: entry.tier2 || '',
+							tier3: entry.tier3 || '',
+							shopee_url: entry.shopee_url || '',
+							replace_existing: replaceExisting ? '1' : '0'
+						}, 1);
+						if (res && res.success && res.data) {
+							if (entry.row_dom) {
+								updateRowCategoryDisplay(entry.row_dom, res.data.category_path, true);
+							}
+							updateScatRow(entry.queueIdx, {
+								tier2: res.data.parent_name || entry.tier2,
+								tier3: res.data.child_name || entry.tier3 || '(Không có con)',
+								statusHtml: '<span class="nxp-badge nxp-badge-ok">✅ Đã gán lên Web</span>'
+							});
+							extState.appliedResults.push(res.data);
+							return { ok: true, data: res.data };
+						}
+						const errMsg = extractAjaxErr(res, 'Lỗi lưu danh mục');
+						updateScatRow(entry.queueIdx, {
+							statusHtml: '<span class="nxp-badge nxp-badge-err">✗ ' + escHtml(errMsg) + '</span>'
+						});
+						return { ok: false, error: errMsg };
+					} catch (err) {
+						updateScatRow(entry.queueIdx, {
+							statusHtml: '<span class="nxp-badge nxp-badge-err">✗ Lỗi kết nối máy chủ</span>'
+						});
+						return { ok: false, error: 'Lỗi kết nối máy chủ' };
+					}
+				}
+
+				btnApplyMan?.addEventListener('click', async () => {
+					if (!extState.pendingManualItems.length) return;
+					btnApplyMan.disabled = true;
+					const replace = Boolean($('#nxpShopeeCatReplace')?.checked ?? true);
+					const list = extState.pendingManualItems.splice(0, extState.pendingManualItems.length);
+					for (const item of list) {
+						updateScatRow(item.queueIdx, { statusHtml: '<span class="nxp-badge nxp-badge-info">⏳ Đang lưu lên Web...</span>' });
+						await applyOneToWoo(item, replace);
+					}
+					btnApplyMan.disabled = false;
+					btnApplyMan.style.display = 'none';
+					if (catTitle) catTitle.textContent = '🎉 Đã áp dụng danh mục Shopee lên Website hoàn tất!';
+				});
+
+				window.addEventListener('message', async (event) => {
+					if (event.source !== window) return;
+					const msg = event.data;
+					if (!msg || typeof msg !== 'object' || msg.source !== 'nexxi-ext') return;
+
+					if (msg.type === 'NEXXI_EXT_READY') {
+						setExtConnected(msg.version || document.documentElement.dataset.nexxiShopeeCatExt || '1.0.0');
+						return;
+					}
+
+					if (!extState.running || (msg.jobId && extState.jobId && msg.jobId !== extState.jobId)) {
+						return;
+					}
+
+					if (msg.type === 'NEXXI_EXT_ITEM_START') {
+						const it = msg.item || {};
+						extState.paused = false;
+						setRunButtons(true, false);
+						if (gateAlert) gateAlert.style.display = 'none';
+						if (catTitle) catTitle.textContent = '🌐 Đang mở tab Shopee cho SKU [' + (it.sku || '') + '] (' + (Number(msg.index || 0) + 1) + '/' + extState.totalQueue + ')...';
+						updateScatRow(it.queueIdx, {
+							statusHtml: '<span class="nxp-badge nxp-badge-info">🌐 Đang mở tab Shopee...</span>'
+						});
+						extState.activeOpts?.onStatus?.('🌐 Đang mở tab Shopee lấy danh mục Tầng 2 & 3...');
+						return;
+					}
+
+					if (msg.type === 'NEXXI_EXT_PAUSED') {
+						extState.paused = true;
+						setRunButtons(true, true);
+						const reason = msg.reason || 'Shopee yêu cầu đăng nhập hoặc xác minh CAPTCHA trên tab vừa mở.';
+						if (gateText) {
+							gateText.innerHTML = escHtml(reason) + ' Vui lòng xác minh trực tiếp trên tab Shopee đang mở, sau đó bấm <strong>▶️ Tiếp tục</strong> (hoặc bấm <strong>⏭️ Bỏ qua</strong>).';
+						}
+						if (gateAlert) gateAlert.style.display = 'block';
+						if (catTitle) catTitle.textContent = '⚠️ Tạm dừng chờ xác minh Shopee...';
+						const it = msg.item || {};
+						if (it.queueIdx !== undefined) {
+							updateScatRow(it.queueIdx, {
+								statusHtml: '<span class="nxp-badge nxp-badge-warn">⚠️ Chờ xác minh Shopee</span>'
+							});
+						}
+						extState.activeOpts?.onPaused?.(reason);
+						return;
+					}
+
+					if (msg.type === 'NEXXI_EXT_ITEM_RESULT') {
+						extState.paused = false;
+						setRunButtons(true, false);
+						if (gateAlert) gateAlert.style.display = 'none';
+
+						const it = msg.item || {};
+						const r = msg.result || {};
+						const entry = extState.queueByIdx.get(it.queueIdx) || it;
+
+						extState.doneQueue++;
+						if (catCount) catCount.textContent = extState.doneQueue + ' / ' + extState.totalQueue;
+						if (catBar && extState.totalQueue > 0) {
+							catBar.style.width = Math.round((extState.doneQueue / extState.totalQueue) * 100) + '%';
+						}
+
+						if (r.ok && r.tier2) {
+							const autoApply = extState.activeOpts?.autoApply ?? Boolean($('#nxpShopeeCatAutoApply')?.checked ?? true);
+							const replaceExisting = extState.activeOpts?.replaceExisting ?? Boolean($('#nxpShopeeCatReplace')?.checked ?? true);
+							const payloadEntry = {
+								...entry,
+								tier1: r.tier1 || '',
+								tier2: r.tier2 || '',
+								tier3: r.tier3 || ''
+							};
+							updateScatRow(entry.queueIdx, {
+								tier2: payloadEntry.tier2,
+								tier3: payloadEntry.tier3 || '(Không có con)',
+								statusHtml: autoApply
+									? '<span class="nxp-badge nxp-badge-info">💾 Đang gán lên Web...</span>'
+									: '<span class="nxp-badge nxp-badge-warn">✓ Đã đọc Shopee (chờ áp dụng)</span>'
+							});
+							if (autoApply) {
+								const p = applyOneToWoo(payloadEntry, replaceExisting);
+								extState.pendingApplyPromises.push(p);
+							} else {
+								extState.pendingManualItems.push(payloadEntry);
+								if (btnApplyMan) btnApplyMan.style.display = 'inline-flex';
+							}
+						} else {
+							const errMsg = r.reason || 'Không lấy được danh mục Shopee';
+							updateScatRow(entry.queueIdx, {
+								statusHtml: '<span class="nxp-badge nxp-badge-warn">⚠️ ' + escHtml(errMsg) + '</span>'
+							});
+						}
+						return;
+					}
+
+					if (msg.type === 'NEXXI_EXT_ERROR') {
+						extState.running = false;
+						extState.paused = false;
+						setRunButtons(false, false);
+						if (catTitle) catTitle.textContent = '✗ ' + (msg.reason || 'Lỗi Extension');
+						extState.activeOpts?.onError?.(msg.reason || 'Lỗi Extension');
+						return;
+					}
+
+					if (msg.type === 'NEXXI_EXT_BATCH_DONE') {
+						if (extState.pendingApplyPromises.length) {
+							await Promise.allSettled(extState.pendingApplyPromises);
+						}
+						extState.running = false;
+						extState.paused = false;
+						setRunButtons(false, false);
+						if (gateAlert) gateAlert.style.display = 'none';
+						const stoppedTxt = msg.stopped ? ' (đã dừng giữa chừng)' : '';
+						if (catTitle) {
+							catTitle.textContent = '🎉 Hoàn tất quét Shopee' + stoppedTxt + ': ' + extState.doneQueue + '/' + extState.totalQueue + ' link (Đã gán ' + extState.appliedResults.length + ' SP lên Web).';
+						}
+						extState.activeOpts?.onBatchDone?.({
+							stopped: Boolean(msg.stopped),
+							totalQueue: extState.totalQueue,
+							doneQueue: extState.doneQueue,
+							applied: extState.appliedResults
+						});
+						extState.activeOpts = null;
+					}
+				});
+
+				// Trigger ping right after listener registration
+				window.postMessage({ source: 'nexxi-page', type: 'NEXXI_PAGE_PING' }, window.location.origin);
+				setTimeout(() => {
+					if (!extState.connected && document.documentElement.dataset.nexxiShopeeCatExt) {
+						setExtConnected(document.documentElement.dataset.nexxiShopeeCatExt);
+					}
+				}, 500);
+
+				window.NexxiShopeeCatSync = {
+					isConnected() {
+						if (!extState.connected && document.documentElement.dataset.nexxiShopeeCatExt) {
+							setExtConnected(document.documentElement.dataset.nexxiShopeeCatExt);
+						}
+						return extState.connected;
+					},
+					async run(rawItems, opts = {}) {
+						if (!this.isConnected()) {
+							if (extGuide) {
+								extGuide.style.display = 'block';
+								extGuide.scrollIntoView({ behavior: 'smooth', block: 'center' });
+							}
+							const msg = 'Chưa phát hiện Extension "NEXXI Shopee Category Sync" trên trình duyệt Cốc Cốc. Vui lòng cài đặt theo hướng dẫn ở trên rồi tải lại trang (F5).';
+							opts.onError?.(msg);
+							if (!opts.silentAlert) alert(msg);
+							return;
+						}
+						if (extState.running) {
+							const msg = 'Extension đang chạy một lượt quét khác. Vui lòng chờ hoàn tất hoặc bấm Dừng.';
+							opts.onError?.(msg);
+							if (!opts.silentAlert) alert(msg);
+							return;
+						}
+						const items = deduplicateBatchItems(rawItems);
+						if (!items.length) {
+							opts.onError?.('Chưa có sản phẩm hoặc mã SKU nào để kiểm tra.');
+							return;
+						}
+
+						if (!opts.silentBox && catBox) {
+							catBox.style.display = 'block';
+							catBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+						}
+						if (gateAlert) gateAlert.style.display = 'none';
+						if (btnApplyMan) btnApplyMan.style.display = 'none';
+						if (catTbody) catTbody.innerHTML = '';
+						if (catBar) catBar.style.width = '5%';
+						if (catCount) catCount.textContent = '0 / ' + items.length;
+						if (catTitle) catTitle.textContent = opts.title || '⏳ Đang đối chiếu Pancake tìm link Shopee cho ' + items.length + ' sản phẩm...';
+
+						opts.onStatus?.('⏳ Đang tra cứu link Shopee trên Pancake POS...');
+						let resolveRes = null;
+						try {
+							resolveRes = await postAjax('nexxi_pancake_resolve_shopee_links', {
+								items_json: JSON.stringify(items)
+							}, 1);
+						} catch (e) {
+							resolveRes = null;
+						}
+						if (!resolveRes || !resolveRes.success || !resolveRes.data || !Array.isArray(resolveRes.data.items)) {
+							const errMsg = extractAjaxErr(resolveRes, 'Lỗi tra cứu link Shopee từ Pancake.');
+							if (catTitle) catTitle.textContent = '✗ ' + errMsg;
+							opts.onError?.(errMsg);
+							return;
+						}
+
+						const resolved = resolveRes.data.items;
+						extState.queueByIdx.clear();
+						extState.pendingManualItems = [];
+						extState.pendingApplyPromises = [];
+						extState.appliedResults = [];
+
+						const queueItems = [];
+						let rowsHtml = '';
+						resolved.forEach((rItem, idx) => {
+							const linkHtml = rItem.found_link
+								? '<a href="' + escHtml(rItem.shopee_url) + '" target="_blank" rel="noopener noreferrer" style="color:#ea580c;font-weight:600;text-decoration:none;">Shopee #' + escHtml(rItem.shop_id || '') + ' ↗</a>'
+								: '<span style="color:#94a3b8;">Không có</span>';
+							const statusHtml = rItem.found_link
+								? '<span class="nxp-badge nxp-badge-info">⏳ Chờ mở tab Shopee</span>'
+								: '<span class="nxp-badge nxp-badge-warn">⚠️ Chưa có link Shopee trên Pancake</span>';
+							rowsHtml += '<tr id="nxp-scat-row-' + idx + '">' +
+								'<td><code>' + escHtml(rItem.sku || '—') + '</code></td>' +
+								'<td>' + escHtml(rItem.name || '') + '</td>' +
+								'<td>' + linkHtml + '</td>' +
+								'<td class="nxp-scat-t2">—</td>' +
+								'<td class="nxp-scat-t3">—</td>' +
+								'<td class="nxp-scat-st">' + statusHtml + '</td>' +
+								'</tr>';
+							if (rItem.found_link) {
+								const qObj = {
+									queueIdx: idx,
+									wc_id: Number(rItem.wc_id || 0),
+									sku: rItem.sku || '',
+									name: rItem.name || '',
+									row_dom: rItem.row_dom || '',
+									shopee_url: rItem.shopee_url
+								};
+								extState.queueByIdx.set(idx, qObj);
+								queueItems.push(qObj);
+							}
+						});
+						if (catTbody) catTbody.innerHTML = rowsHtml;
+
+						if (!queueItems.length) {
+							const noLinkMsg = 'Không tìm thấy link Shopee trên Pancake cho các sản phẩm đã chọn.';
+							if (catTitle) catTitle.textContent = '⚠️ ' + noLinkMsg;
+							if (catBar) catBar.style.width = '100%';
+							opts.onError?.(noLinkMsg);
+							return;
+						}
+
+						extState.jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+						extState.running = true;
+						extState.paused = false;
+						extState.totalQueue = queueItems.length;
+						extState.doneQueue = 0;
+						extState.activeOpts = opts;
+
+						if (catCount) catCount.textContent = '0 / ' + queueItems.length;
+						if (catTitle) catTitle.textContent = opts.title || ('🏷️ Đang quét ' + queueItems.length + ' link Shopee qua Extension Cốc Cốc...');
+						setRunButtons(true, false);
+
+						window.postMessage({
+							source: 'nexxi-page',
+							type: 'NEXXI_PAGE_START_BATCH',
+							jobId: extState.jobId,
+							items: queueItems,
+							delayMs: queueItems.length === 1 ? 0 : Number($('#nxpShopeeCatDelay')?.value || 5000),
+							openActiveTab: Boolean($('#nxpShopeeCatOpenActive')?.checked)
+						}, window.location.origin);
+					},
+					syncSingleForModal(wcId, sku, callbacks = {}) {
+						this.run([{ wc_id: Number(wcId || 0), pancake_sku: String(sku || '').trim().toUpperCase() }], {
+							autoApply: true,
+							replaceExisting: true,
+							silentBox: true,
+							silentAlert: true,
+							onStatus: callbacks.onStatus,
+							onPaused: callbacks.onPaused,
+							onError: callbacks.onError,
+							onBatchDone: (summary) => {
+								const first = summary.applied && summary.applied[0];
+								if (first) {
+									callbacks.onApplied?.(first);
+								} else {
+									callbacks.onError?.('Chưa lấy được danh mục Tầng 2 & 3 Shopee cho sản phẩm này.');
+								}
+							}
+						});
+					}
+				};
 			}
 
 			// Note: #nxpBtnLoadAllPancakePages, #nxpBtnRefreshPancake & initial empty-catalog auto-sync are handled centrally by window.nxpRefreshFullPancakeCatalog.
