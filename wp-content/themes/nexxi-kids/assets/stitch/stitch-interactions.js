@@ -281,6 +281,16 @@
       button.textContent = open ? 'Thu gọn' : label;
     });
   });
+  $$('[data-nexxi-cat-toggle]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const group = button.closest('.nexxi-cat-group');
+      if (!group) return;
+      const open = group.classList.toggle('is-open');
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
   $$('[data-nexxi-price]').forEach(range => {
     const label = $('[data-nexxi-price-label]');
     const short = value => (value >= 1000 ? new Intl.NumberFormat('vi-VN').format(Math.round(value / 1000)) + 'k' : String(value));

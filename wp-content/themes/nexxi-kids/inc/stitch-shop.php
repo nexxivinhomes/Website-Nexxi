@@ -13,25 +13,25 @@ function nexxi_kids_cat_groups() {
 			'label' => 'BST Đầm & Chân Váy Hàn Quốc',
 			'short' => '👗 Đầm & Chân Váy',
 			'intro' => 'Các mẫu đầm kiểu, set váy lụa dập, chân váy xếp ly và quần váy xinh xắn dành cho bé (12–45kg).',
-			'slugs' => array( 'dam', 'dam-kieu', 'dam-ngan-tay', 'dam-sat-nach', 'dam-thun', 'set-vay', 'chan-vay', 'vay-ngan', 'quan-vay' ),
+			'slugs' => array( 'dam', 'dam-kieu', 'dam-ngan-tay', 'dam-sat-nach', 'dam-thun', 'set-vay', 'chan-vay', 'vay-ngan', 'quan-vay', 'vay-dam', 'chan-vay-trang-phuc-be-gai' ),
 		),
 		'set-bo'        => array(
 			'label' => 'BST Set Phối & Bộ Đồ Năng Động',
 			'short' => '✨ Set Phối & Bộ Đồ',
 			'intro' => 'Các mẫu set phối Hàn Quốc, bộ thun ngắn tay, dài tay, sát nách và bộ lửng mềm mịn thoải mái vận động.',
-			'slugs' => array( 'set-phoi', 'bo-thun', 'bo-sat-nach', 'bo-ngan-tay', 'bo-lung', 'bo-dai-tay' ),
+			'slugs' => array( 'set-phoi', 'bo-thun', 'bo-sat-nach', 'bo-ngan-tay', 'bo-lung', 'bo-dai-tay', 'bo-quan-ao', 'bo-quan-ao-trang-phuc-be-trai', 'bo-do-gia-dinh', 'bo', 'do-ngu', 'do-ngu-trang-phuc-be-trai' ),
 		),
 		'ao-thoi-trang' => array(
 			'label' => 'BST Áo Thun, Sơ Mi & Áo Khoác',
 			'short' => '👕 Áo Thun & Áo Kiểu',
 			'intro' => 'Các mẫu áo thun co giãn 4 chiều, áo kiểu, áo sơ mi, áo dài và áo khoác thời trang cho bé từ 12–45kg.',
-			'slugs' => array( 'ao-thun', 'ao-thun-ngan-tay', 'ao-thun-co-be', 'ao-thun-dai-tay', 'ao-thun-sat-nach', 'ao-so-mi', 'ao-kieu', 'ao-kieu-sat-nach-ngan-tay', 'ao-khoac', 'ao-dai' ),
+			'slugs' => array( 'ao-thun', 'ao-thun-ngan-tay', 'ao-thun-co-be', 'ao-thun-dai-tay', 'ao-thun-sat-nach', 'ao-so-mi', 'ao-kieu', 'ao-kieu-sat-nach-ngan-tay', 'ao-khoac', 'ao-dai', 'ao-phong', 'ao-phong-trang-phuc-be-trai', 'ao-polo', 'ao-so-mi-trang-phuc-be-gai', 'ao-so-mi-trang-phuc-be-trai', 'ao-khoac-nhe', 'ao-khoac-trang-phuc-be-trai', 'ao' ),
 		),
 		'quan-xinh'     => array(
 			'label' => 'BST Quần Dài, Quần Lửng & Quần Short',
 			'short' => '👖 Quần Dài & Quần Lửng',
 			'intro' => 'Các mẫu quần dài ống rộng, quần legging, quần lửng kaki túi hộp và quần sọt khỏe khoắn năng động.',
-			'slugs' => array( 'quan-dai', 'quan-lung', 'quan-sot', 'quan-vay' ),
+			'slugs' => array( 'quan-dai', 'quan-lung', 'quan-sot', 'quan-vay', 'quan-bo', 'quan-bo-trang-phuc-be-trai', 'quan-bo-trang-phuc-be-gai', 'quan-dui', 'quan-dui-trang-phuc-be-gai', 'quan', 'quan-trang-phuc-be-gai' ),
 		),
 	);
 }
@@ -104,6 +104,98 @@ function nexxi_kids_shop_term_intro( WP_Term $term ) {
 	return 'Tuyển chọn các mẫu ' . $subject . ' thiết kế cảm hứng Hàn Quốc chính hãng NEXXI Kids (12–45kg): chất vải mềm mát, phom dáng chuẩn xinh, miễn phí ship toàn quốc và hỗ trợ đổi hàng 15 ngày.';
 }
 
+/** Friendly icon prefix for a parent product category. */
+function nexxi_kids_shop_parent_icon( WP_Term $term ) {
+	$low = mb_strtolower( nexxi_kids_shop_term_display_name( $term ), 'UTF-8' );
+	if ( false !== strpos( $low, 'bé gái' ) ) {
+		return '👧';
+	}
+	if ( false !== strpos( $low, 'bé trai' ) ) {
+		return '👦';
+	}
+	if ( false !== strpos( $low, 'em bé' ) || false !== strpos( $low, 'sơ sinh' ) ) {
+		return '👶';
+	}
+	if ( false !== strpos( $low, 'quà' ) || false !== strpos( $low, 'tặng' ) ) {
+		return '🎁';
+	}
+	return '👕';
+}
+
+/** Concise tag label for a parent category when disambiguating duplicate child names. */
+function nexxi_kids_shop_parent_short_tag( WP_Term $term ) {
+	$name = nexxi_kids_shop_term_display_name( $term );
+	$low  = mb_strtolower( $name, 'UTF-8' );
+	if ( false !== strpos( $low, 'bé gái' ) ) {
+		return 'Bé gái';
+	}
+	if ( false !== strpos( $low, 'bé trai' ) ) {
+		return 'Bé trai';
+	}
+	if ( false !== strpos( $low, 'em bé' ) || false !== strpos( $low, 'sơ sinh' ) ) {
+		return 'Em bé';
+	}
+	return $name;
+}
+
+/** Build the live non-empty WooCommerce parent/child category tree ordered by product count DESC. */
+function nexxi_kids_shop_category_tree() {
+	static $tree = null;
+	if ( null !== $tree ) {
+		return $tree;
+	}
+	$exclude_id = (int) get_option( 'default_product_cat' );
+	$terms      = get_terms(
+		array(
+			'taxonomy'   => 'product_cat',
+			'hide_empty' => true,
+			'exclude'    => $exclude_id > 0 ? array( $exclude_id ) : array(),
+		)
+	);
+	$parents            = array();
+	$children_by_parent = array();
+	$parent_map         = array();
+	$child_name_counts  = array();
+
+	if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+		foreach ( $terms as $t ) {
+			if ( ! $t instanceof WP_Term ) {
+				continue;
+			}
+			if ( 0 === (int) $t->parent ) {
+				$parents[]                        = $t;
+				$parent_map[ (int) $t->term_id ]  = $t;
+			} else {
+				$pid                              = (int) $t->parent;
+				$children_by_parent[ $pid ][]     = $t;
+				$ckey                             = mb_strtolower( nexxi_kids_shop_term_display_name( $t ), 'UTF-8' );
+				$child_name_counts[ $ckey ]       = (int) ( $child_name_counts[ $ckey ] ?? 0 ) + 1;
+			}
+		}
+	}
+
+	$sort_terms = static function ( WP_Term $a, WP_Term $b ) {
+		if ( (int) $a->count !== (int) $b->count ) {
+			return (int) $b->count <=> (int) $a->count;
+		}
+		return strcmp( (string) $a->name, (string) $b->name );
+	};
+
+	usort( $parents, $sort_terms );
+	foreach ( $children_by_parent as &$child_list ) {
+		usort( $child_list, $sort_terms );
+	}
+	unset( $child_list );
+
+	$tree = array(
+		'parents'           => $parents,
+		'children'          => $children_by_parent,
+		'parent_map'        => $parent_map,
+		'child_name_counts' => $child_name_counts,
+	);
+	return $tree;
+}
+
 /** Base URL for the current listing (category/tag archive or shop page). */
 function nexxi_kids_shop_base() {
 	$term = nexxi_kids_current_shop_term();
@@ -154,12 +246,12 @@ function nexxi_kids_loop_per_page() {
 }
 add_filter( 'loop_shop_per_page', 'nexxi_kids_loop_per_page', 999 );
 
-/** Default catalog ordering on the shop is newest products first ('date') to match the UI selector. */
+/** Default catalog ordering on the shop is best-selling products first ('popularity') to match the UI selector. */
 add_filter( 'woocommerce_default_catalog_orderby', static function ( $default ) {
 	if ( ! empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		return $default;
 	}
-	return 'date';
+	return 'popularity';
 }, 999 );
 
 /** Legacy ?sort= links from the earlier build map to WooCommerce ?orderby=; also enforce 25 items per page on shop and apply ?cat_group= filter. */
@@ -197,20 +289,26 @@ function nexxi_kids_legacy_sort( $query ) {
 		}
 	}
 
-	if ( 'popularity' === $orderby_param && function_exists( 'nexxi_kids_get_popular_product_ids' ) ) {
-		$existing_in = array_values( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) );
-		$popular_ids = nexxi_kids_get_popular_product_ids( 0, $existing_in );
-		if ( ! empty( $popular_ids ) ) {
-			if ( function_exists( 'WC' ) && WC()->query ) {
-				remove_filter( 'posts_clauses', array( WC()->query, 'order_by_popularity_post_clauses' ) );
+	$effective_orderby = '' !== $orderby_param ? $orderby_param : ( empty( $_GET['on_sale'] ) ? 'popularity' : '' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+	if ( 'popularity' === $effective_orderby && function_exists( 'nexxi_kids_get_popular_product_ids' ) ) {
+		$raw_post_in       = (array) $query->get( 'post__in' );
+		$existing_in       = array_values( array_filter( array_map( 'absint', $raw_post_in ) ) );
+		$is_empty_sentinel = ( ! empty( $raw_post_in ) && empty( $existing_in ) );
+		if ( ! $is_empty_sentinel ) {
+			$popular_ids = nexxi_kids_get_popular_product_ids( 0, $existing_in );
+			if ( ! empty( $popular_ids ) ) {
+				if ( function_exists( 'WC' ) && WC()->query ) {
+					remove_filter( 'posts_clauses', array( WC()->query, 'order_by_popularity_post_clauses' ) );
+				}
+				$query->set( 'post__in', $popular_ids );
+				$query->set( 'orderby', 'post__in' );
+				return;
 			}
-			$query->set( 'post__in', $popular_ids );
-			$query->set( 'orderby', 'post__in' );
-			return;
 		}
 	}
 
-	if ( ( '' === $orderby_param || 'date' === $orderby_param ) && empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( 'date' === $effective_orderby && empty( $_GET['on_sale'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$query->set( 'orderby', array( 'date' => 'DESC', 'ID' => 'DESC' ) );
 		$query->set( 'order', 'DESC' );
 	}
@@ -315,7 +413,7 @@ function nexxi_kids_rel_nofollow_if_query( $url ) {
 /** Sort options (Stitch labels) mapped to short WooCommerce orderby keys (avoids exposing ?orderby= URLs to crawlers). */
 function nexxi_kids_sort_select( $class, array $labels ) {
 	$state = nexxi_kids_shop_state();
-	$current = isset( $state['orderby'] ) ? $state['orderby'] : ( ! empty( $state['on_sale'] ) ? ( isset( $labels['sale'] ) ? 'sale' : 'popularity' ) : 'date' );
+	$current = isset( $state['orderby'] ) ? $state['orderby'] : ( ! empty( $state['on_sale'] ) ? ( isset( $labels['sale'] ) ? 'sale' : 'popularity' ) : 'popularity' );
 	$out = '<select class="' . esc_attr( $class ) . '" data-nexxi-sort aria-label="Sắp xếp sản phẩm">';
 	foreach ( $labels as $value => $label ) {
 		$out .= '<option value="' . esc_attr( $value ) . '"' . selected( $value === $current, true, false ) . '>' . esc_html( $label ) . '</option>';
@@ -324,64 +422,238 @@ function nexxi_kids_sort_select( $class, array $labels ) {
 }
 
 function nexxi_kids_shop_quickfilters() {
-	$age_active = 'bg-primary text-on-primary font-label-md text-label-md px-space-md py-1.5 rounded-full shadow-sm hover:scale-105 transition-all';
-	$idle = 'bg-surface-container-lowest text-on-surface font-label-md text-label-md px-space-md py-1.5 rounded-full hover:bg-secondary-fixed hover:text-secondary transition-colors';
-	$gender_active = 'bg-secondary text-on-secondary font-label-md text-label-md px-space-md py-1.5 rounded-full shadow-sm flex items-center gap-1';
 	$style_active = 'shrink-0 bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-space-md py-1 rounded-full';
-	$style_idle = 'shrink-0 bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-label-sm text-label-sm px-space-md py-1 rounded-full transition-colors';
+	$style_idle   = 'shrink-0 bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant font-label-sm text-label-sm px-space-md py-1 rounded-full transition-colors';
 
-	$state = nexxi_kids_shop_state();
-	$groups = nexxi_kids_cat_groups();
-	$active_cg = isset( $state['cat_group'] ) ? $state['cat_group'] : '';
-	$active_term = nexxi_kids_current_shop_term();
-	$all_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() );
-	$out = '<div class="flex flex-wrap items-center justify-between gap-space-md w-full"><div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Bộ Sưu Tập:</span>';
-	$out .= '<a class="' . esc_attr( ! $active_cg && ! ( $active_term instanceof WP_Term ) ? $age_active : $idle ) . ' shrink-0" href="' . esc_url( $all_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $all_url ) . '>Tất cả</a>';
-	foreach ( $groups as $cg_key => $cg_info ) {
-		$is_on = ( $active_cg === $cg_key );
-		$cg_url = $is_on
-			? nexxi_kids_shop_link( array( 'cat_group' => null ), nexxi_kids_shop_url() )
-			: nexxi_kids_shop_link( array( 'cat_group' => $cg_key, 'product_cat' => null ), nexxi_kids_shop_url() );
-		$out .= '<a class="' . esc_attr( $is_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $cg_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $cg_url ) . '>' . esc_html( $cg_info['short'] ) . '</a>';
-	}
-	$out .= '</div><div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Danh Mục:</span>';
-	$current_term = ( function_exists( 'is_product_category' ) && is_product_category() ) ? get_queried_object() : $active_term;
-	$current = ( $current_term instanceof WP_Term ) ? (int) $current_term->term_id : 0;
+	$state            = nexxi_kids_shop_state();
+	$active_cg        = isset( $state['cat_group'] ) ? $state['cat_group'] : '';
+	$active_term      = nexxi_kids_current_shop_term();
+	$current_term     = ( function_exists( 'is_product_category' ) && is_product_category() ) ? get_queried_object() : $active_term;
+	$current_id       = ( $current_term instanceof WP_Term ) ? (int) $current_term->term_id : 0;
 	$active_parent_id = ( $current_term instanceof WP_Term ) ? ( (int) $current_term->parent > 0 ? (int) $current_term->parent : (int) $current_term->term_id ) : 0;
-	$cats = get_terms( array( 'taxonomy' => 'product_cat', 'parent' => 0, 'hide_empty' => true, 'exclude' => array( (int) get_option( 'default_product_cat' ) ) ) );
-	foreach ( is_wp_error( $cats ) ? array() : $cats as $cat ) {
-		$active_parent = $active_parent_id === (int) $cat->term_id;
-		$is_exact_self = $current === (int) $cat->term_id;
-		$url = $is_exact_self ? nexxi_kids_shop_link( array( 'product_cat' => null ), nexxi_kids_shop_url() ) : nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $cat ) );
-		$out .= '<a class="' . esc_attr( $active_parent ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $url ) . '"' . nexxi_kids_rel_nofollow_if_query( $url ) . '>' . ( $active_parent ? '<span class="material-symbols-outlined text-[16px]">child_care</span> ' : '' ) . esc_html( $cat->name ) . '</a>';
+
+	$tree    = nexxi_kids_shop_category_tree();
+	$all_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() );
+
+	$out  = '<div class="nexxi-shop-ribbon">';
+	$out .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--parent">';
+	$out .= '<div class="nexxi-shop-ribbon__main">';
+	$out .= '<span class="nexxi-shop-ribbon__label">Danh mục cha:</span>';
+	$out .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
+	$out .= '<a class="nexxi-shop-pill' . ( '' === $active_cg && 0 === $current_id ? ' is-active' : '' ) . '" href="' . esc_url( $all_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $all_url ) . '>Tất cả</a>';
+
+	foreach ( $tree['parents'] as $cat ) {
+		$tlink = get_term_link( $cat );
+		if ( is_wp_error( $tlink ) ) {
+			continue;
+		}
+		$cid           = (int) $cat->term_id;
+		$active_parent = ( $active_parent_id === $cid );
+		$is_exact_self = ( $current_id === $cid );
+		$url           = $is_exact_self
+			? nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() )
+			: nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $tlink );
+		$label         = nexxi_kids_shop_term_display_name( $cat );
+		$icon          = nexxi_kids_shop_parent_icon( $cat );
+		$out          .= '<a class="nexxi-shop-pill' . ( $active_parent ? ' is-active' : '' ) . '" href="' . esc_url( $url ) . '"' . nexxi_kids_rel_nofollow_if_query( $url ) . '>'
+			. '<span>' . esc_html( $icon . ' ' . $label ) . '</span>'
+			. '<span class="nexxi-shop-pill__count">' . (int) $cat->count . '</span>'
+			. '</a>';
 	}
+	$out .= '</div></div>';
+
+	$out .= '<div class="nexxi-shop-ribbon__sort"><span class="font-label-sm text-label-sm text-outline shrink-0">Sắp xếp:</span><div class="relative inline-block">';
+	$out .= nexxi_kids_sort_select(
+		'appearance-none bg-surface-container-lowest text-on-surface font-label-md text-label-md py-1.5 pl-space-md pr-space-xl rounded-full shadow-sm focus:outline-none cursor-pointer',
+		array(
+			'popularity' => '🔥 Bán chạy nhất mẹ chọn',
+			'date'       => '✨ Mới nhất tuần này',
+			'sale'       => '🏷️ Ưu đãi tốt nhất',
+			'price'      => 'Giá tăng dần',
+			'price-desc' => 'Giá giảm dần',
+		)
+	);
+	$out .= '<span class="material-symbols-outlined text-[18px] text-outline absolute right-space-sm top-1/2 -translate-y-1/2 pointer-events-none">expand_more</span></div></div>';
 	$out .= '</div>';
-	if ( $active_parent_id > 0 ) {
-		$sub_cats = get_terms( array( 'taxonomy' => 'product_cat', 'parent' => $active_parent_id, 'hide_empty' => true ) );
-		if ( ! is_wp_error( $sub_cats ) && ! empty( $sub_cats ) ) {
-			$parent_obj = get_term( $active_parent_id, 'product_cat' );
-			$out .= '<div class="nexxi-mobile-scroll-row flex items-center gap-space-xs flex-wrap w-full pt-1"><span class="font-label-sm text-label-sm text-outline mr-space-xs uppercase tracking-wider shrink-0">Danh Mục Con:</span>';
-			if ( $parent_obj instanceof WP_Term ) {
-				$p_url = nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $parent_obj ) );
-				$out .= '<a class="' . esc_attr( $current === $active_parent_id ? $age_active : $idle ) . ' shrink-0" href="' . esc_url( $p_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $p_url ) . '>Tất cả trong ' . esc_html( $parent_obj->name ) . '</a>';
+
+	// Row 2: Child categories clearly separated from Parent categories.
+	if ( $active_parent_id > 0 && ! empty( $tree['children'][ $active_parent_id ] ) ) {
+		$parent_obj = $tree['parent_map'][ $active_parent_id ] ?? get_term( $active_parent_id, 'product_cat' );
+		$out       .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--child"><div class="nexxi-shop-ribbon__main">';
+		$out       .= '<span class="nexxi-shop-ribbon__label">Danh mục con:</span>';
+		$out       .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
+		if ( $parent_obj instanceof WP_Term ) {
+			$p_link = get_term_link( $parent_obj );
+			if ( ! is_wp_error( $p_link ) ) {
+				$p_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $p_link );
+				$out  .= '<a class="nexxi-shop-subpill' . ( $current_id === $active_parent_id ? ' is-active' : '' ) . '" href="' . esc_url( $p_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $p_url ) . '>Tất cả trong ' . esc_html( nexxi_kids_shop_term_display_name( $parent_obj ) ) . '</a>';
 			}
-			foreach ( $sub_cats as $sub ) {
-				$sub_on  = $current === (int) $sub->term_id;
-				$sub_url = nexxi_kids_shop_link( array( 'product_cat' => null ), get_term_link( $sub ) );
-				$out .= '<a class="' . esc_attr( $sub_on ? $gender_active : $idle ) . ' shrink-0" href="' . esc_url( $sub_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $sub_url ) . '>' . esc_html( $sub->name ) . '</a>';
+		}
+		foreach ( $tree['children'][ $active_parent_id ] as $sub ) {
+			$s_link = get_term_link( $sub );
+			if ( is_wp_error( $s_link ) ) {
+				continue;
+			}
+			$sub_on  = ( $current_id === (int) $sub->term_id );
+			$sub_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $s_link );
+			$out    .= '<a class="nexxi-shop-subpill' . ( $sub_on ? ' is-active' : '' ) . '" href="' . esc_url( $sub_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $sub_url ) . '>'
+				. '<span>' . esc_html( nexxi_kids_shop_term_display_name( $sub ) ) . '</span>'
+				. '<span class="nexxi-shop-subpill__count">' . (int) $sub->count . '</span>'
+				. '</a>';
+		}
+		$out .= '</div></div></div>';
+	} elseif ( 0 === $active_parent_id && ! empty( $tree['children'] ) ) {
+		$all_children = array();
+		foreach ( $tree['children'] as $c_list ) {
+			foreach ( $c_list as $sub ) {
+				$all_children[] = $sub;
+			}
+		}
+		usort(
+			$all_children,
+			static function ( WP_Term $a, WP_Term $b ) {
+				if ( (int) $a->count !== (int) $b->count ) {
+					return (int) $b->count <=> (int) $a->count;
+				}
+				return strcmp( (string) $a->name, (string) $b->name );
+			}
+		);
+		$top_children = array_slice(
+			array_values(
+				array_filter(
+					$all_children,
+					static function ( WP_Term $t ) {
+						return (int) $t->count >= 4;
+					}
+				)
+			),
+			0,
+			12
+		);
+		if ( empty( $top_children ) ) {
+			$top_children = array_slice( $all_children, 0, 10 );
+		}
+		if ( ! empty( $top_children ) ) {
+			$out .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--child"><div class="nexxi-shop-ribbon__main">';
+			$out .= '<span class="nexxi-shop-ribbon__label">Danh mục con:</span>';
+			$out .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
+			foreach ( $top_children as $sub ) {
+				$s_link = get_term_link( $sub );
+				if ( is_wp_error( $s_link ) ) {
+					continue;
+				}
+				$sub_name  = nexxi_kids_shop_term_display_name( $sub );
+				$ckey      = mb_strtolower( $sub_name, 'UTF-8' );
+				$is_dup    = ( (int) ( $tree['child_name_counts'][ $ckey ] ?? 0 ) > 1 );
+				$parent_ob = $tree['parent_map'][ (int) $sub->parent ] ?? null;
+				$disp_lbl  = ( $is_dup && $parent_ob instanceof WP_Term )
+					? ( $sub_name . ' · ' . nexxi_kids_shop_parent_short_tag( $parent_ob ) )
+					: $sub_name;
+				$sub_url   = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $s_link );
+				$out      .= '<a class="nexxi-shop-subpill' . ( $current_id === (int) $sub->term_id ? ' is-active' : '' ) . '" href="' . esc_url( $sub_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $sub_url ) . '>'
+					. '<span>' . esc_html( $disp_lbl ) . '</span>'
+					. '<span class="nexxi-shop-subpill__count">' . (int) $sub->count . '</span>'
+					. '</a>';
+			}
+			$out .= '</div></div></div>';
+		}
+	}
+
+	// Optional Row 3: only shown if style attribute actually has terms.
+	$style_terms = nexxi_kids_attribute_terms( 'kieu-dang' );
+	if ( ! empty( $style_terms ) ) {
+		$styles = nexxi_kids_chosen( 'kieu-dang' );
+		$out   .= '<div class="nexxi-shop-ribbon__row nexxi-shop-ribbon__row--child"><div class="nexxi-shop-ribbon__main">';
+		$out   .= '<span class="nexxi-shop-ribbon__label">Kiểu dáng:</span>';
+		$out   .= '<div class="nexxi-shop-ribbon__pills nexxi-mobile-scroll-row">';
+		foreach ( $style_terms as $t ) {
+			$t_url = nexxi_kids_toggle_link( 'kieu-dang', $t->slug );
+			$out  .= '<a class="' . esc_attr( in_array( $t->slug, $styles, true ) ? $style_active : $style_idle ) . '" href="' . esc_url( $t_url ) . '" rel="nofollow">' . esc_html( $t->name ) . '</a>';
+		}
+		$out .= '</div></div></div>';
+	}
+
+	return $out . '</div>';
+}
+
+/** Hierarchical parent/child category tree for the left filter sidebar (replaces Material filter). */
+function nexxi_kids_filter_categories_tree() {
+	$tree = nexxi_kids_shop_category_tree();
+	if ( empty( $tree['parents'] ) ) {
+		return '';
+	}
+	$state            = nexxi_kids_shop_state();
+	$active_cg        = isset( $state['cat_group'] ) ? $state['cat_group'] : '';
+	$current_term     = nexxi_kids_current_shop_term();
+	$current_id       = ( $current_term instanceof WP_Term && 'product_cat' === $current_term->taxonomy ) ? (int) $current_term->term_id : 0;
+	$active_parent_id = ( $current_term instanceof WP_Term && 'product_cat' === $current_term->taxonomy )
+		? ( (int) $current_term->parent > 0 ? (int) $current_term->parent : (int) $current_term->term_id )
+		: 0;
+
+	$all_url = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), nexxi_kids_shop_url() );
+	$out     = '<div class="nexxi-cat-tree space-y-space-sm pt-space-xs" data-nexxi-filter-group="product_cat">'
+		. '<h3 class="font-headline-sm text-headline-sm text-primary flex items-center justify-between">Danh Mục Sản Phẩm<span class="material-symbols-outlined text-[18px] text-outline">category</span></h3>'
+		. '<div class="space-y-1.5 pt-1">'
+		. '<a class="nexxi-cat-all-link' . ( 0 === $current_id && '' === $active_cg ? ' is-active' : '' ) . '" href="' . esc_url( $all_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $all_url ) . '><span>✨ Tất cả sản phẩm</span></a>';
+
+	foreach ( $tree['parents'] as $p_index => $parent ) {
+		$p_link = get_term_link( $parent );
+		if ( is_wp_error( $p_link ) ) {
+			continue;
+		}
+		$pid              = (int) $parent->term_id;
+		$children         = $tree['children'][ $pid ] ?? array();
+		$is_parent_exact  = ( $current_id === $pid );
+		$is_parent_branch = ( $active_parent_id === $pid );
+		$is_open          = $is_parent_branch || ( 0 === $active_parent_id && $p_index < 2 && (int) $parent->count >= 5 );
+		$p_url            = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $p_link );
+		$p_name           = nexxi_kids_shop_term_display_name( $parent );
+		$p_icon           = nexxi_kids_shop_parent_icon( $parent );
+
+		$out .= '<div class="nexxi-cat-group' . ( $is_open ? ' is-open' : '' ) . '">';
+		$row_cls = 'nexxi-cat-parent-row' . ( $is_parent_exact ? ' is-active' : ( $is_parent_branch ? ' is-branch' : '' ) );
+		$out .= '<div class="' . esc_attr( $row_cls ) . '">';
+		$out .= '<a class="nexxi-cat-parent-link" href="' . esc_url( $p_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $p_url ) . '>'
+			. '<span class="nexxi-cat-parent-name">' . esc_html( $p_icon . ' ' . $p_name ) . '</span>'
+			. '<span class="nexxi-cat-count">' . (int) $parent->count . '</span>'
+			. '</a>';
+		if ( ! empty( $children ) ) {
+			$out .= '<button type="button" class="nexxi-cat-toggle" data-nexxi-cat-toggle aria-expanded="' . ( $is_open ? 'true' : 'false' ) . '" aria-label="Mở rộng ' . esc_attr( $p_name ) . '"><span class="material-symbols-outlined text-[18px]">expand_more</span></button>';
+		}
+		$out .= '</div>';
+
+		if ( ! empty( $children ) ) {
+			$more_key    = 'cat-' . $pid;
+			$hidden_left = 0;
+			$out        .= '<div class="nexxi-cat-children">';
+			foreach ( $children as $c_idx => $sub ) {
+				$s_link = get_term_link( $sub );
+				if ( is_wp_error( $s_link ) ) {
+					continue;
+				}
+				$sid    = (int) $sub->term_id;
+				$sub_on = ( $current_id === $sid );
+				$is_hid = ( $c_idx >= 6 && ! $sub_on );
+				if ( $is_hid ) {
+					$hidden_left++;
+				}
+				$s_url   = nexxi_kids_shop_link( array( 'cat_group' => null, 'product_cat' => null ), $s_link );
+				$s_cls   = 'nexxi-cat-child-link' . ( $sub_on ? ' is-active' : '' ) . ( $is_hid ? ' hidden' : '' );
+				$more_at = $is_hid ? ' data-nexxi-more="' . esc_attr( $more_key ) . '"' : '';
+				$out    .= '<a class="' . esc_attr( $s_cls ) . '"' . $more_at . ' href="' . esc_url( $s_url ) . '"' . nexxi_kids_rel_nofollow_if_query( $s_url ) . '>'
+					. '<span class="nexxi-cat-child-label"><span class="nexxi-cat-child-dot" aria-hidden="true"></span><span>' . esc_html( nexxi_kids_shop_term_display_name( $sub ) ) . '</span></span>'
+					. '<span class="nexxi-cat-count">' . (int) $sub->count . '</span>'
+					. '</a>';
+			}
+			if ( $hidden_left > 0 ) {
+				$out .= '<button class="font-label-sm text-label-sm text-secondary hover:underline px-space-xs pt-1 text-left" type="button" data-nexxi-more-toggle="' . esc_attr( $more_key ) . '">Xem thêm ' . (int) $hidden_left . ' danh mục</button>';
 			}
 			$out .= '</div>';
 		}
+		$out .= '</div>';
 	}
-	$out .= '</div><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md pt-space-xs"><div class="flex items-center gap-space-xs overflow-x-auto pb-1 max-w-full"><span class="font-label-sm text-label-sm text-outline mr-space-xs shrink-0 uppercase tracking-wider">Kiểu dáng:</span>';
-	$styles = nexxi_kids_chosen( 'kieu-dang' );
-	foreach ( nexxi_kids_attribute_terms( 'kieu-dang' ) as $t ) {
-		$t_url = nexxi_kids_toggle_link( 'kieu-dang', $t->slug );
-		$out .= '<a class="' . esc_attr( in_array( $t->slug, $styles, true ) ? $style_active : $style_idle ) . '" href="' . esc_url( $t_url ) . '" rel="nofollow">' . esc_html( $t->name ) . '</a>';
-	}
-	$out .= '</div><div class="flex items-center gap-space-sm shrink-0 w-full md:w-auto justify-end"><span class="font-label-sm text-label-sm text-outline">Sắp xếp:</span><div class="relative inline-block">';
-	$out .= nexxi_kids_sort_select( 'appearance-none bg-surface-container-lowest text-on-surface font-label-md text-label-md py-1.5 pl-space-md pr-space-xl rounded-full shadow-sm focus:outline-none cursor-pointer', array( 'date' => '✨ Mới nhất tuần này', 'popularity' => '🔥 Bán chạy nhất mẹ chọn', 'sale' => '🏷️ Ưu đãi tốt nhất', 'price' => 'Giá tăng dần', 'price-desc' => 'Giá giảm dần' ) );
-	return $out . '<span class="material-symbols-outlined text-[18px] text-outline absolute right-space-sm top-1/2 -translate-y-1/2 pointer-events-none">expand_more</span></div></div></div>';
+
+	return $out . '</div></div>';
 }
 
 /** Checkbox filter group (size / material). */
@@ -406,10 +678,10 @@ function nexxi_kids_filter_checks( $slug, $title, $icon ) {
 
 function nexxi_kids_shop_sidebar() {
 	$state = nexxi_kids_shop_state();
-	$reset = nexxi_kids_shop_link( array_fill_keys( array_diff( array_keys( $state ), array( 's', 'post_type', 'on_sale' ) ), null ) );
+	$reset = nexxi_kids_shop_link( array_fill_keys( array_diff( array_keys( $state ), array( 's', 'post_type', 'on_sale' ) ), null ), nexxi_kids_shop_url() );
 	$out = '<div class="nexxi-shop-filter-card bg-surface-container-lowest rounded-lg p-space-lg shadow-[0_8px_24px_-4px_rgba(27,42,89,0.05)] space-y-space-lg"><div class="flex items-center justify-between pb-space-xs"><button type="button" class="nexxi-mobile-filter-btn flex items-center gap-space-xs text-primary font-title-md text-title-md text-left" data-nexxi-mobile-filter-toggle aria-expanded="false"><span class="material-symbols-outlined text-secondary">tune</span><span>Bộ Lọc Cho Mẹ</span><span class="nexxi-mobile-filter-chevron material-symbols-outlined text-[18px] text-outline lg:hidden">expand_more</span></button><a class="font-label-sm text-label-sm text-secondary hover:underline cursor-pointer" href="' . esc_url( $reset ) . '"' . nexxi_kids_rel_nofollow_if_query( $reset ) . '>Thiết lập lại</a></div><div class="nexxi-mobile-filter-body space-y-space-lg" data-nexxi-mobile-filter-body>';
+	$out .= nexxi_kids_filter_categories_tree();
 	$out .= nexxi_kids_filter_checks( 'size', 'Size & Cân Nặng Bé', 'straighten' );
-	$out .= nexxi_kids_filter_checks( 'chat-lieu', 'Chất Liệu', 'checkroom' );
 
 	$colors = nexxi_kids_attribute_terms( 'mau-sac' );
 	if ( $colors ) {
