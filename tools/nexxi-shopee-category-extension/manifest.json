@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NEXXI Shopee Category Sync (Pancake SKU)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Liên kết trực tiếp trang Pancake SKU của nexxi.vn: mở tab Shopee theo link từ Pancake, lấy danh mục Tầng 2 (Cha) & Tầng 3 (Con) rồi tự đóng tab.",
   "permissions": [
     "tabs",

@@ -1,5 +1,5 @@
 (function () {
-  const EXT_VERSION = '1.0.0';
+  const EXT_VERSION = '1.0.1';
   document.documentElement.dataset.nexxiShopeeCatExt = EXT_VERSION;
 
   let port = null;

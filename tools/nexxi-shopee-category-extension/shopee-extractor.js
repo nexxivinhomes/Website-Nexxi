@@ -1,6 +1,7 @@
 (function () {
   const MAX_WAIT_MS = 18000;
   const POLL_MS = 500;
+  const startTime = Date.now();
 
   function cleanText(str) {
     return String(str || '').replace(/\s+/g, ' ').trim();
@@ -70,24 +71,57 @@
   }
 
   function detectNotFound() {
+    const elapsed = Date.now() - startTime;
     let pathname = '/';
     try {
-      pathname = new URL(window.location.href).pathname || '/';
+      pathname = (new URL(window.location.href).pathname || '/').toLowerCase();
     } catch (e) {}
-    if (pathname === '/' && document.readyState === 'complete') {
-      return 'Link sản phẩm đã chuyển hướng về trang chủ Shopee.';
+    if (document.readyState === 'complete' && elapsed >= 1500) {
+      if (pathname === '/' || pathname.includes('/404') || pathname.includes('/not-found') || pathname.includes('/error')) {
+        return 'Link sản phẩm đã chuyển hướng khỏi trang sản phẩm Shopee (' + pathname + ').';
+      }
     }
+
     const bodyText = cleanText(document.body ? document.body.innerText : '').toLowerCase();
+    if (!bodyText || bodyText.length < 15 || elapsed < 1200) {
+      return '';
+    }
+
     const notFoundMarkers = [
+      'sản phẩm này không tồn tại',
       'sản phẩm không tồn tại',
+      'không tìm thấy sản phẩm',
+      'sản phẩm đã bị xóa',
+      'sản phẩm không khả dụng',
+      'sản phẩm hiện không khả dụng',
+      'sản phẩm này đã bị gỡ',
+      'sản phẩm này hiện không có sẵn',
+      'rất tiếc, sản phẩm',
       'trang không tồn tại',
+      'không tìm thấy trang',
+      "product doesn't exist",
+      "this product doesn't exist",
       "item doesn't exist",
-      'product not found'
+      'product not found',
+      'item not found',
+      'page not found',
+      'this item is no longer available',
+      'product is unavailable'
     ];
     for (const marker of notFoundMarkers) {
       if (bodyText.includes(marker)) {
-        return 'Sản phẩm không tồn tại hoặc đã bị gỡ trên Shopee.';
+        return 'Sản phẩm không tồn tại hoặc đã bị gỡ/ẩn trên Shopee.';
       }
+    }
+
+    if (
+      elapsed >= 3000 &&
+      document.readyState === 'complete' &&
+      !document.querySelector('h1') &&
+      !document.querySelector('a[href*="-cat."]') &&
+      (bodyText.includes('quay lại trang chủ') || bodyText.includes('về trang chủ') || bodyText.includes('trở lại shopee'))
+    ) {
+      return 'Sản phẩm không tồn tại hoặc đang bị ẩn trên Shopee.';
     }
     return '';
   }

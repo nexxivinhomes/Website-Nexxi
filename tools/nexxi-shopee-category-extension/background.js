@@ -146,6 +146,37 @@ function resolvePauseAction(action) {
   }
 }
 
+function buildCandidateUrls(item) {
+  const out = [];
+  const seen = new Set();
+  const pushEntry = (rawUrl, shopId = '', shopName = '', itemId = '') => {
+    const u = String(rawUrl || '').trim();
+    if (!u || !u.startsWith('http') || seen.has(u)) return;
+    seen.add(u);
+    out.push({
+      url: u,
+      shop_id: String(shopId || '').trim(),
+      shop_name: String(shopName || '').trim(),
+      item_id: String(itemId || '').trim()
+    });
+  };
+
+  if (item && Array.isArray(item.candidate_urls)) {
+    for (const c of item.candidate_urls) {
+      if (!c) continue;
+      if (typeof c === 'string') {
+        pushEntry(c);
+      } else if (typeof c === 'object') {
+        pushEntry(c.url || c.shopee_url, c.shop_id, c.shop_name, c.item_id);
+      }
+    }
+  }
+  if (item && item.shopee_url) {
+    pushEntry(item.shopee_url, item.shop_id, item.shop_name, item.item_id);
+  }
+  return out;
+}
+
 async function processBatch() {
   state.running = true;
   state.paused = false;
@@ -161,136 +192,187 @@ async function processBatch() {
       updateBadge();
 
       const item = state.items[i];
-      emitToAdmin({
-        type: 'NEXXI_EXT_ITEM_START',
-        jobId: state.jobId,
-        index: i,
-        total: state.items.length,
-        item
-      });
-
+      const candidates = buildCandidateUrls(item);
       let itemResult = null;
-      let retrySameItem = false;
 
-      do {
-        retrySameItem = false;
+      for (let cIdx = 0; cIdx < candidates.length; cIdx++) {
         if (state.stopped) break;
+        const cand = candidates[cIdx];
 
-        // If user clicked manual Pause before this item started, wait before opening tab
-        while (state.paused && !state.stopped) {
-          updateBadge();
-          const pAct = await waitForPauseAction();
-          state.paused = false;
-          state.pauseReason = '';
-          if (pAct === 'stop' || state.stopped) {
-            state.stopped = true;
-            break;
-          }
-          if (pAct === 'skip') {
-            itemResult = { ok: false, status: 'skipped', reason: 'Người dùng đã bỏ qua sản phẩm này.' };
-            break;
-          }
-        }
-        if (state.stopped || itemResult) break;
+        emitToAdmin({
+          type: 'NEXXI_EXT_ITEM_START',
+          jobId: state.jobId,
+          index: i,
+          total: state.items.length,
+          item,
+          attempt: cIdx + 1,
+          totalAttempts: candidates.length,
+          activeUrl: cand.url,
+          activeShopId: cand.shop_id || item.shop_id || '',
+          activeShopName: cand.shop_name || item.shop_name || ''
+        });
 
-        let tab = null;
-        try {
-          const createOpts = {
-            url: item.shopee_url,
-            active: Boolean(state.openActiveTab)
-          };
-          if (state.adminWindowId) {
-            createOpts.windowId = state.adminWindowId;
-          }
-          tab = await chrome.tabs.create(createOpts);
-        } catch (err) {
-          itemResult = { ok: false, status: 'error', reason: 'Không thể mở tab Shopee: ' + (err?.message || err) };
-          break;
-        }
+        let candidateResult = null;
+        let retrySameCandidate = false;
 
-        const tabId = tab.id;
-        state.activeTabId = tabId;
+        do {
+          retrySameCandidate = false;
+          if (state.stopped) break;
 
-        const loadStatus = await waitForTabComplete(tabId, 15000);
-        if (state.stopped) {
-          await safeCloseTab(tabId);
-          break;
-        }
-        if (loadStatus === 'removed') {
-          itemResult = { ok: false, status: 'tab_closed_by_user', reason: 'Tab Shopee đã bị đóng trước khi lấy danh mục.' };
-          state.activeTabId = null;
-          break;
-        }
-
-        let extracted = await runExtractorOnTab(tabId);
-
-        if (extracted && extracted.status === 'captcha_or_login') {
-          state.paused = true;
-          state.pauseReason = extracted.reason || 'Shopee yêu cầu đăng nhập hoặc xác minh CAPTCHA.';
-          updateBadge();
-          try {
-            await chrome.tabs.update(tabId, { active: true });
-          } catch (e) {}
-          emitToAdmin({
-            type: 'NEXXI_EXT_PAUSED',
-            jobId: state.jobId,
-            index: i,
-            total: state.items.length,
-            item,
-            reason: state.pauseReason,
-            tabId
-          });
-
-          const action = await waitForPauseAction();
-          state.paused = false;
-          state.pauseReason = '';
-          updateBadge();
-
-          if (action === 'stop' || state.stopped) {
-            state.stopped = true;
-            await safeCloseTab(tabId);
-            break;
-          }
-          if (action === 'skip') {
-            await safeCloseTab(tabId);
-            itemResult = { ok: false, status: 'skipped', reason: 'Người dùng bỏ qua sau cảnh báo xác minh Shopee.' };
-            break;
-          }
-
-          // action === 'resume': check paused tab first, or retry cleanly
-          let tabStillOpen = false;
-          try {
-            const curTab = await chrome.tabs.get(tabId);
-            tabStillOpen = Boolean(curTab && curTab.id);
-          } catch (e) {
-            tabStillOpen = false;
-          }
-
-          if (tabStillOpen) {
-            const retried = await runExtractorOnTab(tabId);
-            await safeCloseTab(tabId);
-            if (retried && retried.ok) {
-              itemResult = retried;
+          // If user clicked manual Pause before this item started, wait before opening tab
+          while (state.paused && !state.stopped) {
+            updateBadge();
+            const pAct = await waitForPauseAction();
+            state.paused = false;
+            state.pauseReason = '';
+            if (pAct === 'stop' || state.stopped) {
+              state.stopped = true;
               break;
             }
-            if (retried && retried.status === 'captcha_or_login') {
-              retrySameItem = true;
+            if (pAct === 'skip') {
+              candidateResult = { ok: false, status: 'skipped', reason: 'Người dùng đã bỏ qua sản phẩm này.' };
+              break;
+            }
+          }
+          if (state.stopped || candidateResult) break;
+
+          let tab = null;
+          try {
+            const createOpts = {
+              url: cand.url,
+              active: Boolean(state.openActiveTab)
+            };
+            if (state.adminWindowId) {
+              createOpts.windowId = state.adminWindowId;
+            }
+            tab = await chrome.tabs.create(createOpts);
+          } catch (err) {
+            candidateResult = { ok: false, status: 'error', reason: 'Không thể mở tab Shopee: ' + (err?.message || err) };
+            break;
+          }
+
+          const tabId = tab.id;
+          state.activeTabId = tabId;
+
+          const loadStatus = await waitForTabComplete(tabId, 15000);
+          if (state.stopped) {
+            await safeCloseTab(tabId);
+            break;
+          }
+          if (loadStatus === 'removed') {
+            candidateResult = { ok: false, status: 'tab_closed_by_user', reason: 'Tab Shopee đã bị đóng trước khi lấy danh mục.' };
+            state.activeTabId = null;
+            break;
+          }
+
+          const extracted = await runExtractorOnTab(tabId);
+
+          if (extracted && extracted.status === 'captcha_or_login') {
+            state.paused = true;
+            state.pauseReason = extracted.reason || 'Shopee yêu cầu đăng nhập hoặc xác minh CAPTCHA.';
+            updateBadge();
+            try {
+              await chrome.tabs.update(tabId, { active: true });
+            } catch (e) {}
+            emitToAdmin({
+              type: 'NEXXI_EXT_PAUSED',
+              jobId: state.jobId,
+              index: i,
+              total: state.items.length,
+              item,
+              reason: state.pauseReason,
+              tabId
+            });
+
+            const action = await waitForPauseAction();
+            state.paused = false;
+            state.pauseReason = '';
+            updateBadge();
+
+            if (action === 'stop' || state.stopped) {
+              state.stopped = true;
+              await safeCloseTab(tabId);
+              break;
+            }
+            if (action === 'skip') {
+              await safeCloseTab(tabId);
+              candidateResult = { ok: false, status: 'skipped', reason: 'Người dùng bỏ qua sau cảnh báo xác minh Shopee.' };
+              break;
+            }
+
+            // action === 'resume': check paused tab first, or retry cleanly
+            let tabStillOpen = false;
+            try {
+              const curTab = await chrome.tabs.get(tabId);
+              tabStillOpen = Boolean(curTab && curTab.id);
+            } catch (e) {
+              tabStillOpen = false;
+            }
+
+            if (tabStillOpen) {
+              const retried = await runExtractorOnTab(tabId);
+              await safeCloseTab(tabId);
+              if (retried && retried.ok) {
+                candidateResult = retried;
+                break;
+              }
+              if (retried && retried.status === 'captcha_or_login') {
+                retrySameCandidate = true;
+                continue;
+              }
+              retrySameCandidate = true;
+              continue;
+            } else {
+              state.activeTabId = null;
+              retrySameCandidate = true;
               continue;
             }
-            // If user logged in and stayed on another Shopee page, retry opening product URL cleanly
-            retrySameItem = true;
-            continue;
-          } else {
-            state.activeTabId = null;
-            retrySameItem = true;
-            continue;
           }
+
+          // ALWAYS close opened Shopee tab immediately after extracting
+          await safeCloseTab(tabId);
+          candidateResult = extracted;
+        } while (retrySameCandidate && !state.stopped);
+
+        if (state.stopped) break;
+
+        if (candidateResult && candidateResult.ok) {
+          itemResult = {
+            ...candidateResult,
+            used_url: cand.url,
+            used_shop_id: cand.shop_id || '',
+            used_shop_name: cand.shop_name || '',
+            used_item_id: cand.item_id || '',
+            attempt: cIdx + 1,
+            totalAttempts: candidates.length
+          };
+          break;
         }
 
-        // ALWAYS close opened Shopee tab immediately after extracting
-        await safeCloseTab(tabId);
-        itemResult = extracted;
-      } while (retrySameItem && !state.stopped);
+        if (candidateResult && (candidateResult.status === 'skipped' || candidateResult.status === 'tab_closed_by_user')) {
+          itemResult = candidateResult;
+          break;
+        }
+
+        const canTryNext = cIdx < candidates.length - 1 && candidateResult && ['not_found', 'timeout', 'error'].includes(candidateResult.status);
+        if (canTryNext) {
+          await sleep(800);
+          continue;
+        }
+
+        const baseReason = (candidateResult && candidateResult.reason) ? String(candidateResult.reason) : 'Không lấy được danh mục Shopee.';
+        const suffix = candidates.length > 1 ? ` (đã thử ${candidates.length}/${candidates.length} link Shopee trên Pancake)` : '';
+        itemResult = {
+          ...(candidateResult || { ok: false, status: 'error' }),
+          reason: baseReason + suffix,
+          used_url: cand.url,
+          used_shop_id: cand.shop_id || '',
+          used_shop_name: cand.shop_name || '',
+          used_item_id: cand.item_id || '',
+          attempt: cIdx + 1,
+          totalAttempts: candidates.length
+        };
+      }
 
       if (state.stopped) break;
 
@@ -412,7 +494,7 @@ chrome.runtime.onConnect.addListener((port) => {
         return;
       }
       const rawItems = Array.isArray(msg.items) ? msg.items : [];
-      const validItems = rawItems.filter((it) => it && typeof it.shopee_url === 'string' && it.shopee_url.startsWith('http'));
+      const validItems = rawItems.filter((it) => buildCandidateUrls(it).length > 0);
       if (!validItems.length) {
         emitToAdmin({
           type: 'NEXXI_EXT_ERROR',
