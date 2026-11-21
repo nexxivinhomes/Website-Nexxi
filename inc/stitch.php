@@ -42,7 +42,7 @@ add_action( 'init', static function () {
 	if ( ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return;
 	}
-	$purge_ver = '20261121_shopee_cat_filter_v59';
+	$purge_ver = '20261121_shop_cat_filter_popular_v60';
 	if ( get_option( 'nexxi_lscache_purge_ver' ) !== $purge_ver ) {
 		update_option( 'nexxi_lscache_purge_ver', $purge_ver, true );
 		delete_transient( 'nexxi_zalo_scan_running_lock' );
